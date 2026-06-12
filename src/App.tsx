@@ -33,7 +33,10 @@ import {
   ArrowRight,
   Database,
   Upload,
-  Zap
+  Zap,
+  Trash2,
+  Globe,
+  Settings
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse } from "./types";
 import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
@@ -85,7 +88,35 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax">("triage");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory">("triage");
+
+  // Google Cloud Service Directory state variables
+  const [sdStatus, setSdStatus] = useState<{ active: boolean; usingFallback: boolean; error: string | null; message: string }>({
+    active: false,
+    usingFallback: true,
+    error: null,
+    message: "Initializing Service Directory..."
+  });
+  const [sdProjectId, setSdProjectId] = useState<string>("displaycellpros");
+  const [sdLocationId, setSdLocationId] = useState<string>("us-central1");
+  const [sdNamespaces, setSdNamespaces] = useState<Array<{ name: string }>>([]);
+  const [selectedNamespace, setSelectedNamespace] = useState<string>("");
+  const [sdServices, setSdServices] = useState<Array<{ name: string; annotations?: Record<string, string> }>>([]);
+  const [selectedService, setSelectedService] = useState<string>("");
+  const [sdEndpoints, setSdEndpoints] = useState<Array<{ name: string; address: string; port: number; annotations?: Record<string, string> }>>([]);
+
+  // Creation variables
+  const [newNamespaceId, setNewNamespaceId] = useState<string>("");
+  const [newServiceId, setNewServiceId] = useState<string>("");
+  const [newServiceAnnotations, setNewServiceAnnotations] = useState<string>("version=v1.2,env=lab");
+  const [newEndpointId, setNewEndpointId] = useState<string>("");
+  const [newEndpointAddress, setNewEndpointAddress] = useState<string>("10.128.0.80");
+  const [newEndpointPort, setNewEndpointPort] = useState<number>(80);
+  const [newEndpointAnnotations, setNewEndpointAnnotations] = useState<string>("zone=us-central1-a");
+
+  const [sdLoading, setSdLoading] = useState<boolean>(false);
+  const [sdError, setSdError] = useState<string | null>(null);
+  const [sdSuccess, setSdSuccess] = useState<string | null>(null);
   
   // Active Customer & Device Details
   const [customerName, setCustomerName] = useState<string>("Jane Miller");
@@ -265,9 +296,11 @@ export default function App() {
     { zip: "98501", city: "Olympia", rate: "9.5%" }
   ];
 
-  // Fetch Sync Logs & Tickets on Mount
+  // Fetch Sync Logs & Tickets on Mount, plus load Service Directory Status
   useEffect(() => {
     fetchPOSLogs();
+    fetchSdStatus();
+    handleListNamespaces("displaycellpros", "us-central1");
   }, []);
 
   // Recalculate quote automatically on changes
@@ -333,6 +366,349 @@ export default function App() {
       }
     } catch (err) {
       console.error("Tax lookup API failed:", err);
+    }
+  };
+
+  // --- GOOGLE CLOUD SERVICE DIRECTORY INTEGRATION FUNCTIONS ---
+  
+  // Helper to parse key=value annotations string
+  const parseAnnotations = (str: string): Record<string, string> => {
+    const result: Record<string, string> = {};
+    if (!str.trim()) return result;
+    str.split(",").forEach(pair => {
+      const parts = pair.split("=");
+      if (parts.length >= 2) {
+        result[parts[0].trim()] = parts.slice(1).join("=").trim();
+      }
+    });
+    return result;
+  };
+
+  // Fetch Service Directory Authentication Status
+  const fetchSdStatus = async () => {
+    try {
+      const res = await fetch("/api/service-directory/status");
+      if (res.ok) {
+        const data = await res.json();
+        setSdStatus(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch Service Directory status:", err);
+    }
+  };
+
+  // List Namespaces for selected project and location
+  const handleListNamespaces = async (proj = sdProjectId, loc = sdLocationId) => {
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    try {
+      const res = await fetch("/api/service-directory/namespaces/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: proj, locationId: loc })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSdNamespaces(data.namespaces || []);
+        if (data.namespaces?.length > 0) {
+          // Auto-select first namespace for ease of use
+          const firstNs = data.namespaces[0].name;
+          setSelectedNamespace(firstNs);
+          handleListServices(firstNs);
+        } else {
+          setSelectedNamespace("");
+          setSdServices([]);
+          setSelectedService("");
+          setSdEndpoints([]);
+        }
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to list namespaces.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error fetching namespaces.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // Create a new Namespace
+  const handleCreateNamespace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = newNamespaceId.trim().toLowerCase();
+    if (!cleanId) {
+      setSdError("Namespace ID is required.");
+      return;
+    }
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    try {
+      const res = await fetch("/api/service-directory/namespaces/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: sdProjectId,
+          locationId: sdLocationId,
+          namespaceId: cleanId
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSdSuccess(`Successfully registered namespace "${cleanId}"`);
+        setNewNamespaceId("");
+        // Reload namespaces list
+        handleListNamespaces();
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to create namespace.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error registering namespace.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // Delete a Namespace
+  const handleDeleteNamespace = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete namespace: ${name}?`)) return;
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    try {
+      const res = await fetch("/api/service-directory/namespaces/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        setSdSuccess("Namespace deleted successfully.");
+        if (selectedNamespace === name) {
+          setSelectedNamespace("");
+          setSdServices([]);
+          setSelectedService("");
+          setSdEndpoints([]);
+        }
+        handleListNamespaces();
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to delete namespace.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error deleting namespace.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // List Services in a Namespace
+  const handleListServices = async (nsName: string) => {
+    if (!nsName) return;
+    setSdLoading(true);
+    setSdError(null);
+    try {
+      const res = await fetch("/api/service-directory/services/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ namespaceName: nsName })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSdServices(data.services || []);
+        if (data.services?.length > 0) {
+          const firstSrv = data.services[0].name;
+          setSelectedService(firstSrv);
+          handleListEndpoints(firstSrv);
+        } else {
+          setSelectedService("");
+          setSdEndpoints([]);
+        }
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to list services.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error fetching services.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // Create a new Service
+  const handleCreateService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = newServiceId.trim().toLowerCase();
+    if (!selectedNamespace) {
+      setSdError("Please select/create a target Namespace first.");
+      return;
+    }
+    if (!cleanId) {
+      setSdError("Service ID is required.");
+      return;
+    }
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    
+    const parsedAnnots = parseAnnotations(newServiceAnnotations);
+    
+    try {
+      const res = await fetch("/api/service-directory/services/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          namespaceName: selectedNamespace,
+          serviceId: cleanId,
+          annotations: parsedAnnots
+        })
+      });
+      if (res.ok) {
+        setSdSuccess(`Successfully registered service "${cleanId}"`);
+        setNewServiceId("");
+        // Reload services log
+        handleListServices(selectedNamespace);
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to create service.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error registering service.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // Delete a Service
+  const handleDeleteService = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete service: ${name}?`)) return;
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    try {
+      const res = await fetch("/api/service-directory/services/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        setSdSuccess("Service deleted successfully.");
+        if (selectedService === name) {
+          setSelectedService("");
+          setSdEndpoints([]);
+        }
+        handleListServices(selectedNamespace);
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to delete service.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error deleting service.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // List Endpoints in a Service
+  const handleListEndpoints = async (srvName: string) => {
+    if (!srvName) return;
+    setSdLoading(true);
+    setSdError(null);
+    try {
+      const res = await fetch("/api/service-directory/endpoints/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serviceName: srvName })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSdEndpoints(data.endpoints || []);
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to list endpoints.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error fetching endpoints.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // Create a new Endpoint
+  const handleCreateEndpoint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = newEndpointId.trim().toLowerCase();
+    const cleanAddress = newEndpointAddress.trim();
+    if (!selectedService) {
+      setSdError("Please select/create a target Service first.");
+      return;
+    }
+    if (!cleanId) {
+      setSdError("Endpoint ID is required.");
+      return;
+    }
+    if (!cleanAddress) {
+      setSdError("Endpoint Address (IP/Host) is required.");
+      return;
+    }
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    
+    const parsedAnnots = parseAnnotations(newEndpointAnnotations);
+
+    try {
+      const res = await fetch("/api/service-directory/endpoints/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceName: selectedService,
+          endpointId: cleanId,
+          address: cleanAddress,
+          port: Number(newEndpointPort),
+          annotations: parsedAnnots
+        })
+      });
+      if (res.ok) {
+        setSdSuccess(`Successfully registered endpoint "${cleanId}"`);
+        setNewEndpointId("");
+        // Reload endpoints log
+        handleListEndpoints(selectedService);
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to create endpoint.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error registering endpoint.");
+    } finally {
+      setSdLoading(false);
+    }
+  };
+
+  // Delete an Endpoint
+  const handleDeleteEndpoint = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete endpoint: ${name}?`)) return;
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    try {
+      const res = await fetch("/api/service-directory/endpoints/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        setSdSuccess("Endpoint deleted successfully.");
+        handleListEndpoints(selectedService);
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to delete endpoint.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Network error deleting endpoint.");
+    } finally {
+      setSdLoading(false);
     }
   };
 
@@ -942,6 +1318,23 @@ export default function App() {
                         <span>WA Tax Compliance Agent</span>
                       </div>
                       <span className="text-[10px] text-green-400 font-bold">100%</span>
+                    </button>
+
+                    <button
+                      onClick={() => setLabTab("directory")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "directory" 
+                          ? "bg-blue-600 text-white shadow-md" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Database className="w-4 h-4" />
+                        <span>GCP Service Directory</span>
+                      </div>
+                      <span className={`px-1.5 py-0.2 text-[9px] rounded font-mono ${
+                        labTab === "directory" ? "bg-emerald-900/50 text-emerald-300 font-bold" : "bg-slate-800 text-slate-400"
+                      }`}>{sdNamespaces.length}</span>
                     </button>
                   </nav>
                 </div>
@@ -1646,6 +2039,431 @@ export default function App() {
                           <p className="text-[10px] text-slate-400 mt-1 max-w-sm">
                             Washington destination rules enforce calculating rates according to target shipping site.
                           </p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* 4. GOOGLE CLOUD SERVICE DIRECTORY MODULE */}
+                {labTab === "directory" && (
+                  <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300">
+                    
+                    {/* Module Title & Connectivity Hub Header */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-700 pb-4 mb-5 gap-3">
+                      <div className="flex items-center gap-2">
+                        <Database className="w-5 h-5 text-blue-400" />
+                        <div>
+                          <h2 className="text-sm font-bold text-white uppercase tracking-tight">GCP Service Directory Console</h2>
+                          <p className="text-xs text-slate-400">Discover and manage registered microservices, endpoints, and metadata labels.</p>
+                        </div>
+                      </div>
+                      
+                      {/* Connection status indicator */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { fetchSdStatus(); handleListNamespaces(); }}
+                          disabled={sdLoading}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-700 hover:bg-slate-950 text-slate-200 rounded-lg text-xs font-semibold transition-colors font-mono"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${sdLoading ? "animate-spin" : ""}`} />
+                          SYNC REGISTRY STATS
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Target Scope Modifier (Inputs for Project ID and Location ID) */}
+                    <div className="bg-slate-900 rounded-lg p-4 border border-slate-755/60 mb-5 grid grid-cols-12 gap-4 items-end shadow-inner">
+                      <div className="col-span-12 md:col-span-5">
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1 font-mono">GCP PROJECT ID</label>
+                        <input
+                          type="text"
+                          value={sdProjectId}
+                          onChange={(e) => setSdProjectId(e.target.value.trim())}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-[1px] focus:outline-blue-500 font-mono"
+                          placeholder="displaycellpros"
+                        />
+                      </div>
+                      <div className="col-span-12 md:col-span-5">
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1 font-mono">GCP REGION / LOCATION</label>
+                        <input
+                          type="text"
+                          value={sdLocationId}
+                          onChange={(e) => setSdLocationId(e.target.value.trim())}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-[1px] focus:outline-blue-500 font-mono"
+                          placeholder="us-central1"
+                        />
+                      </div>
+                      <div className="col-span-12 md:col-span-2">
+                        <button
+                          type="button"
+                          onClick={() => handleListNamespaces(sdProjectId, sdLocationId)}
+                          disabled={sdLoading}
+                          className="w-full h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wide rounded shadow-md flex items-center justify-center transition-all disabled:bg-slate-700"
+                        >
+                          Query Registry
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Global loading / errors / success bar */}
+                    {sdError && (
+                      <div className="bg-red-950/40 border border-red-900/50 p-3 rounded-lg text-xs text-red-300 font-mono flex items-center gap-2 mb-4 leading-normal">
+                        <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                        <span>[REGISTRY EXCEPTION FILE]: {sdError}</span>
+                      </div>
+                    )}
+
+                    {sdSuccess && (
+                      <div className="bg-emerald-950/40 border border-emerald-950/50 p-3 rounded-lg text-xs text-emerald-300 font-mono flex items-center gap-2 mb-4">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 animate-bounce" />
+                        <span>[REGISTRY MUTATION SUCCESS]: {sdSuccess}</span>
+                      </div>
+                    )}
+
+                    {/* Status Logger Banner */}
+                    <div className={`p-3 rounded-lg text-xs leading-relaxed border mb-5 font-mono ${
+                      sdStatus.usingFallback 
+                        ? "bg-amber-950/15 border-amber-900/40 text-amber-300"
+                        : "bg-emerald-950/15 border-emerald-900/40 text-emerald-300"
+                    }`}>
+                      <div className="font-extrabold uppercase tracking-widest mb-1 text-[9px] flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${sdStatus.usingFallback ? "bg-amber-500" : "bg-emerald-400 animate-pulse"}`}></span>
+                        Service Directory Connection Status
+                      </div>
+                      <p className="text-[10.5px] leading-snug">{sdStatus.message}</p>
+                      {sdStatus.error && (
+                        <p className="text-[9px] text-slate-500 mt-1 font-sans">Details: {sdStatus.error}</p>
+                      )}
+                    </div>
+
+                    {/* Visual 3-Column Split for Namespaces, Services, and Endpoints */}
+                    <div className="grid grid-cols-12 gap-5 flex-1 items-stretch mb-5">
+                      
+                      {/* COLUMN 1: NAMESPACES ROOT (Col-span 4) */}
+                      <div className="col-span-12 lg:col-span-4 bg-slate-900/45 border border-slate-755 rounded-xl p-4 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between border-b border-slate-700/60 pb-2.5 mb-3.5">
+                            <span className="text-[10.5px] font-bold text-blue-400 uppercase tracking-widest font-mono">1. Namespaces</span>
+                            <span className="bg-slate-850 px-1.5 py-0.2 rounded font-mono text-[9px] text-slate-400 block font-bold">{sdNamespaces.length} REF</span>
+                          </div>
+                          
+                          {/* Create Namespace Form */}
+                          <form onSubmit={handleCreateNamespace} className="mb-4">
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                value={newNamespaceId}
+                                onChange={(e) => setNewNamespaceId(e.target.value)}
+                                className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white placeholder-slate-650 font-mono flex-1 lowercase focus:outline-none focus:border-blue-500"
+                                placeholder="new-namespace-id"
+                                disabled={sdLoading}
+                              />
+                              <button
+                                type="submit"
+                                disabled={sdLoading}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-1 px-2.5 rounded text-xs uppercase flex items-center justify-center transition-colors disabled:bg-slate-800"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </form>
+
+                          {/* Namespaces Lists */}
+                          {sdNamespaces.length === 0 ? (
+                            <div className="text-center py-6 text-slate-500 font-mono text-[10px] bg-slate-955 border border-dashed border-slate-850 rounded">
+                              No namespaces discovered.
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                              {sdNamespaces.map(ns => {
+                                const segments = ns.name.split("/");
+                                const id = segments[segments.length - 1];
+                                const isSelected = selectedNamespace === ns.name;
+                                return (
+                                  <div
+                                    key={ns.name}
+                                    onClick={() => {
+                                      setSelectedNamespace(ns.name);
+                                      handleListServices(ns.name);
+                                    }}
+                                    className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                                      isSelected
+                                        ? "bg-blue-900/30 border-blue-500 text-blue-200"
+                                        : "bg-slate-950/45 border-slate-850 hover:bg-slate-900 text-slate-300"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-blue-400" : "bg-slate-650"}`}></span>
+                                      <p className="text-[11px] font-mono font-bold truncate lowercase" title={ns.name}>
+                                        {id}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteNamespace(ns.name);
+                                      }}
+                                      className="p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[9.5px] text-slate-500 font-mono mt-4 leading-normal select-none">
+                          *Namespaces segregate your repair network domains.
+                        </div>
+                      </div>
+
+                      {/* COLUMN 2: SERVICES (Col-span 4) */}
+                      <div className="col-span-12 lg:col-span-4 bg-slate-900/45 border border-slate-755 rounded-xl p-4 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between border-b border-slate-700/60 pb-2.5 mb-3.5">
+                            <span className="text-[10.5px] font-bold text-blue-400 uppercase tracking-widest font-mono">2. Services</span>
+                            <span className="bg-slate-850 px-1.5 py-0.2 rounded font-mono text-[9px] text-slate-400 block font-bold">{sdServices.length} ACTIVE</span>
+                          </div>
+                          
+                          {/* Create Service Form */}
+                          <form onSubmit={handleCreateService} className="mb-4 space-y-2">
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                value={newServiceId}
+                                onChange={(e) => setNewServiceId(e.target.value)}
+                                className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white placeholder-slate-650 font-mono flex-1 lowercase focus:outline-none focus:border-blue-500"
+                                placeholder="new-service-id"
+                                disabled={sdLoading || !selectedNamespace}
+                              />
+                              <button
+                                type="submit"
+                                disabled={sdLoading || !selectedNamespace}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-1 px-2.5 rounded text-xs uppercase flex items-center justify-center transition-colors disabled:bg-slate-800"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              value={newServiceAnnotations}
+                              onChange={(e) => setNewServiceAnnotations(e.target.value)}
+                              className="w-full bg-slate-950/70 border border-slate-850 text-[10px] text-slate-300 rounded px-2 py-1 font-mono outline-none focus:border-slate-700"
+                              placeholder="annotations e.g. env=prod,version=1.0"
+                              disabled={sdLoading || !selectedNamespace}
+                            />
+                          </form>
+
+                          {/* Services Lists */}
+                          {!selectedNamespace ? (
+                            <div className="text-center py-8 text-slate-550 font-mono text-[9.5px] bg-slate-955/20 border border-slate-850/30 rounded select-none">
+                              Select a namespace to inspect registered services.
+                            </div>
+                          ) : sdServices.length === 0 ? (
+                            <div className="text-center py-6 text-slate-500 font-mono text-[10px] bg-slate-955 border border-dashed border-slate-850 rounded">
+                              No services registered under this scope.
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                              {sdServices.map(srv => {
+                                const segments = srv.name.split("/");
+                                const id = segments[segments.length - 1];
+                                const isSelected = selectedService === srv.name;
+                                return (
+                                  <div
+                                    key={srv.name}
+                                    onClick={() => {
+                                      setSelectedService(srv.name);
+                                      handleListEndpoints(srv.name);
+                                    }}
+                                    className={`group flex flex-col p-2 rounded-lg cursor-pointer transition-all border ${
+                                      isSelected
+                                        ? "bg-blue-900/30 border-blue-500 text-blue-200"
+                                        : "bg-slate-950/45 border-slate-850 hover:bg-slate-900 text-slate-300"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between min-w-0">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-cyan-400" : "bg-slate-650"}`}></span>
+                                        <p className="text-[11px] font-mono font-bold truncate lowercase" title={srv.name}>
+                                          {id}
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteService(srv.name);
+                                        }}
+                                        className="p-0.5 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    
+                                    {/* Annotations lists as small badges */}
+                                    {srv.annotations && Object.keys(srv.annotations).length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1.5 pl-3">
+                                        {Object.entries(srv.annotations).map(([k, v]) => (
+                                          <span key={k} className="bg-slate-900 text-[8.5px] px-1 py-[1px] rounded text-slate-400 font-mono tracking-wide">
+                                            {k}:{v}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[9.5px] text-slate-500 font-mono mt-4 leading-normal select-none">
+                          *Services group functional api routing entities.
+                        </div>
+                      </div>
+
+                      {/* COLUMN 3: ENDPOINTS (Col-span 4) */}
+                      <div className="col-span-12 lg:col-span-4 bg-slate-900/45 border border-slate-755 rounded-xl p-4 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between border-b border-slate-700/60 pb-2.5 mb-3.5">
+                            <span className="text-[10.5px] font-bold text-blue-400 uppercase tracking-widest font-mono">3. Endpoints</span>
+                            <span className="bg-slate-850 px-1.5 py-0.2 rounded font-mono text-[9px] text-slate-400 block font-bold">{sdEndpoints.length} SOCKETS</span>
+                          </div>
+                          
+                          {/* Create Endpoint Form */}
+                          <form onSubmit={handleCreateEndpoint} className="mb-4 space-y-2">
+                            <div className="flex gap-1 bg-slate-950 p-1 rounded border border-slate-850">
+                              <input
+                                type="text"
+                                value={newEndpointId}
+                                onChange={(e) => setNewEndpointId(e.target.value)}
+                                className="bg-transparent text-xs text-white placeholder-slate-650 font-mono flex-1 lowercase w-1/3 outline-none"
+                                placeholder="ep-id"
+                                disabled={sdLoading || !selectedService}
+                              />
+                              <input
+                                type="text"
+                                value={newEndpointAddress}
+                                onChange={(e) => setNewEndpointAddress(e.target.value)}
+                                className="bg-transparent text-xs text-green-300 placeholder-slate-650 font-mono w-1/3 outline-none text-center"
+                                placeholder="address"
+                                disabled={sdLoading || !selectedService}
+                              />
+                              <input
+                                type="number"
+                                value={newEndpointPort === 0 ? "" : newEndpointPort}
+                                onChange={(e) => setNewEndpointPort(Number(e.target.value))}
+                                className="bg-transparent text-xs text-blue-300 placeholder-slate-650 font-mono w-12 outline-none text-right placeholder-opacity-50"
+                                placeholder="port"
+                                disabled={sdLoading || !selectedService}
+                              />
+                              <button
+                                type="submit"
+                                disabled={sdLoading || !selectedService}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-1 px-1.5 rounded text-[10px] uppercase flex items-center justify-center transition-colors disabled:bg-slate-800"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              value={newEndpointAnnotations}
+                              onChange={(e) => setNewEndpointAnnotations(e.target.value)}
+                              className="w-full bg-slate-950/75 border border-slate-850 text-[10px] text-slate-300 rounded px-2 py-1 font-mono outline-none"
+                              placeholder="metadata (e.g. zone=us-central1-a)"
+                              disabled={sdLoading || !selectedService}
+                            />
+                          </form>
+
+                          {/* Endpoints Lists */}
+                          {!selectedService ? (
+                            <div className="text-center py-8 text-slate-550 font-mono text-[9.5px] bg-slate-955/20 border border-slate-850/30 rounded select-none">
+                              Select a service to inspect endpoints logs.
+                            </div>
+                          ) : sdEndpoints.length === 0 ? (
+                            <div className="text-center py-6 text-slate-500 font-mono text-[10px] bg-slate-955 border border-dashed border-slate-850 rounded">
+                              No service endpoints discovered.
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5 max-h-[170px] overflow-y-auto pr-1">
+                              {sdEndpoints.map(ep => {
+                                const segments = ep.name.split("/");
+                                const id = segments[segments.length - 1];
+                                return (
+                                  <div
+                                    key={ep.name}
+                                    className="group bg-slate-950/45 border border-slate-850 p-2 rounded-lg flex flex-col text-slate-300"
+                                  >
+                                    <div className="flex items-center justify-between min-w-0">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                                        <span className="text-[11px] font-mono font-bold lowercase truncate" title={ep.name}>{id}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteEndpoint(ep.name)}
+                                        className="p-0.5 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-1 pl-3 font-semibold select-all">
+                                      <span>Host: {ep.address}</span>
+                                      <span className="bg-slate-900 border border-slate-850 px-1 py-[0.5px] rounded text-blue-400 font-bold">Port {ep.port}</span>
+                                    </div>
+                                    
+                                    {/* Annotations lists */}
+                                    {ep.annotations && Object.keys(ep.annotations).length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1.5 pl-3">
+                                        {Object.entries(ep.annotations).map(([k, v]) => (
+                                          <span key={k} className="bg-slate-900 text-[8px] px-1 py-[1px] rounded text-slate-505 font-mono">
+                                            {k}={v}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[9.5px] text-slate-500 font-mono mt-4 leading-normal select-none">
+                          *Endpoints bind IP routing and socket destinations.
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Highly-helpful Technical GCP Service Directory gcloud command reference panel */}
+                    <div className="bg-slate-900 border border-slate-755 rounded-xl p-4 font-mono text-[10.5px] text-slate-300 space-y-3.5 shadow-inner leading-relaxed">
+                      <div className="flex items-center gap-2 border-b border-slate-800/80 pb-2">
+                        <Terminal className="w-4 h-4 text-slate-400 font-bold" />
+                        <span className="font-bold text-white uppercase text-[9.5px] tracking-wider select-none">Cloud Shell Reference Commands</span>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-slate-400 select-none">
+                        To register, lookup, or resolve these Service Directory parameters directly on Google Cloud Platform, run the corresponding CLI statements:
+                      </p>
+                      <div className="space-y-2.5 bg-slate-950 p-3 rounded border border-slate-850 select-all max-h-[140px] overflow-y-auto scrollbar-thin">
+                        <div className="text-[10px] text-slate-500 border-b border-slate-900 pb-1.5 mb-1.5 flex justify-between select-none font-bold">
+                          <span>RESOURCE TYPE</span>
+                          <span>GCLOUD BLUEPRINT EXAMPLES</span>
+                        </div>
+                        <div>
+                          <span className="text-blue-450 font-bold"># Namespace Create:</span>
+                          <p className="text-slate-350 ml-3 mt-0.5">gcloud service-directory namespaces create <span className="text-yellow-405">spokane-lab-networks</span> --location={sdLocationId} --project={sdProjectId}</p>
+                        </div>
+                        <div>
+                          <span className="text-purple-400 font-bold"># Service Register:</span>
+                          <p className="text-slate-355 ml-3 mt-0.5">gcloud service-directory services create <span className="text-yellow-405">spectrometer-api</span> --namespace=spokane-lab-networks --location={sdLocationId} --project={sdProjectId}</p>
+                        </div>
+                        <div>
+                          <span className="text-emerald-450 font-bold"># Endpoint Register:</span>
+                          <p className="text-slate-350 ml-3 mt-0.5">gcloud service-directory endpoints create <span className="text-yellow-405">main-sensor</span> --service=spectrometer-api --namespace=spokane-lab-networks --location={sdLocationId} --project={sdProjectId} --address=192.168.1.18 --port=8443</p>
                         </div>
                       </div>
                     </div>

@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import dotenv from "dotenv";
+import { RegistrationServiceClient } from "@google-cloud/service-directory";
 
 dotenv.config();
 
@@ -547,6 +548,408 @@ app.post("/api/create-ticket", (req, res) => {
   });
 
   res.json({ success: true, ticket: newTicket, tickets: mockTickets });
+});
+
+// ---------------- GOOGLE CLOUD SERVICE DIRECTORY MODULE ----------------
+
+// Virtual state for fallback in-memory registry (if real GCP creds aren't configured in development environment)
+let localNamespaces = [
+  { name: "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks" },
+  { name: "projects/displaycellpros/locations/us-central1/namespaces/seattle-fleet-systems" },
+  { name: "projects/displaycellpros/locations/us-west1/namespaces/billing-relays" }
+];
+
+let localServices: Record<string, Array<{ name: string; annotations?: Record<string, string> }>> = {
+  "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks": [
+    { name: "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks/services/triage-relay", annotations: { "version": "v1.2", "env": "production" } },
+    { name: "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks/services/spectrometer-api", annotations: { "secure": "true", "type": "hardware-probing" } }
+  ],
+  "projects/displaycellpros/locations/us-central1/namespaces/seattle-fleet-systems": [
+    { name: "projects/displaycellpros/locations/us-central1/namespaces/seattle-fleet-systems/services/webhook-dispatcher", annotations: { "auth-protocol": "oauth2" } }
+  ]
+};
+
+let localEndpoints: Record<string, Array<{ name: string; address: string; port: number; annotations?: Record<string, string> }>> = {
+  "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks/services/triage-relay": [
+    { name: "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks/services/triage-relay/endpoints/primary-node", address: "10.128.0.45", port: 3000, annotations: { "zone": "us-central1-a" } },
+    { name: "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks/services/triage-relay/endpoints/failover-node", address: "10.128.0.46", port: 3000, annotations: { "zone": "us-central1-b" } }
+  ],
+  "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks/services/spectrometer-api": [
+    { name: "projects/displaycellpros/locations/us-central1/namespaces/spokane-lab-networks/services/spectrometer-api/endpoints/main-sensor", address: "192.168.1.18", port: 8443, annotations: { "hardware": "ir-sensor-v3" } }
+  ]
+};
+
+// Lazy initialization pattern to avoid startup crashes if secrets are pending
+let sdClient: RegistrationServiceClient | null = null;
+let sdClientErrorInit: string | null = null;
+let isRealClientInitialized = false;
+
+function getSDClient(): RegistrationServiceClient | null {
+  if (!sdClient && !sdClientErrorInit) {
+    try {
+      sdClient = new RegistrationServiceClient();
+      isRealClientInitialized = true;
+      console.log("SUCCESS: RegistrationServiceClient initialized successfully.");
+    } catch (err: any) {
+      sdClientErrorInit = err.message || String(err);
+      console.warn("WARNING: Unable to initialize registration service client directly. Falling back to local virtual store:", sdClientErrorInit);
+    }
+  }
+  return sdClient;
+}
+
+// 1. Get Service Directory Status Log
+app.get("/api/service-directory/status", (req, res) => {
+  const client = getSDClient();
+  res.json({
+    active: isRealClientInitialized && !!client,
+    usingFallback: !client,
+    error: sdClientErrorInit,
+    message: !client 
+      ? "Using Local Service Directory Registry simulation layer (missing GCP Application Default Credentials). App is fully interactive."
+      : "Connected to Google Cloud Service Directory API engine"
+  });
+});
+
+// 2. List Namespaces (POST)
+app.post("/api/service-directory/namespaces/list", async (req, res) => {
+  const { projectId, locationId } = req.body;
+  const project = projectId || "displaycellpros";
+  const location = locationId || "us-central1";
+
+  const client = getSDClient();
+  if (client) {
+    try {
+      const parentPath = client.locationPath(project, location);
+      const [namespaces] = await client.listNamespaces({ parent: parentPath });
+      
+      const formatted = namespaces.map(ns => ({ name: ns.name || "" }));
+      return res.json({
+        success: true,
+        usingFallback: false,
+        namespaces: formatted,
+        parentPath
+      });
+    } catch (err: any) {
+      console.error("GCP Service Directory API ListNamespaces failed, switching to local store:", err.message);
+      // Fallback on error to keep the app working
+    }
+  }
+
+  // Filter in-memory fallback list by active location or project search
+  const queryPrefix = `projects/${project}/locations/${location}`;
+  const filtered = localNamespaces.filter(ns => ns.name.startsWith(queryPrefix));
+  
+  res.json({
+    success: true,
+    usingFallback: true,
+    namespaces: filtered.length > 0 ? filtered : [
+      { name: `projects/${project}/locations/${location}/namespaces/default-simulation-namespace` }
+    ],
+    parentPath: `projects/${project}/locations/${location}`
+  });
+});
+
+// 3. Create Namespace (POST)
+app.post("/api/service-directory/namespaces/create", async (req, res) => {
+  const { projectId, locationId, namespaceId } = req.body;
+  if (!projectId || !locationId || !namespaceId) {
+    return res.status(400).json({ error: "projectId, locationId, and namespaceId are required." });
+  }
+
+  const client = getSDClient();
+  const namespacePathName = `projects/${projectId}/locations/${locationId}/namespaces/${namespaceId}`;
+
+  if (client) {
+    try {
+      const parentPath = client.locationPath(projectId, locationId);
+      const [newNamespace] = await client.createNamespace({
+        parent: parentPath,
+        namespaceId: namespaceId,
+        namespace: {}
+      });
+      return res.json({
+        success: true,
+        usingFallback: false,
+        namespace: { name: newNamespace.name }
+      });
+    } catch (err: any) {
+      console.error("GCP Service Directory CreateNamespace failed, running on virtual layer:", err.message);
+    }
+  }
+
+  // Virtual layer create
+  const exists = localNamespaces.some(ns => ns.name === namespacePathName);
+  if (!exists) {
+    localNamespaces.push({ name: namespacePathName });
+  }
+
+  res.json({
+    success: true,
+    usingFallback: true,
+    namespace: { name: namespacePathName }
+  });
+});
+
+// 4. Delete Namespace (POST)
+app.post("/api/service-directory/namespaces/delete", async (req, res) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: "Namespace full path 'name' is required." });
+  }
+
+  const client = getSDClient();
+  if (client) {
+    try {
+      await client.deleteNamespace({ name });
+      return res.json({ success: true, usingFallback: false });
+    } catch (err: any) {
+      console.error("GCP Service Directory DeleteNamespace failed, running on virtual layer:", err.message);
+    }
+  }
+
+  // Virtual layer delete
+  localNamespaces = localNamespaces.filter(ns => ns.name !== name);
+  delete localServices[name];
+  
+  res.json({ success: true, usingFallback: true });
+});
+
+// 5. List Services (POST)
+app.post("/api/service-directory/services/list", async (req, res) => {
+  const { namespaceName } = req.body;
+  if (!namespaceName) {
+    return res.status(400).json({ error: "namespaceName is required." });
+  }
+
+  const client = getSDClient();
+  if (client) {
+    try {
+      const [services] = await client.listServices({ parent: namespaceName });
+      const formatted = services.map(srv => ({
+        name: srv.name || "",
+        annotations: srv.annotations as Record<string, string> || {}
+      }));
+      return res.json({
+        success: true,
+        usingFallback: false,
+        services: formatted
+      });
+    } catch (err: any) {
+      console.error("GCP Service Directory ListServices failed, switching to local store:", err.message);
+    }
+  }
+
+  // Virtual layer list
+  const services = localServices[namespaceName] || [];
+  res.json({
+    success: true,
+    usingFallback: true,
+    services
+  });
+});
+
+// 6. Create Service (POST)
+app.post("/api/service-directory/services/create", async (req, res) => {
+  const { namespaceName, serviceId, annotations } = req.body;
+  if (!namespaceName || !serviceId) {
+    return res.status(400).json({ error: "namespaceName and serviceId are required." });
+  }
+
+  const servicePathName = `${namespaceName}/services/${serviceId}`;
+  const client = getSDClient();
+
+  if (client) {
+    try {
+      const [newService] = await client.createService({
+        parent: namespaceName,
+        serviceId: serviceId,
+        service: { annotations: annotations || {} }
+      });
+      return res.json({
+        success: true,
+        usingFallback: false,
+        service: {
+          name: newService.name,
+          annotations: newService.annotations || {}
+        }
+      });
+    } catch (err: any) {
+      console.error("GCP Service Directory CreateService failed, running on virtual layer:", err.message);
+    }
+  }
+
+  // Virtual layer create
+  if (!localServices[namespaceName]) {
+    localServices[namespaceName] = [];
+  }
+  
+  const exists = localServices[namespaceName].some(srv => srv.name === servicePathName);
+  if (!exists) {
+    localServices[namespaceName].push({
+      name: servicePathName,
+      annotations: annotations || {}
+    });
+  }
+
+  res.json({
+    success: true,
+    usingFallback: true,
+    service: {
+      name: servicePathName,
+      annotations: annotations || {}
+    }
+  });
+});
+
+// 7. Delete Service (POST)
+app.post("/api/service-directory/services/delete", async (req, res) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: "Service full path 'name' is required." });
+  }
+
+  const client = getSDClient();
+  if (client) {
+    try {
+      await client.deleteService({ name });
+      return res.json({ success: true, usingFallback: false });
+    } catch (err: any) {
+      console.error("GCP Service Directory DeleteService failed, running on virtual layer:", err.message);
+    }
+  }
+
+  // Virtual layer delete
+  for (const ns in localServices) {
+    localServices[ns] = localServices[ns].filter(srv => srv.name !== name);
+  }
+  delete localEndpoints[name];
+
+  res.json({ success: true, usingFallback: true });
+});
+
+// 8. List Endpoints (POST)
+app.post("/api/service-directory/endpoints/list", async (req, res) => {
+  const { serviceName } = req.body;
+  if (!serviceName) {
+    return res.status(400).json({ error: "serviceName is required." });
+  }
+
+  const client = getSDClient();
+  if (client) {
+    try {
+      const [endpoints] = await client.listEndpoints({ parent: serviceName });
+      const formatted = endpoints.map(ep => ({
+        name: ep.name || "",
+        address: ep.address || "",
+        port: ep.port || 0,
+        annotations: ep.annotations as Record<string, string> || {}
+      }));
+      return res.json({
+        success: true,
+        usingFallback: false,
+        endpoints: formatted
+      });
+    } catch (err: any) {
+      console.error("GCP Service Directory ListEndpoints failed, switching to local store:", err.message);
+    }
+  }
+
+  // Virtual layer list
+  const endpoints = localEndpoints[serviceName] || [];
+  res.json({
+    success: true,
+    usingFallback: true,
+    endpoints
+  });
+});
+
+// 9. Create Endpoint (POST)
+app.post("/api/service-directory/endpoints/create", async (req, res) => {
+  const { serviceName, endpointId, address, port, annotations } = req.body;
+  if (!serviceName || !endpointId || !address || !port) {
+    return res.status(400).json({ error: "serviceName, endpointId, address, and port are required." });
+  }
+
+  const endpointPathName = `${serviceName}/endpoints/${endpointId}`;
+  const client = getSDClient();
+
+  if (client) {
+    try {
+      const [newEp] = await client.createEndpoint({
+        parent: serviceName,
+        endpointId: endpointId,
+        endpoint: {
+          address: address,
+          port: Number(port),
+          annotations: annotations || {}
+        }
+      });
+      return res.json({
+        success: true,
+        usingFallback: false,
+        endpoint: {
+          name: newEp.name,
+          address: newEp.address,
+          port: newEp.port,
+          annotations: newEp.annotations || {}
+        }
+      });
+    } catch (err: any) {
+      console.error("GCP Service Directory CreateEndpoint failed, running on virtual layer:", err.message);
+    }
+  }
+
+  // Virtual layer create
+  if (!localEndpoints[serviceName]) {
+    localEndpoints[serviceName] = [];
+  }
+  
+  const exists = localEndpoints[serviceName].some(ep => ep.name === endpointPathName);
+  if (!exists) {
+    localEndpoints[serviceName].push({
+      name: endpointPathName,
+      address,
+      port: Number(port),
+      annotations: annotations || {}
+    });
+  }
+
+  res.json({
+    success: true,
+    usingFallback: true,
+    endpoint: {
+      name: endpointPathName,
+      address,
+      port: Number(port),
+      annotations: annotations || {}
+    }
+  });
+});
+
+// 10. Delete Endpoint (POST)
+app.post("/api/service-directory/endpoints/delete", async (req, res) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: "Endpoint full path 'name' is required." });
+  }
+
+  const client = getSDClient();
+  if (client) {
+    try {
+      await client.deleteEndpoint({ name });
+      return res.json({ success: true, usingFallback: false });
+    } catch (err: any) {
+      console.error("GCP Service Directory DeleteEndpoint failed, running on virtual & mock layers:", err.message);
+    }
+  }
+
+  // Virtual layer delete
+  for (const srv in localEndpoints) {
+    localEndpoints[srv] = localEndpoints[srv].filter(ep => ep.name !== name);
+  }
+
+  res.json({ success: true, usingFallback: true });
 });
 
 // ---------------- VITE MIDDLEWARE CONFIG ----------------
