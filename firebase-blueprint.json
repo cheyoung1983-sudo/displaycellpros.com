@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user identifiers and profiles synced after SSO",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "RepairTicket": {
+      "title": "Repair Ticket",
+      "description": "Enterprise-level service tickets created in SpokaneWA laboratory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "companyName": { "type": "string" },
+        "device": { "type": "string" },
+        "issueType": { "type": "string" },
+        "status": { "type": "string" },
+        "quotedPrice": { "type": "number" },
+        "tax": { "type": "number" },
+        "discount": { "type": "number" },
+        "total": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "customerName", "device", "issueType", "status", "total", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile information"
+    },
+    "tickets/{ticketId}": {
+      "schema": "RepairTicket",
+      "description": "Comprehensive customer repair records synced with local Spokane WA sales details"
+    }
+  }
+}
