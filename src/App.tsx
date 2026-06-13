@@ -394,6 +394,19 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
+        
+        // Notify the user if the local rate differs from the previously saved/active tax rate value
+        if (data.valid && data.rate !== taxRate) {
+          const oldPercentage = (taxRate * 100).toFixed(2);
+          const newPercentage = (data.rate * 100).toFixed(2);
+          addToast(
+            "Washington State Tax Rate Adjustment",
+            `Destination sales tax adjusted from ${oldPercentage}% (${taxCity}) to ${newPercentage}% (${data.city}).`,
+            "info",
+            6000
+          );
+        }
+        
         setTaxRate(data.rate);
         setTaxCity(data.city);
         setTaxVerifiedMessage(data.message);
@@ -403,6 +416,14 @@ export default function App() {
       console.error("Tax lookup API failed:", err);
     }
   };
+
+  // Re-validate Washington State tax rate automatically if the zip code is changed by the user (exactly 5 digits)
+  useEffect(() => {
+    const cleaned = zipInput.trim();
+    if (cleaned.length === 5) {
+      handleTaxLookup(cleaned);
+    }
+  }, [zipInput]);
 
   // --- GOOGLE CLOUD SERVICE DIRECTORY INTEGRATION FUNCTIONS ---
   
@@ -2615,9 +2636,6 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                 onChange={(e) => {
                                   const val = e.target.value.replace(/\D/g, "");
                                   setZipInput(val);
-                                  if (val.length === 5) {
-                                    handleTaxLookup(val);
-                                  }
                                 }}
                                 className="bg-slate-950 border border-slate-800 text-white rounded px-3 py-1.5 text-xs font-bold font-mono tracking-widest w-28 text-center"
                                 placeholder="98101"
@@ -2655,7 +2673,6 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                 key={preset.zip}
                                 onClick={() => {
                                   setZipInput(preset.zip);
-                                  handleTaxLookup(preset.zip);
                                 }}
                                 className={`text-[10.5px] font-mono p-2 text-left border rounded transition-all leading-snug ${
                                   zipInput === preset.zip 
