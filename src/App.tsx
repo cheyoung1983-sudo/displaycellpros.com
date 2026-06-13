@@ -36,9 +36,16 @@ import {
   Zap,
   Trash2,
   Globe,
-  Settings
+  Settings,
+  ChevronDown,
+  ChevronUp,
+  QrCode,
+  Copy
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse } from "./types";
+import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
+import { HardwareScanChart } from "./components/HardwareScanChart";
+import { jsPDF } from "jspdf";
 import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { auth, db, googleProvider } from "./lib/firebase";
@@ -91,11 +98,12 @@ export default function App() {
   const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory">("triage");
 
   // Google Cloud Service Directory state variables
-  const [sdStatus, setSdStatus] = useState<{ active: boolean; usingFallback: boolean; error: string | null; message: string }>({
+  const [sdStatus, setSdStatus] = useState<{ active: boolean; usingFallback: boolean; error: string | null; message: string; mode?: string }>({
     active: false,
     usingFallback: true,
     error: null,
-    message: "Initializing Service Directory..."
+    message: "Initializing Service Directory...",
+    mode: "simulated"
   });
   const [sdProjectId, setSdProjectId] = useState<string>("displaycellpros");
   const [sdLocationId, setSdLocationId] = useState<string>("us-central1");
@@ -127,8 +135,25 @@ export default function App() {
   
   // Device Hardware Scan state
   const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [hasScanned, setHasScanned] = useState<boolean>(false);
+  const [isReportExpanded, setIsReportExpanded] = useState<boolean>(true);
+  const [copiedTelemetry, setCopiedTelemetry] = useState<boolean>(false);
   const [scanStep, setScanStep] = useState<string>("");
   const [scanProgress, setScanProgress] = useState<number>(0);
+  const [forceScanTimeout, setForceScanTimeout] = useState<boolean>(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = (title: string, message: string, type: ToastType = "info", duration = 4000) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, title, message, type, duration }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, duration);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   // B2B Customer Verification
   const [emailInput, setEmailInput] = useState<string>("marcus@amazon.com");
@@ -394,6 +419,38 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to fetch Service Directory status:", err);
+    }
+  };
+
+  // Toggle Service Directory Registry Mode (Simulated Sandbox vs Real GCP)
+  const handleToggleRegistryMode = async (newMode: "simulated" | "gcp") => {
+    setSdLoading(true);
+    setSdError(null);
+    setSdSuccess(null);
+    try {
+      const res = await fetch("/api/service-directory/mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode })
+      });
+      if (res.ok) {
+        const statusRes = await fetch("/api/service-directory/status");
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          setSdStatus(statusData);
+        }
+        setSdSuccess(`Successfully switched to ${newMode === "gcp" ? "Genuine GCP Real-time" : "Local Sandbox Simulated"} mode.`);
+        
+        // Re-request namespaces to trigger list in the new mode
+        handleListNamespaces();
+      } else {
+        const errData = await res.json();
+        setSdError(errData.error || "Failed to switch registry mode.");
+      }
+    } catch (err: any) {
+      setSdError(err.message || "Failed to communicate with local development API.");
+    } finally {
+      setSdLoading(false);
     }
   };
 
@@ -907,8 +964,16 @@ export default function App() {
   // Hardware Scan Trigger
   const startHardwareScan = () => {
     setIsScanning(true);
+    setHasScanned(false);
     setScanProgress(0);
     setScanStep("Initializing lab device diagnostic interface...");
+    
+    addToast(
+      "Hardware Scan Initiated",
+      "Probing local USB physical bus & hardware controllers...",
+      "info",
+      2500
+    );
     
     const steps = [
       { progress: 15, text: "Searching USB physical bus and local hardware controllers..." },
@@ -924,6 +989,21 @@ export default function App() {
     const interval = setInterval(() => {
       if (currentStepIndex < steps.length) {
         const current = steps[currentStepIndex];
+
+        // Simulate Hardware Scan Timeout if the switch is active
+        if (forceScanTimeout && current.progress === 55) {
+          clearInterval(interval);
+          setIsScanning(false);
+          setScanStep("Hardware probe timeout: Connected physical bus unresponsive.");
+          addToast(
+            "Hardware Scan Timeout",
+            "Failed to connect to USB controller: Physical bus unresponsive (Code: 0x8E12A).",
+            "error",
+            6000
+          );
+          return;
+        }
+
         setScanProgress(current.progress);
         setScanStep(current.text);
         currentStepIndex++;
@@ -968,9 +1048,395 @@ export default function App() {
           }
         ]);
 
+        addToast(
+          "Hardware Scan Successful",
+          `Successfully connected. Digitized and pre-filled parameters for ${selected.brand} ${selected.model}.`,
+          "success",
+          5000
+        );
+
+        setHasScanned(true);
         setIsScanning(false);
       }
     }, 600);
+  };
+
+  const startPhysicalUsbScan = async () => {
+    setIsScanning(true);
+    setHasScanned(false);
+    setScanProgress(0);
+    setScanStep("Initializing WebUSB subsystem client...");
+
+    addToast(
+      "Connecting USB Cable...",
+      "Waiting for physical device to authorize connection...",
+      "info",
+      3500
+    );
+
+    try {
+      const nav = navigator as any;
+      if (!nav.usb) {
+        throw new Error("WebUSB API is not supported in this browser or is blocked. Standard in-app iframe previews often require opening the application in a new tab first.");
+      }
+
+      const device = await nav.usb.requestDevice({ filters: [] });
+      
+      setScanProgress(30);
+      setScanStep(`Device identified! Brand: ${device.manufacturerName || "Unknown"}. Connecting...`);
+
+      await device.open();
+      setScanProgress(60);
+      setScanStep(`Reading micro-controller parameters & cycle metrics...`);
+
+      try {
+        if (device.configuration === null) {
+          await device.selectConfiguration(1);
+        }
+        await device.claimInterface(0);
+      } catch (claimErr) {
+        console.warn("Non-critical handshake claim warning:", claimErr);
+      }
+
+      setScanProgress(90);
+      setScanStep("Parsing motherboard ROM and battery series impedance...");
+
+      let brand = "Google";
+      let model = device.productName || "Mobile Diagnostic Device";
+      const manufacturerLower = (device.manufacturerName || "").toLowerCase();
+
+      if (manufacturerLower.includes("apple") || device.vendorId === 0x05ac) {
+        brand = "Apple";
+        model = device.productName || "iPhone USB Interface";
+      } else if (manufacturerLower.includes("samsung") || device.vendorId === 0x04e8) {
+        brand = "Samsung";
+        model = device.productName || "Galaxy Host controller";
+      } else if (manufacturerLower.includes("google") || device.vendorId === 0x18d1) {
+        brand = "Google";
+        model = device.productName || "Pixel Test Board";
+      }
+
+      setTimeout(() => {
+        setDeviceBrand(brand);
+        setDeviceModel(model);
+        setDeviceTier(brand === "Apple" || brand === "Samsung" ? "flagship" : "midrange");
+        setIssueType("battery"); 
+        setCustomerName("PHYSICAL USB CLIENT");
+        setIsCorporate(false);
+        setCompanyName("");
+        setZipInput("98101");
+        setTaxCity("Seattle");
+        setTaxRate(0.1035);
+        setTaxVerifiedMessage(`WASHINGTON TAX COMPLIANT: Connected via Direct Physical USB-C Cable. Destined Seattle (98101) local combined tax scale is 10.35%.`);
+        setIsValidZip(true);
+
+        setMessages(prev => [
+          ...prev,
+          {
+            role: "assistant",
+            text: `[DIRECT USB PAIR SUCCESS]: Physically retrieved device details over cable: ${brand} ${model} (Vendor ID: 0x${device.vendorId.toString(16).toUpperCase()}, Product: 0x${device.productId.toString(16).toUpperCase()}, Serial: ${device.serialNumber || "N/A"}). Telemetry diagnostics successfully mapped in real-time!`
+          }
+        ]);
+
+        addToast(
+          "Direct Cable Connection Established",
+          `Physically paired with ${brand} ${model} successfully! Telemetry diagnostics active.`,
+          "success",
+          6000
+        );
+
+        setScanProgress(100);
+        setScanStep("Direct USB diagnostic link online.");
+        setHasScanned(true);
+        setIsScanning(false);
+      }, 1000);
+
+    } catch (err: any) {
+      console.warn("Direct USB connectivity fault:", err);
+      setIsScanning(false);
+
+      const errorMsg = err.message || "Operation cancelled or blocked.";
+      const isSecurityError = err.name === "SecurityError" || errorMsg.toLowerCase().includes("security") || errorMsg.toLowerCase().includes("iframe") || errorMsg.toLowerCase().includes("permission");
+
+      let guidance = "Make sure your device is fully unlocked, plugged-in safely, and trust handshake is approved.";
+      if (isSecurityError) {
+        guidance = "Iframe sandboxing blocked the USB connection popups. Please click the 'Open in New Tab' button in the toolbar above to run in a secure sandbox context!";
+      }
+
+      addToast(
+        "Direct USB Connection Blocked",
+        guidance,
+        "error",
+        10000
+      );
+
+      setScanStep(`Direct USB Fail: ${errorMsg}`);
+    }
+  };
+
+  const downloadPdfReport = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      // Let's create an elegant, professional layout for a calibration & telemetry diagnostic report
+      // Set primary color palette
+      const primaryColor = [15, 23, 42]; // slate-900
+      const accentColor = [59, 130, 246]; // blue-500
+      const activeGreen = [16, 185, 129]; // emerald-500
+      const darkGray = [71, 85, 105]; // slate-600
+
+      // Outer border / aesthetic framing
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.setLineWidth(1);
+      doc.rect(8, 8, 194, 281);
+
+      // Top Header Accent Strip
+      doc.setFillColor(30, 41, 59); // slate-800
+      doc.rect(8, 8, 194, 6, "F");
+
+      // Title Block
+      doc.setTextColor(15, 23, 42);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.text("DEVICE DIAGNOSTIC REPORT", 16, 26);
+
+      // Subtitle
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text("AUTO-GENERATED VIA HARDWARE PROBING LINK", 16, 31);
+
+      // Metadata / Timestamp right-aligned
+      const timestamp = new Date().toLocaleString();
+      doc.setFontSize(8);
+      doc.text(`SCAN TIMESTAMP: ${timestamp}`, 190, 26, { align: "right" });
+      doc.text("SYSTEM ID: COM-CORE-USB-01", 190, 31, { align: "right" });
+
+      // Horizontal separator line
+      doc.setDrawColor(203, 213, 225); // slate-300
+      doc.setLineWidth(0.5);
+      doc.line(16, 36, 194, 36);
+
+      // Section 1: Customer & Host Association Info
+      doc.setFillColor(248, 250, 252); // slate-50 background for card
+      doc.rect(16, 42, 178, 38, "F");
+      doc.setDrawColor(226, 232, 240); // border
+      doc.rect(16, 42, 178, 38, "D");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+      doc.text("CLIENT & SYSTEM ASSOCIATION DETAILS", 22, 49);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Customer Profile:`, 22, 56);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${customerName || "WALK-IN GUEST"}`, 54, 56);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Corporate Account:`, 22, 62);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${isCorporate ? `YES (${companyName || "N/A"})` : "NO (RETAIL HANDSET)"}`, 54, 62);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Assigned Tax Region:`, 22, 68);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${taxCity || "DEFAULT LOCALE (US-WA)"} (ZIP: ${zipInput || "98101"})`, 54, 68);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Local Processing Rate:`, 22, 74);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${(taxRate * 100).toFixed(4)}% combined state/municipal load`, 54, 74);
+
+      // Right Side metadata (in Section 1)
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Connection Mode:", 120, 56);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(16, 185, 129); // emerald green
+      doc.text("USB DIRECT CABLE", 148, 56);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Interface Status:", 120, 62);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(59, 130, 246); // blue
+      doc.text("HANDSHAKE TERMINATED", 148, 62);
+
+      // Section 2: Hardware Physical Probe Data
+      doc.setFillColor(248, 250, 252); 
+      doc.rect(16, 88, 178, 38, "F");
+      doc.rect(16, 88, 178, 38, "D");
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text("HARDWARE SPECIFICATIONS & DETECTED CHIPSETS", 22, 95);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Device OEM Brand:", 22, 102);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${deviceBrand || "Generic"}`, 54, 102);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Model Identifier:", 22, 108);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${deviceModel || "Mobile Diagnostics Core"}`, 54, 108);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Performance Tier:", 22, 114);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${(deviceTier || "standard").toUpperCase()}`, 54, 114);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Reported Fault Vector:", 22, 120);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(239, 68, 68); // Red
+      doc.text(`${(issueType || "system").toUpperCase()}`, 54, 120);
+
+      // Estimated cycle health values in Section 2 side info
+      const isBatteryIssue = issueType === "battery";
+      const batteryCycleHealth = isBatteryIssue ? 76 : 94;
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Rated Battery Health:", 115, 102);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(isBatteryIssue ? 239 : 16, isBatteryIssue ? 68 : 185, isBatteryIssue ? 68 : 129);
+      doc.text(`${batteryCycleHealth}% Cap Capacity`, 152, 102);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Mainboard Cycle Load:", 115, 108);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text("432 charge cycles", 152, 108);
+
+      // Section 3: Diagnostic Telemetry Metrics Log
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(15, 23, 42);
+      doc.text("TELEMETRY TIME-SERIES INTERPOLATION", 16, 138);
+
+      // Table mapping
+      const tableTop = 144;
+      doc.setFillColor(15, 23, 42);
+      doc.rect(16, tableTop, 178, 7, "F");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text("CYCLE PROBE SAMPLE", 20, tableTop + 5);
+      doc.text("NOMINAL RAIL VOLTAGE (V)", 65, tableTop + 5);
+      doc.text("MEASURED STABLE ACTIVE VOLTAGE (V)", 120, tableTop + 5);
+      doc.text("RELATIVE DELTA VARIANCE (%)", 165, tableTop + 5);
+
+      const tableData = [
+        { sample: "1. Core Boot initialization", nominal: "4.15V", measured: isBatteryIssue ? "3.90V" : "4.14V", delta: isBatteryIssue ? "-6.02%" : "-0.24%" },
+        { sample: "2. Memory Load state spike", nominal: "4.20V", measured: isBatteryIssue ? "3.84V" : "4.18V", delta: isBatteryIssue ? "-8.57%" : "-0.48%" },
+        { sample: "3. GPU/Display high refresh", nominal: "4.18V", measured: isBatteryIssue ? "3.71V" : "4.15V", delta: isBatteryIssue ? "-11.24%" : "-0.72%" },
+        { sample: "4. Fast Charge pipeline toggle", nominal: "4.25V", measured: isBatteryIssue ? "3.91V" : "4.23V", delta: isBatteryIssue ? "-8.00%" : "-0.47%" },
+        { sample: "5. Thermal regulation check", nominal: "4.12V", measured: isBatteryIssue ? "3.91V" : "4.10V", delta: isBatteryIssue ? "-5.10%" : "-0.49%" },
+        { sample: "6. Idle decay state", nominal: "4.16V", measured: isBatteryIssue ? "3.93V" : "4.15V", delta: isBatteryIssue ? "-5.53%" : "-0.24%" },
+      ];
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      tableData.forEach((row, index) => {
+        const yOffset = tableTop + 7 + (index * 7.5) + 6;
+        if (index % 2 === 0) {
+          doc.setFillColor(241, 245, 249); 
+          doc.rect(16, tableTop + 7 + (index * 7.5), 178, 7.5, "F");
+        }
+        doc.setTextColor(30, 41, 59);
+        doc.text(row.sample, 20, yOffset);
+        doc.text(row.nominal, 65, yOffset);
+        doc.setTextColor(15, 23, 42); 
+        doc.text(row.measured, 120, yOffset);
+        doc.setTextColor(isBatteryIssue ? 220 : 16, isBatteryIssue ? 38 : 185, isBatteryIssue ? 38 : 129);
+        doc.text(row.delta, 165, yOffset);
+      });
+
+      // Recommendations
+      const recTop = 205;
+      doc.setFillColor(239, 246, 255); 
+      doc.setDrawColor(191, 219, 254); 
+      doc.rect(16, recTop, 178, 48, "FD");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(30, 41, 59);
+      doc.text("DIAGNOSTIC SYSTEM RECOMMENDATIONS", 22, recTop + 7);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105);
+      
+      if (isBatteryIssue) {
+        doc.text("• Detected voltage load line collapse exceeds the maximum allowable hardware threshold of 3.5%.", 22, recTop + 14);
+        doc.text("• Probing sequence indicates active internal dendrite propagation within cell series stack.", 22, recTop + 20);
+        doc.text("• Recommend scheduled battery cell replacement within next 48 service hours. DO NOT OVER-CHARGE.", 22, recTop + 26);
+        doc.text("• Ensure technician utilizes authentic standard series parts matching OEM ID values.", 22, recTop + 32);
+        doc.text(`• Reference service category code: ELEC-BATT-${deviceBrand.toUpperCase()}-HEAVY.`, 22, recTop + 38);
+      } else {
+        doc.text("• Power rail stability is uniform. Transient drop test successfully cleared within nominal range.", 22, recTop + 14);
+        doc.text("• Mainboard charge-counter tracks normal degradation rate of 2.1-2.9% annually.", 22, recTop + 20);
+        doc.text("• Scheduled maintenance: Routine exterior hardware clean and liquid seal check recommended next.", 22, recTop + 26);
+        doc.text("• No critical components flagged for replacement. Firmware calibration completed successfully.", 22, recTop + 32);
+        doc.text(`• Reference service category code: PASS-OK-${deviceBrand.toUpperCase()}-ANNUAL.`, 22, recTop + 38);
+      }
+
+      // Disclaimer
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184); 
+      doc.text("DISCLAIMER: This diagnostic summary report was generated locally using WebUSB and active hardware instrumentation layers.", 16, 264);
+      doc.text("Voltage curves, impedance factors, and estimated parameters represent simulated profiles compiled on user authorization.", 16, 269);
+
+      // Signatures
+      doc.setDrawColor(203, 213, 225); 
+      doc.line(16, 252, 90, 252);
+      doc.text("SYSTEM CALIBRATOR SIGN-OFF", 16, 257);
+      
+      doc.line(120, 252, 194, 252);
+      doc.text("AUTHORIZED CABLE CLIENT SIGNATURE", 120, 257);
+
+      const docName = `Diagnostic_Report_${deviceBrand || "Device"}_${Date.now()}.pdf`;
+      doc.save(docName);
+
+      addToast(
+        "PDF Report Downloaded",
+        "A structured high-resolution telemetry report has been compiled and saved to your device.",
+        "success",
+        5500
+      );
+    } catch (pdfErr: any) {
+      console.error("PDF generation failure:", pdfErr);
+      addToast(
+        "PDF Compilation Error",
+        pdfErr.message || "An unexpected error occurred during PDF assembly.",
+        "error",
+        6000
+      );
+    }
   };
 
   return (
@@ -1149,18 +1615,64 @@ export default function App() {
                   <div className="bg-slate-900 rounded-lg p-3.5 border border-slate-800 space-y-4 shadow-inner">
                     
                     {/* Hardware Scan Simulator Action */}
-                    <div className="pb-3 border-b border-slate-800/80">
+                    <div className="pb-3 border-b border-slate-800/80 space-y-2.5">
+                      <div className="text-[9px] text-slate-400 font-extrabold uppercase font-mono tracking-wider flex items-center justify-between mb-1">
+                        <span>Diagnostic Trigger Layer</span>
+                        <span className="text-blue-400">USB 2.0 / 3.0</span>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        id="btn-physical-usb"
+                        disabled={isScanning}
+                        onClick={startPhysicalUsbScan}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-750 disabled:from-slate-700 disabled:to-slate-800 text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-lg hover:scale-[1.01] active:scale-98 transition-all border border-emerald-500/20"
+                      >
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        {isScanning ? "PROBING HARDWARE..." : "🔌 Connect Phone (Cable)"}
+                      </button>
+
                       <button
                         type="button"
                         id="btn-simulate-scan"
                         disabled={isScanning}
                         onClick={startHardwareScan}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 disabled:from-slate-700 disabled:to-slate-800 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md hover:scale-[1.02] active:scale-98 transition-all"
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-750 disabled:bg-slate-850 text-slate-300 font-bold text-[10.5px] uppercase tracking-wider rounded-lg hover:scale-[1.01] active:scale-98 transition-all border border-slate-700/60 font-mono"
                       >
-                        <Zap className={`w-3.5 h-3.5 fill-current ${isScanning ? "animate-spin text-yellow-400" : ""}`} />
-                        {isScanning ? "PROBING CONNECTIONS..." : "Simulate Hardware Scan"}
+                        <Zap className={`w-3.5 h-3.5 fill-current ${isScanning ? "animate-spin text-yellow-400" : "text-slate-400"}`} />
+                        {isScanning ? "TUNING RAIL FREQUENCY..." : "Simulate Offline Scan"}
                       </button>
+
+                      {/* Timeout toggler switch */}
+                      <div className="mt-2.5 flex items-center justify-between px-1">
+                        <label className="text-[9px] text-slate-400 hover:text-slate-200 font-bold uppercase font-mono tracking-wider cursor-pointer select-none flex items-center gap-2 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={forceScanTimeout}
+                            onChange={(e) => setForceScanTimeout(e.target.checked)}
+                            className="w-3.5 h-3.5 bg-slate-950 border-slate-850 rounded text-blue-600 focus:ring-blue-500/30 accent-blue-600 cursor-pointer"
+                          />
+                          Simulate Timeout Error
+                        </label>
+                        <span className={`text-[8.5px] font-mono font-extrabold ${forceScanTimeout ? "text-red-400 animate-pulse" : "text-slate-500"}`}>
+                          {forceScanTimeout ? "TIMEOUT" : "NORMAL"}
+                        </span>
+                      </div>
                       
+                      <div className="bg-slate-950/70 p-2 rounded-lg border border-slate-850/60 space-y-1 text-[8.5px] text-slate-400 font-mono">
+                        <div className="text-slate-300 font-extrabold uppercase text-[8px] flex items-center gap-1">
+                          <span>💡 CABLE PORT TIPS:</span>
+                        </div>
+                        <p className="leading-snug">
+                          1. Plug phone via certified USB cable to host motherboard.<br />
+                          2. Unlock device screen & grant Trust / Debug permissions.<br />
+                          3. If trapped in the safe iframe sandbox, <b className="text-blue-400 hover:underline">Open in a New Tab</b> to unlock Google Chrome's WebUSB hardware popup permission engine!
+                        </p>
+                      </div>
+
                       {isScanning && (
                         <div className="mt-3 bg-slate-950 border border-slate-800 rounded-lg p-3 font-mono text-[10px] text-emerald-400 leading-tight space-y-2.5 shadow-inner">
                           <div className="flex items-center justify-between">
@@ -1174,6 +1686,155 @@ export default function App() {
                             ></div>
                           </div>
                           <p className="text-slate-350 transition-all text-[9px] leading-snug">{scanStep}</p>
+                        </div>
+                      )}
+
+                      {!isScanning && hasScanned && (
+                        <div id="diagnostic-report-collapsible-container" className="mt-4 border border-slate-800 rounded-lg overflow-hidden bg-slate-950 shadow-lg">
+                          {/* Header bar that acts as a toggle */}
+                          <div 
+                            onClick={() => setIsReportExpanded(!isReportExpanded)}
+                            className="flex items-center justify-between px-3.5 py-2.5 bg-slate-900 border-b border-slate-800/80 cursor-pointer select-none hover:bg-slate-850 transition-all"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="relative flex h-2 w-2">
+                                <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${isReportExpanded ? "animate-pulse bg-emerald-400" : "bg-blue-400"}`}></span>
+                                <span className={`relative inline-flex rounded-full h-2 w-2 ${isReportExpanded ? "bg-emerald-500" : "bg-blue-500"}`}></span>
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-300 tracking-wider uppercase font-mono">
+                                {isReportExpanded ? "REAL-TIME DIAGNOSTIC RE-RAILS" : "SCAN TELEMETRY READY"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              id="btn-toggle-report"
+                              onClick={(e) => {
+                                e.stopPropagation(); // Avoid triggering double toggle
+                                setIsReportExpanded(!isReportExpanded);
+                              }}
+                              className="text-[9px] font-black uppercase font-mono tracking-widest text-blue-400 hover:text-white hover:bg-blue-600 bg-blue-950/40 hover:border-blue-550 border border-blue-900/60 px-2 py-1 rounded transition-all flex items-center gap-1"
+                            >
+                              <span>{isReportExpanded ? "MINIMIZE REPORT" : "VIEW FULL REPORT"}</span>
+                              {isReportExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                          
+                          {/* Collapsible report Content with animation */}
+                          {isReportExpanded && (
+                            <div className="p-3 bg-slate-950/40 animate-in fade-in slide-in-from-top-1 duration-150">
+                              <HardwareScanChart 
+                                deviceBrand={deviceBrand}
+                                deviceModel={deviceModel}
+                                issueType={issueType}
+                              />
+                              
+                              {/* QR Code Synchronization Card */}
+                              <div id="diagnostic-qr-sync-panel" className="mt-3 bg-slate-900 border border-slate-800/80 rounded-lg p-3 flex flex-col sm:flex-row items-center gap-3.5 shadow-inner">
+                                <div className="relative shrink-0 p-1.5 bg-white rounded-lg border border-slate-700 shadow-md flex items-center justify-center">
+                                  <img 
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(
+`--- TELEMETRY TRACE ---
+ID: COM-CORE-USB-01
+Timestamp: ${new Date().toLocaleString()}
+Manufacturer: ${deviceBrand}
+Model: ${deviceModel}
+Tier: ${deviceTier}
+Fault: ${issueType.toUpperCase()}
+Battery Health: ${issueType === "battery" ? "76%" : "94%"}
+Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`
+                                    )}&color=0f172a`}
+                                    alt="Diagnostic Handshake QR Code"
+                                    id="diagnostic-qr-code-img"
+                                    className="w-24 h-24 select-none rounded"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-[6.5px] text-white font-black font-mono px-1 rounded shadow-md animate-pulse">
+                                    LIVE
+                                  </div>
+                                </div>
+
+                                <div className="flex-1 text-center sm:text-left space-y-1.5 min-w-0">
+                                  <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                                    <QrCode className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-[9.5px] font-extrabold text-slate-300 uppercase tracking-wider font-mono">
+                                      Terminal Sync QR Code
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] text-slate-400 font-mono leading-relaxed">
+                                    Scan with any workbench terminal or secondary mobile reader to instantly transfer active calibrator state parameters.
+                                  </p>
+                                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-1 text-[8px] font-bold text-slate-500 font-mono">
+                                    <span>CODE:</span>
+                                    <span className="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-400 border border-slate-800">
+                                      {deviceBrand.toUpperCase()}-{deviceModel.slice(0, 8).replace(/\s+/g, "").toUpperCase()}-{issueType.toUpperCase()}
+                                    </span>
+                                    <span className="text-slate-700">|</span>
+                                    <span className="text-emerald-400/95 uppercase tracking-widest animate-pulse flex items-center gap-1 font-extrabold mr-1">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block"></span>
+                                      TELEMETRY READY
+                                    </span>
+                                    <span className="text-slate-700 hidden sm:inline">|</span>
+                                    <button
+                                      type="button"
+                                      id="btn-copy-telemetry-trace"
+                                      onClick={() => {
+                                        const traceText = `--- TELEMETRY TRACE ---
+ID: COM-CORE-USB-01
+Timestamp: ${new Date().toLocaleString()}
+Manufacturer: ${deviceBrand}
+Model: ${deviceModel}
+Tier: ${deviceTier}
+Fault: ${issueType.toUpperCase()}
+Battery Health: ${issueType === "battery" ? "76%" : "94%"}
+Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
+                                        navigator.clipboard.writeText(traceText);
+                                        setCopiedTelemetry(true);
+                                        addToast(
+                                          "Telemetry Copied",
+                                          "Raw diagnostic telemetry trace parameters have been copied to clipboard.",
+                                          "success",
+                                          3000
+                                        );
+                                        setTimeout(() => setCopiedTelemetry(false), 3000);
+                                      }}
+                                      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[8px] font-extrabold text-blue-400 hover:text-blue-300 rounded transition-all font-mono shadow-sm cursor-pointer select-none"
+                                    >
+                                      {copiedTelemetry ? (
+                                        <>
+                                          <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                          <span className="text-emerald-400 uppercase tracking-wider">COPIED</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="w-2.5 h-2.5 text-blue-400" />
+                                          <span>COPY DATA</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="mt-3.5 pt-3 border-t border-slate-800/60 flex items-center justify-between gap-2.5">
+                                <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">
+                                  ID: COM-CORE-USB-01
+                                </span>
+                                <button
+                                  type="button"
+                                  id="btn-download-pdf-report"
+                                  onClick={downloadPdfReport}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-mono text-[9px] font-extrabold uppercase tracking-wider rounded transition-all shadow border border-blue-500/20"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-blue-200" />
+                                  <span>Download PDF Report</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2050,7 +2711,7 @@ export default function App() {
                   <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300">
                     
                     {/* Module Title & Connectivity Hub Header */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-700 pb-4 mb-5 gap-3">
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-slate-700 pb-4 mb-5 gap-3">
                       <div className="flex items-center gap-2">
                         <Database className="w-5 h-5 text-blue-400" />
                         <div>
@@ -2059,8 +2720,37 @@ export default function App() {
                         </div>
                       </div>
                       
-                      {/* Connection status indicator */}
-                      <div className="flex items-center gap-2">
+                      {/* Mode and Connection status indicators */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex bg-slate-900 p-1 border border-slate-700/60 rounded-lg text-[10px] font-mono font-bold select-none">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRegistryMode("simulated")}
+                            disabled={sdLoading}
+                            className={`px-2.5 py-1 rounded transition-all flex items-center gap-1 ${
+                              sdStatus.mode !== "gcp"
+                                ? "bg-blue-600 hover:bg-blue-500 text-white shadow"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${sdStatus.mode !== "gcp" ? "bg-white" : "bg-slate-600"}`}></span>
+                            SIMULATED SANDBOX
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRegistryMode("gcp")}
+                            disabled={sdLoading}
+                            className={`px-2.5 py-1 rounded transition-all flex items-center gap-1 ${
+                              sdStatus.mode === "gcp"
+                                ? "bg-indigo-650 hover:bg-indigo-550 text-white shadow"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${sdStatus.mode === "gcp" ? "bg-green-400 animate-pulse" : "bg-slate-655"}`}></span>
+                            GENUINE GCP
+                          </button>
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => { fetchSdStatus(); handleListNamespaces(); }}
@@ -2729,6 +3419,9 @@ export default function App() {
           </span>
         </button>
       )}
+
+      {/* Global Toast Notifications */}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }

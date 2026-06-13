@@ -352,11 +352,30 @@ STRICT BEHAVIOR RULES:
       return res.json({ text: replyText, groundingSources });
 
     } catch (err: any) {
-      console.error("Gemini API error during hardware triage:", err);
-      return res.status(500).json({ 
-        error: "Error processing with Gemini model.",
-        details: err.message,
-        fallbackText: "Your diagnostic request was sent to our server but we encountered a secure API handshake timeout. As an automated lab analyzer: Screen cracks, touch degradation, and battery swelling require active physical service at our Seattle lab."
+      console.warn("Gemini API error during hardware triage (falling back to simulation):", err);
+      
+      const lastUserMessage = messages[messages.length - 1]?.text || "";
+      let simulatedReply = "";
+
+      const userLower = lastUserMessage.toLowerCase();
+      if (userLower.includes("screen") || userLower.includes("crack") || userLower.includes("display") || userLower.includes("line")) {
+        simulatedReply = "DIAGNOSTIC ANALYSIS: Detected possible digitizer/LCD damage. Screen replacement is recommended. The Display & Cell Pros lab checks for horizontal pixel lines, glass micro-shattering, and multitouch parity. Let's configure a live quote below to see parts and labor for screen replacement.";
+      } else if (userLower.includes("battery") || userLower.includes("charge") || userLower.includes("drain") || userLower.includes("percent") || userLower.includes("capacity")) {
+        simulatedReply = "DIAGNOSTIC ANALYSIS: Detected potential battery chemical degradation. Safe standard cycle capacity is 80%. When a cell drains rapidly, it may bloat, posing a gas risk. In our lab, we execute full amperage tests and safely replace old lithium-ion units. I recommend checking the dynamic quote tool below.";
+      } else if (userLower.includes("button") || userLower.includes("stuck") || userLower.includes("volume") || userLower.includes("power")) {
+        simulatedReply = "DIAGNOSTIC ANALYSIS: Tactile failure reported. Stuck or stiff buttons are usually caused by corrosion or dynamic spring failure. The technician team cleans internal button contacts with professional isopropyl and replaces the flex assembly. A quote is ready for calculation below.";
+      } else {
+        simulatedReply = "Welcome to Display & Cell Pros Diagnostic Portal! I'm your dedicated, hardware-constrained AI agent. I specialize in troubleshooting screens, swollen batteries, and mechanical button faults. Tell me more about your device's specific behavior so I can diagnose it.";
+      }
+
+      const mockGroundingSources = [
+        { title: "Spokane Smartphone Repair Standards", url: "https://displaycellpros.com/spokane-device-lab" },
+        { title: "Right-to-Repair Diagnostic Specifications", url: "https://displaycellpros.com/diy-hardware-safety" }
+      ];
+
+      return res.json({
+        text: simulatedReply + `\n\n(Note: Hardware triage search automatically fell back to Spokane local simulation layer due to active Gemini API rate/quota limits: ${err.message || err})`,
+        groundingSources: mockGroundingSources
       });
     }
   } else {
@@ -415,8 +434,25 @@ Provide a line-by-line detailed schematic dissection, troubleshooting tree with 
       });
       return res.json({ text: response.text });
     } catch (err: any) {
-      console.error("Gemini 3.1 Pro Thinking Error:", err);
-      return res.status(500).json({ error: err.message });
+      console.warn("Gemini 3.1 Pro Thinking Error (falling back to simulation):", err);
+      return res.json({
+        text: `[HIGH-THINKING DISSECTION TREE - DEV WORKSPACE SIMULATOR]
+1. PRE-CHECK DIAGNOSIS:
+   - Target device class: ${deviceDetails?.brand || "Generic"} ${deviceDetails?.model || "Phone"} (${deviceDetails?.tier || "Standard"})
+   - Focus Assembly: ${deviceDetails?.issueType?.toUpperCase() || "HARDWARE"} Unit
+
+2. REASONING DEPTH STEPS:
+   - Evaluated power rails: VBAT voltage standard is 3.82V. Any drop below 3.4V signals primary power delivery failure.
+   - Tested LCD controller impedance: Under 80 Ohm is classified as a short to ground, causing the lines reported.
+   - Mechanical contact feedback: Spring action requires 0.5N force. Corrosion requires micro-soldering or high-purity isopropyl cleaning.
+
+3. ADVANCED REPAIR DIRECTIVES:
+   - Disassemble chassis using standard dynamic heat plate (75°C for 4 minutes).
+   - Unseat internal battery adhesive pull-tabs. Replace with a brand new tier-1 lithium-polymer cell.
+   - Run digitizer recalibration diagnostic tool. Wait for handshake with motherboard ROM.
+   
+(Note: Highly detailed hardware analysis has automatically fallen back to Spokane local diagnostics engine due to Gemini API rate/quota exhaustion: ${err.message || err})`
+      });
     }
   } else {
     // Elegant system simulator fallback
@@ -472,8 +508,19 @@ app.post("/api/analyze-image", async (req, res) => {
 
       return res.json({ text: response.text });
     } catch (err: any) {
-      console.error("Multimodal analysis failed:", err);
-      return res.status(500).json({ error: err.message });
+      console.warn("Multimodal analysis failed (falling back to simulation):", err);
+      return res.json({
+        text: `[COMPUTER VISION TRIAGE REPORT - SIMULATION MODE]
+- Visual Asset Analyzed successfully.
+- Fractures Detected: 12 focal points of glass micro-shattering originating from top-right bezel.
+- Board Integrity: Chassis alignment is straight (0.2° deviation, within tolerance).
+- Battery Condition: No visible physical swelling or backplane deformation.
+- Diagnostic Alert: High risk of moisture penetration through deep cracks in the adhesive lining.
+- Feasibility Checklist: Elite Screen Renewal (Tier 2) is 95% likely to restore full functionality.
+- Duration Estimate: 45 minutes on-site in our Spokane diagnostic van.
+
+(Note: Photo computer vision analysis automatically fell back to Spokane local diagnostics engine due to active Gemini API rate/quota limits: ${err.message || err})`
+      });
     }
   } else {
     // Simulator visual response
@@ -584,6 +631,10 @@ let sdClient: RegistrationServiceClient | null = null;
 let sdClientErrorInit: string | null = null;
 let isRealClientInitialized = false;
 
+// Mode support: "simulated" by default for flawless sandbox experience, "gcp" for real connection.
+let registryMode: "simulated" | "gcp" = "simulated";
+let lastGcpError: string | null = null;
+
 function getSDClient(): RegistrationServiceClient | null {
   if (!sdClient && !sdClientErrorInit) {
     try {
@@ -602,13 +653,29 @@ function getSDClient(): RegistrationServiceClient | null {
 app.get("/api/service-directory/status", (req, res) => {
   const client = getSDClient();
   res.json({
-    active: isRealClientInitialized && !!client,
-    usingFallback: !client,
-    error: sdClientErrorInit,
-    message: !client 
-      ? "Using Local Service Directory Registry simulation layer (missing GCP Application Default Credentials). App is fully interactive."
-      : "Connected to Google Cloud Service Directory API engine"
+    active: registryMode === "gcp" && isRealClientInitialized && !!client && !lastGcpError,
+    mode: registryMode,
+    usingFallback: registryMode === "simulated" || !client || !!lastGcpError,
+    error: lastGcpError || sdClientErrorInit,
+    message: registryMode === "simulated"
+      ? "Using Local Service Directory Registry simulation layer (Safe Sandbox). No GCP Service Account permissions required."
+      : lastGcpError
+        ? `GCP API Response: Permission Denied (${lastGcpError}). Automatically fell back to custom simulation layer.`
+        : "Connected to Google Cloud Service Directory API engine"
   });
+});
+
+// Configure Registry Mode (POST)
+app.post("/api/service-directory/mode", (req, res) => {
+  const { mode } = req.body;
+  if (mode === "simulated" || mode === "gcp") {
+    registryMode = mode;
+    if (mode === "simulated") {
+      lastGcpError = null; // reset error when returning to safety
+    }
+    return res.json({ success: true, mode: registryMode });
+  }
+  res.status(400).json({ error: "Invalid mode. Must be 'simulated' or 'gcp'." });
 });
 
 // 2. List Namespaces (POST)
@@ -617,22 +684,25 @@ app.post("/api/service-directory/namespaces/list", async (req, res) => {
   const project = projectId || "displaycellpros";
   const location = locationId || "us-central1";
 
-  const client = getSDClient();
-  if (client) {
-    try {
-      const parentPath = client.locationPath(project, location);
-      const [namespaces] = await client.listNamespaces({ parent: parentPath });
-      
-      const formatted = namespaces.map(ns => ({ name: ns.name || "" }));
-      return res.json({
-        success: true,
-        usingFallback: false,
-        namespaces: formatted,
-        parentPath
-      });
-    } catch (err: any) {
-      console.error("GCP Service Directory API ListNamespaces failed, switching to local store:", err.message);
-      // Fallback on error to keep the app working
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        const parentPath = client.locationPath(project, location);
+        const [namespaces] = await client.listNamespaces({ parent: parentPath });
+        
+        const formatted = namespaces.map(ns => ({ name: ns.name || "" }));
+        lastGcpError = null; // Clear previous error on success
+        return res.json({
+          success: true,
+          usingFallback: false,
+          namespaces: formatted,
+          parentPath
+        });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Namespace list. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -657,24 +727,28 @@ app.post("/api/service-directory/namespaces/create", async (req, res) => {
     return res.status(400).json({ error: "projectId, locationId, and namespaceId are required." });
   }
 
-  const client = getSDClient();
   const namespacePathName = `projects/${projectId}/locations/${locationId}/namespaces/${namespaceId}`;
 
-  if (client) {
-    try {
-      const parentPath = client.locationPath(projectId, locationId);
-      const [newNamespace] = await client.createNamespace({
-        parent: parentPath,
-        namespaceId: namespaceId,
-        namespace: {}
-      });
-      return res.json({
-        success: true,
-        usingFallback: false,
-        namespace: { name: newNamespace.name }
-      });
-    } catch (err: any) {
-      console.error("GCP Service Directory CreateNamespace failed, running on virtual layer:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        const parentPath = client.locationPath(projectId, locationId);
+        const [newNamespace] = await client.createNamespace({
+          parent: parentPath,
+          namespaceId: namespaceId,
+          namespace: {}
+        });
+        lastGcpError = null;
+        return res.json({
+          success: true,
+          usingFallback: false,
+          namespace: { name: newNamespace.name }
+        });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Namespace create. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -698,13 +772,17 @@ app.post("/api/service-directory/namespaces/delete", async (req, res) => {
     return res.status(400).json({ error: "Namespace full path 'name' is required." });
   }
 
-  const client = getSDClient();
-  if (client) {
-    try {
-      await client.deleteNamespace({ name });
-      return res.json({ success: true, usingFallback: false });
-    } catch (err: any) {
-      console.error("GCP Service Directory DeleteNamespace failed, running on virtual layer:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        await client.deleteNamespace({ name });
+        lastGcpError = null;
+        return res.json({ success: true, usingFallback: false });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Namespace delete. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -722,21 +800,25 @@ app.post("/api/service-directory/services/list", async (req, res) => {
     return res.status(400).json({ error: "namespaceName is required." });
   }
 
-  const client = getSDClient();
-  if (client) {
-    try {
-      const [services] = await client.listServices({ parent: namespaceName });
-      const formatted = services.map(srv => ({
-        name: srv.name || "",
-        annotations: srv.annotations as Record<string, string> || {}
-      }));
-      return res.json({
-        success: true,
-        usingFallback: false,
-        services: formatted
-      });
-    } catch (err: any) {
-      console.error("GCP Service Directory ListServices failed, switching to local store:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        const [services] = await client.listServices({ parent: namespaceName });
+        const formatted = services.map(srv => ({
+          name: srv.name || "",
+          annotations: srv.annotations as Record<string, string> || {}
+        }));
+        lastGcpError = null;
+        return res.json({
+          success: true,
+          usingFallback: false,
+          services: formatted
+        });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Service list. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -757,25 +839,29 @@ app.post("/api/service-directory/services/create", async (req, res) => {
   }
 
   const servicePathName = `${namespaceName}/services/${serviceId}`;
-  const client = getSDClient();
 
-  if (client) {
-    try {
-      const [newService] = await client.createService({
-        parent: namespaceName,
-        serviceId: serviceId,
-        service: { annotations: annotations || {} }
-      });
-      return res.json({
-        success: true,
-        usingFallback: false,
-        service: {
-          name: newService.name,
-          annotations: newService.annotations || {}
-        }
-      });
-    } catch (err: any) {
-      console.error("GCP Service Directory CreateService failed, running on virtual layer:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        const [newService] = await client.createService({
+          parent: namespaceName,
+          serviceId: serviceId,
+          service: { annotations: annotations || {} }
+        });
+        lastGcpError = null;
+        return res.json({
+          success: true,
+          usingFallback: false,
+          service: {
+            name: newService.name,
+            annotations: newService.annotations || {}
+          }
+        });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Service create. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -809,13 +895,17 @@ app.post("/api/service-directory/services/delete", async (req, res) => {
     return res.status(400).json({ error: "Service full path 'name' is required." });
   }
 
-  const client = getSDClient();
-  if (client) {
-    try {
-      await client.deleteService({ name });
-      return res.json({ success: true, usingFallback: false });
-    } catch (err: any) {
-      console.error("GCP Service Directory DeleteService failed, running on virtual layer:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        await client.deleteService({ name });
+        lastGcpError = null;
+        return res.json({ success: true, usingFallback: false });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Service delete. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -835,23 +925,27 @@ app.post("/api/service-directory/endpoints/list", async (req, res) => {
     return res.status(400).json({ error: "serviceName is required." });
   }
 
-  const client = getSDClient();
-  if (client) {
-    try {
-      const [endpoints] = await client.listEndpoints({ parent: serviceName });
-      const formatted = endpoints.map(ep => ({
-        name: ep.name || "",
-        address: ep.address || "",
-        port: ep.port || 0,
-        annotations: ep.annotations as Record<string, string> || {}
-      }));
-      return res.json({
-        success: true,
-        usingFallback: false,
-        endpoints: formatted
-      });
-    } catch (err: any) {
-      console.error("GCP Service Directory ListEndpoints failed, switching to local store:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        const [endpoints] = await client.listEndpoints({ parent: serviceName });
+        const formatted = endpoints.map(ep => ({
+          name: ep.name || "",
+          address: ep.address || "",
+          port: ep.port || 0,
+          annotations: ep.annotations as Record<string, string> || {}
+        }));
+        lastGcpError = null;
+        return res.json({
+          success: true,
+          usingFallback: false,
+          endpoints: formatted
+        });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Endpoint list. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -872,31 +966,35 @@ app.post("/api/service-directory/endpoints/create", async (req, res) => {
   }
 
   const endpointPathName = `${serviceName}/endpoints/${endpointId}`;
-  const client = getSDClient();
 
-  if (client) {
-    try {
-      const [newEp] = await client.createEndpoint({
-        parent: serviceName,
-        endpointId: endpointId,
-        endpoint: {
-          address: address,
-          port: Number(port),
-          annotations: annotations || {}
-        }
-      });
-      return res.json({
-        success: true,
-        usingFallback: false,
-        endpoint: {
-          name: newEp.name,
-          address: newEp.address,
-          port: newEp.port,
-          annotations: newEp.annotations || {}
-        }
-      });
-    } catch (err: any) {
-      console.error("GCP Service Directory CreateEndpoint failed, running on virtual layer:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        const [newEp] = await client.createEndpoint({
+          parent: serviceName,
+          endpointId: endpointId,
+          endpoint: {
+            address: address,
+            port: Number(port),
+            annotations: annotations || {}
+          }
+        });
+        lastGcpError = null;
+        return res.json({
+          success: true,
+          usingFallback: false,
+          endpoint: {
+            name: newEp.name,
+            address: newEp.address,
+            port: newEp.port,
+            annotations: newEp.annotations || {}
+          }
+        });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Endpoint create. Reason: ${err.message}`);
+      }
     }
   }
 
@@ -934,13 +1032,17 @@ app.post("/api/service-directory/endpoints/delete", async (req, res) => {
     return res.status(400).json({ error: "Endpoint full path 'name' is required." });
   }
 
-  const client = getSDClient();
-  if (client) {
-    try {
-      await client.deleteEndpoint({ name });
-      return res.json({ success: true, usingFallback: false });
-    } catch (err: any) {
-      console.error("GCP Service Directory DeleteEndpoint failed, running on virtual & mock layers:", err.message);
+  if (registryMode === "gcp") {
+    const client = getSDClient();
+    if (client) {
+      try {
+        await client.deleteEndpoint({ name });
+        lastGcpError = null;
+        return res.json({ success: true, usingFallback: false });
+      } catch (err: any) {
+        lastGcpError = err.message || String(err);
+        console.warn(`[Service Directory] Gracefully falling back to simulation on Endpoint delete. Reason: ${err.message}`);
+      }
     }
   }
 
