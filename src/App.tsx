@@ -266,9 +266,19 @@ export default function App() {
         photoURL: user.photoURL || "",
         createdAt: new Date().toISOString()
       });
-    } catch (err) {
-      console.error("Google login failed:", err);
-      setFirestoreError(err instanceof Error ? err.message : String(err));
+    } catch (err: any) {
+      if (err?.code === "auth/popup-closed-by-user") {
+        console.warn("Google login popup closed by user.");
+        addToast(
+          "Login Cancelled",
+          "The authentication window was closed. please try again when you are ready.",
+          "info",
+          4000
+        );
+      } else {
+        console.error("Google login failed:", err);
+        setFirestoreError(err instanceof Error ? err.message : String(err));
+      }
     }
   };
 
@@ -1157,20 +1167,23 @@ export default function App() {
 
       const errorMsg = err.message || "Operation cancelled or blocked.";
       const isSecurityError = err.name === "SecurityError" || errorMsg.toLowerCase().includes("security") || errorMsg.toLowerCase().includes("iframe") || errorMsg.toLowerCase().includes("permission");
+      const isUserCancelled = errorMsg.includes("No device selected");
 
       let guidance = "Make sure your device is fully unlocked, plugged-in safely, and trust handshake is approved.";
       if (isSecurityError) {
         guidance = "Iframe sandboxing blocked the USB connection popups. Please click the 'Open in New Tab' button in the toolbar above to run in a secure sandbox context!";
+      } else if (isUserCancelled) {
+        guidance = "No USB diagnostic device was selected. Plug in a device and try again when you are ready.";
       }
 
       addToast(
-        "Direct USB Connection Blocked",
+        isUserCancelled ? "Pairing Handshake Cancelled" : "Direct USB Connection Blocked",
         guidance,
-        "error",
-        10000
+        isUserCancelled ? "info" : "error",
+        isUserCancelled ? 4000 : 10000
       );
 
-      setScanStep(`Direct USB Fail: ${errorMsg}`);
+      setScanStep(isUserCancelled ? "Handshake cancelled by technician" : `Direct USB Fail: ${errorMsg}`);
     }
   };
 

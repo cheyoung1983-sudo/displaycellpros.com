@@ -170,8 +170,8 @@ export const HardwareScanChart: React.FC<HardwareScanChartProps> = ({
       </div>
 
       {/* Chart Canvas Area */}
-      <div className="h-[120px] w-full text-[9px] font-mono">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-[120px] w-full text-[9px] font-mono min-w-0">
+        <ResponsiveContainer width="99%" height={120}>
           {activeMetric === "voltage" ? (
             <AreaChart data={voltageData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
               <defs>

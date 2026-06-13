@@ -352,7 +352,12 @@ STRICT BEHAVIOR RULES:
       return res.json({ text: replyText, groundingSources });
 
     } catch (err: any) {
-      console.warn("Gemini API error during hardware triage (falling back to simulation):", err);
+      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota");
+      if (isQuotaError) {
+        console.warn("Gemini API rate/quota limits reached (429). Falling back to simulated Spokane laboratory diagnostics.");
+      } else {
+        console.warn("Gemini API error during hardware triage (falling back to simulation):", err);
+      }
       
       const lastUserMessage = messages[messages.length - 1]?.text || "";
       let simulatedReply = "";
@@ -374,7 +379,7 @@ STRICT BEHAVIOR RULES:
       ];
 
       return res.json({
-        text: simulatedReply + `\n\n(Note: Hardware triage search automatically fell back to Spokane local simulation layer due to active Gemini API rate/quota limits: ${err.message || err})`,
+        text: simulatedReply + `\n\n(Note: Hardware triage search automatically fell back to Spokane local simulation layer due to active Gemini API rate/quota limits: ${isQuotaError ? "Resource Exhausted (429)" : err.message || err})`,
         groundingSources: mockGroundingSources
       });
     }
@@ -434,7 +439,12 @@ Provide a line-by-line detailed schematic dissection, troubleshooting tree with 
       });
       return res.json({ text: response.text });
     } catch (err: any) {
-      console.warn("Gemini 3.1 Pro Thinking Error (falling back to simulation):", err);
+      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota");
+      if (isQuotaError) {
+        console.warn("Gemini 3.1 Pro Thinking rate limit/quota reached. Falling back to simulated Spokane laboratory analysis.");
+      } else {
+        console.warn("Gemini 3.1 Pro Thinking Error (falling back to simulation):", err);
+      }
       return res.json({
         text: `[HIGH-THINKING DISSECTION TREE - DEV WORKSPACE SIMULATOR]
 1. PRE-CHECK DIAGNOSIS:
@@ -451,7 +461,7 @@ Provide a line-by-line detailed schematic dissection, troubleshooting tree with 
    - Unseat internal battery adhesive pull-tabs. Replace with a brand new tier-1 lithium-polymer cell.
    - Run digitizer recalibration diagnostic tool. Wait for handshake with motherboard ROM.
    
-(Note: Highly detailed hardware analysis has automatically fallen back to Spokane local diagnostics engine due to Gemini API rate/quota exhaustion: ${err.message || err})`
+(Note: Highly detailed hardware analysis has automatically fallen back to Spokane local diagnostics engine due to Gemini API rate/quota exhaustion: ${isQuotaError ? "Resource Exhausted (429)" : err.message || err})`
       });
     }
   } else {
@@ -508,7 +518,12 @@ app.post("/api/analyze-image", async (req, res) => {
 
       return res.json({ text: response.text });
     } catch (err: any) {
-      console.warn("Multimodal analysis failed (falling back to simulation):", err);
+      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota");
+      if (isQuotaError) {
+        console.warn("Gemini API visual analysis rate limit/quota reached (429). Falling back to simulated computer vision diagnostics.");
+      } else {
+        console.warn("Multimodal analysis failed (falling back to simulation):", err);
+      }
       return res.json({
         text: `[COMPUTER VISION TRIAGE REPORT - SIMULATION MODE]
 - Visual Asset Analyzed successfully.
@@ -519,7 +534,7 @@ app.post("/api/analyze-image", async (req, res) => {
 - Feasibility Checklist: Elite Screen Renewal (Tier 2) is 95% likely to restore full functionality.
 - Duration Estimate: 45 minutes on-site in our Spokane diagnostic van.
 
-(Note: Photo computer vision analysis automatically fell back to Spokane local diagnostics engine due to active Gemini API rate/quota limits: ${err.message || err})`
+(Note: Photo computer vision analysis automatically fell back to Spokane local diagnostics engine due to active Gemini API rate/quota limits: ${isQuotaError ? "Resource Exhausted (429)" : err.message || err})`
       });
     }
   } else {
