@@ -40,9 +40,12 @@ import {
   ChevronDown,
   ChevronUp,
   QrCode,
-  Copy
+  Copy,
+  Download,
+  Bell,
+  FileDown
 } from "lucide-react";
-import { RepairTicket, POSLog, QuoteResponse } from "./types";
+import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
 import { HardwareScanChart } from "./components/HardwareScanChart";
 import { jsPDF } from "jspdf";
@@ -95,7 +98,9 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory">("triage");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation">("triage");
+  const [leads, setLeads] = useState<HighPriorityLead[]>([]);
+  const [isLoadingLeads, setIsLoadingLeads] = useState<boolean>(false);
 
   // Google Cloud Service Directory state variables
   const [sdStatus, setSdStatus] = useState<{ active: boolean; usingFallback: boolean; error: string | null; message: string; mode?: string }>({
@@ -215,6 +220,124 @@ export default function App() {
     }
   };
 
+  const fetchFirestoreLeads = async (uid: string) => {
+    try {
+      setIsLoadingLeads(true);
+      setFirestoreError(null);
+      if (uid === "sandbox-tech-101") {
+        const existing = localStorage.getItem("dcp_sandbox_leads");
+        const list = existing ? JSON.parse(existing) : [];
+        setLeads(list);
+        return;
+      }
+      const leadsRef = collection(db, "high-priority-leads");
+      const q = query(leadsRef, where("userId", "==", uid));
+      const querySnapshot = await getDocs(q);
+      const fetched: HighPriorityLead[] = [];
+      querySnapshot.forEach((docSnap) => {
+        fetched.push(docSnap.data() as HighPriorityLead);
+      });
+      setLeads(fetched);
+    } catch (err) {
+      console.error("Failed to load Firestore leads:", err);
+      try {
+        handleFirestoreError(err, OperationType.LIST, "high-priority-leads");
+      } catch (formattedError: any) {
+        setFirestoreError(formattedError.message);
+      }
+    } finally {
+      setIsLoadingLeads(false);
+    }
+  };
+
+  const handleCreateLead = async (customerName: string, phone: string, deviceModel: string) => {
+    if (!authUser) {
+      addToast("Auth Required", "Please login with Google or use Sandbox bypass to submit high-priority escalations.", "warning");
+      return;
+    }
+    const leadId = `LEAD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const newLead: HighPriorityLead = {
+      id: leadId,
+      customerName: customerName || "Spokane Lead Client",
+      phone: phone || "509-555-0199",
+      deviceModel: deviceModel || "Generic Device",
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      userId: authUser.uid
+    };
+
+    if (authUser.uid === "sandbox-tech-101") {
+      const existing = localStorage.getItem("dcp_sandbox_leads");
+      const list = existing ? JSON.parse(existing) : [];
+      list.unshift(newLead);
+      localStorage.setItem("dcp_sandbox_leads", JSON.stringify(list));
+      setLeads(list);
+      addToast("Sandbox Escalation Success", `Lead simulated and saved locally! Click 'High-Priority Escalation' tab to track progress.`, "success");
+      return;
+    }
+
+    try {
+      setFirestoreError(null);
+      const docRef = doc(db, "high-priority-leads", leadId);
+      await setDoc(docRef, newLead);
+      addToast("Escalation Created", "Your high-priority motherboard callback case has been securely queued!", "success");
+      fetchFirestoreLeads(authUser.uid);
+    } catch (err) {
+      console.error("Failed to sync lead on Firestore:", err);
+      try {
+        handleFirestoreError(err, OperationType.CREATE, `high-priority-leads/${leadId}`);
+      } catch (formattedError: any) {
+        setFirestoreError(formattedError.message);
+      }
+    }
+  };
+
+  const handleUpdateLeadStatus = async (leadId: string, newStatus: "pending" | "in_progress" | "contacted" | "completed" | "cancelled") => {
+    if (!authUser) return;
+
+    if (authUser.uid === "sandbox-tech-101") {
+      const existing = localStorage.getItem("dcp_sandbox_leads");
+      const list = existing ? JSON.parse(existing) : [];
+      const updated = list.map((l: HighPriorityLead) => {
+        if (l.id === leadId) {
+          return { ...l, status: newStatus };
+        }
+        return l;
+      });
+      localStorage.setItem("dcp_sandbox_leads", JSON.stringify(updated));
+      setLeads(updated);
+      addToast("Status Updated", `Sandbox lead status changed to ${newStatus}.`, "success");
+      return;
+    }
+
+    try {
+      setFirestoreError(null);
+      const docRef = doc(db, "high-priority-leads", leadId);
+      const leadSnap = await getDoc(docRef);
+      if (!leadSnap.exists()) {
+        addToast("Update Fail", "The selected lead does not exist on Firestore.", "error");
+        return;
+      }
+      
+      const currentLead = leadSnap.data() as HighPriorityLead;
+      const updatedLead = {
+        ...currentLead,
+        status: newStatus
+      };
+
+      await setDoc(docRef, updatedLead);
+      addToast("Status Updated", `Callback case updated to ${newStatus}.`, "success");
+      fetchFirestoreLeads(authUser.uid);
+    } catch (err) {
+      console.error("Failed to update status on Firestore:", err);
+      try {
+        handleFirestoreError(err, OperationType.WRITE, `high-priority-leads/${leadId}`);
+      } catch (formattedError: any) {
+        setFirestoreError(formattedError.message);
+      }
+    }
+  };
+
   const handleCreateFirestoreTicket = async () => {
     if (!authUser) {
       alert("Please authenticate using your Google account to enable secure cloud backups.");
@@ -236,6 +359,22 @@ export default function App() {
       userId: authUser.uid
     };
 
+    if (authUser.uid === "sandbox-tech-101") {
+      const existing = localStorage.getItem("dcp_sandbox_tickets");
+      const list = existing ? JSON.parse(existing) : [];
+      list.unshift(newTicket);
+      localStorage.setItem("dcp_sandbox_tickets", JSON.stringify(list));
+      setFirestoreTickets(list);
+      setTicketCreationSuccess(true);
+      setTimeout(() => setTicketCreationSuccess(false), 3000);
+      addToast(
+        "Sandbox Cloud Backup Success",
+        `D&CP Ticket ${ticketId} simulated backup and registered successfully in sandbox memory logs!`,
+        "success"
+      );
+      return;
+    }
+
     try {
       setFirestoreError(null);
       const docRef = doc(db, "tickets", ticketId);
@@ -251,6 +390,64 @@ export default function App() {
         setFirestoreError(formattedError.message);
       }
     }
+  };
+
+  const handleSandboxLogin = () => {
+    const sandboxUser = {
+      uid: "sandbox-tech-101",
+      displayName: "Spokane Tech Sandbox",
+      email: "spokane.van.test@displaycellpros.local",
+      photoURL: "",
+    };
+    setAuthUser(sandboxUser as any);
+    const saved = localStorage.getItem("dcp_sandbox_tickets");
+    if (saved) {
+      setFirestoreTickets(JSON.parse(saved));
+    } else {
+      const defaultTickets: RepairTicket[] = [
+        {
+          id: "DCP-881902",
+          customerName: "Nathan Spokane",
+          companyName: "Avista Fleet",
+          device: "Galaxy S24 Ultra",
+          issueType: "screen",
+          status: "open",
+          quotedPrice: 175,
+          tax: 15.4,
+          discount: 35,
+          total: 155.4,
+          createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+          userId: sandboxUser.uid
+        }
+      ];
+      localStorage.setItem("dcp_sandbox_tickets", JSON.stringify(defaultTickets));
+      setFirestoreTickets(defaultTickets);
+    }
+
+    const savedLeads = localStorage.getItem("dcp_sandbox_leads");
+    if (savedLeads) {
+      setLeads(JSON.parse(savedLeads));
+    } else {
+      const defaultLeads: HighPriorityLead[] = [
+        {
+          id: "LEAD-771802",
+          customerName: "Spokane Fleet Manager",
+          phone: "509-535-4200",
+          deviceModel: "iPhone 15 Pro Max",
+          status: "pending",
+          createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+          userId: sandboxUser.uid
+        }
+      ];
+      localStorage.setItem("dcp_sandbox_leads", JSON.stringify(defaultLeads));
+      setLeads(defaultLeads);
+    }
+
+    addToast(
+      "Sandbox Environment Active",
+      "Simulated local sandbox session initiated! Bypass browser SSO popup constraints.",
+      "success"
+    );
   };
 
   const handleGoogleSignIn = async () => {
@@ -298,8 +495,10 @@ export default function App() {
       setAuthUser(user);
       if (user) {
         fetchFirestoreTickets(user.uid);
+        fetchFirestoreLeads(user.uid);
       } else {
         setFirestoreTickets([]);
+        setLeads([]);
       }
     });
     return () => unsubscribe();
@@ -320,6 +519,115 @@ export default function App() {
   const [posLogs, setPosLogs] = useState<POSLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
   const [ticketCreationSuccess, setTicketCreationSuccess] = useState<boolean>(false);
+
+  // Automated workday POS log reminders and export configurations
+  const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("dcp_reminder_enabled") === "true";
+  });
+  const [workdayEndTime, setWorkdayEndTime] = useState<string>(() => {
+    return localStorage.getItem("dcp_workday_end_time") || "17:00";
+  });
+  const [reminderDismissedForToday, setReminderDismissedForToday] = useState<boolean>(false);
+
+  const requestNotificationPermission = () => {
+    if (!("Notification" in window)) {
+      addToast("Not Supported", "Desktop notifications are not supported by this browser.", "info");
+      return;
+    }
+    Notification.requestPermission().then(permission => {
+      if (permission === "granted") {
+        addToast("Permission Granted", "System notifications active for workday reminders!", "success");
+      } else {
+        addToast("Permission Denied", "Notifications disabled. Standard in-app warnings remain active.", "info");
+      }
+    });
+  };
+
+  const exportLogsAsJSON = () => {
+    if (posLogs.length === 0) {
+      addToast("Export Empty", "No transaction logs loaded to export.", "info");
+      return;
+    }
+    const dataStr = JSON.stringify(posLogs, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `CP_POS_Sync_Logs_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast("Export Successful", "POS logs successfully downloaded as JSON file.", "success");
+  };
+
+  const exportLogsAsCSV = () => {
+    if (posLogs.length === 0) {
+      addToast("Export Empty", "No transaction logs loaded to export.", "info");
+      return;
+    }
+    const headers = ["Timestamp", "Source", "Level", "Message"];
+    const rows = posLogs.map(log => {
+      const formattedTime = new Date(log.timestamp).toISOString();
+      const escapedMsg = log.message.replace(/"/g, '""');
+      return [
+        `"${formattedTime}"`,
+        `"${log.source}"`,
+        `"${log.level}"`,
+        `"${escapedMsg}"`
+      ].join(",");
+    });
+    
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `CP_POS_Sync_Logs_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast("Export Successful", "POS logs successfully downloaded as CSV file.", "success");
+  };
+
+  // Check for workday end reminder
+  useEffect(() => {
+    if (!reminderEnabled) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      // Check if it's a weekday or Saturday
+      const isWorkday = now.getDay() >= 1 && now.getDay() <= 6;
+      if (!isWorkday) return;
+
+      const [hoursStr, minutesStr] = workdayEndTime.split(":");
+      const targetHours = parseInt(hoursStr, 10);
+      const targetMinutes = parseInt(minutesStr, 10);
+
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+
+      // Check if current time has passed the configured end time for today
+      const passedEndTime = (currentHours > targetHours) || (currentHours === targetHours && currentMinutes >= targetMinutes);
+
+      if (passedEndTime && !reminderDismissedForToday) {
+        addToast(
+          "⚠️ WORKDAY RECORD SUBMISSION",
+          `Workday has ended (${workdayEndTime}). Please export and submit your POS Webhook Transaction Logs now to maintain AHANA & DOR tax compliance!`,
+          "warning",
+          20000
+        );
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("D&CP Workday Over: Submit Sync Logs", {
+            body: `Your Spokane billing & sync logs are ready for export and DOR filing. Click to review in App.`,
+            tag: "workday-end-reminder"
+          });
+        }
+        setReminderDismissedForToday(true);
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [reminderEnabled, workdayEndTime, reminderDismissedForToday]);
 
   // Washington Preset ZIP Clicker
   const WA_ZIP_PRESETS = [
@@ -1593,30 +1901,46 @@ export default function App() {
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     {authUser ? `Authed: ${authUser.displayName || authUser.email}` : "Cloud Firestore Sync Registry"}
-                    {authUser && <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-sm font-mono uppercase tracking-wider font-extrabold border border-emerald-500/30">SECURE LINK LOCKED</span>}
+                    {authUser && <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-sm font-mono uppercase tracking-wider font-extrabold border border-emerald-500/30">
+                      {authUser.uid === "sandbox-tech-101" ? "SANDBOX SIMULATION SESSION" : "SECURE LINK LOCKED"}
+                    </span>}
                   </h3>
                   <p className="text-xs text-slate-400">
                     {authUser 
                       ? `Synchronized with user credential ${authUser.email}. Backing up active Spokane WA tickets.` 
                       : "Login with Google to securely store repair tickets and private quote backups on durable Firestore vaults."}
                   </p>
+                  {!authUser && (
+                    <span className="text-[10px] text-amber-500 block mt-1 font-mono">
+                      ⚠️ Note: Browser sandboxes/iframes block popup SSO login. Use the Sandbox bypass to test sync logs if needed.
+                    </span>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {authUser ? (
                   <button 
                     onClick={handleSignOut}
-                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold uppercase tracking-wider rounded-lg border border-slate-600 transition-colors"
+                    className="px-4 py-2 bg-slate-705 hover:bg-slate-600 text-white text-xs font-bold uppercase tracking-wider rounded-lg border border-slate-600 transition-colors"
                   >
                     Disconnect
                   </button>
                 ) : (
-                  <button 
-                    onClick={handleGoogleSignIn}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-md flex items-center gap-2 transition-colors border border-blue-500/20"
-                  >
-                    Connect with Google (SSO)
-                  </button>
+                  <>
+                    <button 
+                      onClick={handleGoogleSignIn}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-md flex items-center gap-2 transition-colors border border-blue-500/20"
+                    >
+                      Connect with Google (SSO)
+                    </button>
+                    <button 
+                      onClick={handleSandboxLogin}
+                      className="px-4 py-2 bg-slate-950 hover:bg-slate-850 hover:text-white text-slate-300 text-xs font-bold uppercase tracking-wider rounded-lg border border-slate-800 transition-colors flex items-center gap-1.5"
+                    >
+                      <Terminal className="w-3.5 h-3.5 text-blue-450" />
+                      Try Sandbox Session (Popup Fix)
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -2053,6 +2377,23 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         labTab === "directory" ? "bg-emerald-900/50 text-emerald-300 font-bold" : "bg-slate-800 text-slate-400"
                       }`}>{sdNamespaces.length}</span>
                     </button>
+
+                    <button
+                      onClick={() => setLabTab("escalation")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "escalation" 
+                          ? "bg-amber-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-amber-550" />
+                        <span>Tier 3 Callbacks</span>
+                      </div>
+                      <span className={`px-1.5 py-0.2 text-[9px] rounded font-mono ${
+                        labTab === "escalation" ? "bg-amber-700 text-white" : "bg-slate-800 text-slate-400"
+                      }`}>{leads.length}</span>
+                    </button>
                   </nav>
                 </div>
 
@@ -2121,14 +2462,24 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       Back up Quote
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold text-[10.5px] uppercase tracking-wider rounded-md font-mono transition-all"
-                    >
-                      <User className="w-3.5 h-3.5 text-blue-400" />
-                      Login to Back up
-                    </button>
+                    <div className="space-y-1.5">
+                      <button
+                        type="button"
+                        onClick={handleGoogleSignIn}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold text-[10.5px] uppercase tracking-wider rounded-md font-mono transition-all"
+                      >
+                        <User className="w-3.5 h-3.5 text-blue-400" />
+                        Login with Google
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSandboxLogin}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-850 hover:border-slate-755 text-slate-405 font-bold text-[10px] uppercase tracking-wider rounded-md font-mono transition-all"
+                      >
+                        <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                        Sandbox Bypass Mode
+                      </button>
+                    </div>
                   )}
                   {ticketCreationSuccess && (
                      <p className="text-[9px] text-emerald-400 font-bold font-mono tracking-wider text-center animate-bounce mt-1">
@@ -2600,44 +2951,183 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       ) : (
                         <div className="bg-slate-900/65 border border-slate-800 rounded-xl p-5 text-center font-mono text-xs text-slate-400 leading-relaxed">
                           <p className="font-sans mb-3 text-xs">Unlock persistent multi-device sync, cloud billing pipelines, and custom Spokane service backups.</p>
-                          <button
-                            onClick={handleGoogleSignIn}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-[10.5px] font-bold uppercase tracking-wider rounded-lg shadow-md font-mono inline-flex items-center gap-1.5"
-                          >
-                            Connect to Firestore via Google Sign-In
-                          </button>
+                          <div className="flex flex-wrap items-center justify-center gap-3">
+                            <button
+                              onClick={handleGoogleSignIn}
+                              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-[10.5px] font-bold uppercase tracking-wider rounded-lg shadow-md font-mono inline-flex items-center gap-1.5"
+                            >
+                              Connect via Google Sign-In
+                            </button>
+                            <button
+                              onClick={handleSandboxLogin}
+                              className="px-4 py-2 bg-slate-950 hover:bg-slate-850 border border-slate-800 hover:border-slate-705 text-slate-300 text-[10.5px] font-bold uppercase tracking-wider rounded-lg shadow-md font-mono inline-flex items-center gap-1.5"
+                            >
+                              <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                              Bypass (Sandbox Session)
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
 
-                    {/* Sync logs console */}
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-3 flex items-center gap-1.5 font-mono">
-                        <Terminal className="w-4 h-4 text-slate-400" />
-                        POS Webhook Transaction Logs
-                      </h3>
+                    {/* Sync logs console & Record-Keeping Exporter */}
+                    <div className="grid grid-cols-12 gap-5 mt-4 pt-4 border-t border-slate-700/60">
                       
-                      <div className="bg-slate-950 text-slate-300 font-mono text-[10.5px] p-3.5 rounded-xl border border-slate-800 space-y-2 max-h-[150px] overflow-y-auto shadow-inner leading-relaxed">
-                        {posLogs.map((log, idx) => (
-                          <div key={idx} className="flex gap-2 hover:bg-slate-900 rounded p-1 transition-colors">
-                            <span className="text-slate-500 text-[9px]">
-                              [{new Date(log.timestamp).toLocaleTimeString()}]
-                            </span>
-                            <span className={`font-extrabold text-[8.5px] px-1 rounded uppercase ${
-                              log.source === "Square" ? "bg-pink-950/80 text-pink-350 border border-pink-905" : 
-                              log.source === "CellSmart" ? "bg-purple-950/80 text-purple-350 border border-purple-905" : "bg-emerald-950 text-emerald-350"
-                            }`}>
-                              {log.source}
-                            </span>
-                            <span className={`font-bold ${
-                              log.level === "ERROR" ? "text-red-400" : log.level === "SUCCESS" ? "text-emerald-400" : "text-blue-300"
-                            }`}>
-                              [{log.level}]
-                            </span>
-                            <span className="text-slate-350">{log.message}</span>
+                      {/* Left: Sync Logs (col-span-7) */}
+                      <div className="col-span-12 md:col-span-7 flex flex-col justify-between">
+                        <div>
+                          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-3 flex items-center gap-1.5 font-mono">
+                            <Terminal className="w-4 h-4 text-blue-400" />
+                            POS Webhook Transaction Logs
+                          </h3>
+                          
+                          <div className="bg-slate-950 text-slate-300 font-mono text-[10px] p-3.5 rounded-xl border border-slate-850 space-y-2 h-[210px] overflow-y-auto shadow-inner leading-relaxed">
+                            {posLogs.length === 0 ? (
+                              <div className="text-slate-500 italic text-center pt-8">No transaction logs loaded to analyze.</div>
+                            ) : (
+                              posLogs.map((log, idx) => (
+                                <div key={idx} className="flex gap-2 hover:bg-slate-900 rounded p-1 transition-colors">
+                                  <span className="text-slate-500 text-[9px] whitespace-nowrap">
+                                    [{new Date(log.timestamp).toLocaleTimeString()}]
+                                  </span>
+                                  <span className={`font-extrabold text-[8px] px-1 rounded uppercase whitespace-nowrap self-start ${
+                                    log.source === "Square" ? "bg-pink-950/80 text-pink-350 border border-pink-905" : 
+                                    log.source === "CellSmart" ? "bg-purple-950/80 text-purple-350 border border-purple-905" : "bg-emerald-950 text-emerald-350"
+                                  }`}>
+                                    {log.source}
+                                  </span>
+                                  <span className={`font-bold whitespace-nowrap text-[8.5px] ${
+                                    log.level === "ERROR" ? "text-red-400" : log.level === "SUCCESS" ? "text-emerald-400" : "text-blue-300"
+                                  }`}>
+                                    [{log.level}]
+                                  </span>
+                                  <span className="text-slate-350 break-all">{log.message}</span>
+                                </div>
+                              ))
+                            )}
                           </div>
-                        ))}
+                        </div>
                       </div>
+
+                      {/* Right: Record Keeping, Formatting Exporters & Daily Reminders (col-span-5) */}
+                      <div className="col-span-12 md:col-span-5 flex flex-col justify-between space-y-4">
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col h-full justify-between shadow-md">
+                          
+                          {/* Part A: Exporter */}
+                          <div>
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+                              <span className="text-[10.5px] font-bold text-blue-400 uppercase tracking-widest font-mono">Export Logs</span>
+                              <span className="bg-slate-950 border border-slate-850 px-1.5 py-0.2 rounded font-mono text-[9px] text-slate-400 block font-bold">
+                                {posLogs.length} LOGS
+                              </span>
+                            </div>
+                            
+                            <p className="text-[10px] text-slate-400 mb-3 leading-relaxed font-sans">
+                              Export Spokane mobile lab transactions into highly audit-compliant formatted files to verify DOR sales tax and AHANA records.
+                            </p>
+                            
+                            <div className="grid grid-cols-2 gap-2 mb-4">
+                              <button
+                                onClick={exportLogsAsJSON}
+                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-950 hover:bg-slate-850 hover:border-slate-700 text-slate-300 border border-slate-800 font-bold text-[10px] uppercase tracking-wider rounded-md font-mono transition-all"
+                              >
+                                <FileDown className="w-3.5 h-3.5 text-blue-450" />
+                                Export JSON
+                              </button>
+                              <button
+                                onClick={exportLogsAsCSV}
+                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-950 hover:bg-slate-850 hover:border-slate-700 text-slate-300 border border-slate-800 font-bold text-[10px] uppercase tracking-wider rounded-md font-mono transition-all"
+                              >
+                                <Download className="w-3.5 h-3.5 text-emerald-450" />
+                                Export CSV
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Part B: Workday submission automation reminder */}
+                          <div className="border-t border-slate-800/80 pt-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10.5px] font-bold text-blue-400 uppercase tracking-widest font-mono">Workday Reminders</span>
+                              <div className="flex items-center gap-1.5">
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={reminderEnabled} 
+                                    onChange={(e) => {
+                                      const val = e.target.checked;
+                                      setReminderEnabled(val);
+                                      localStorage.setItem("dcp_reminder_enabled", String(val));
+                                      addToast(
+                                        "Reminder Update", 
+                                        val ? `Daily workday reminders enabled for ${workdayEndTime}!` : "Daily reminders disabled.", 
+                                        "info"
+                                      );
+                                    }}
+                                    className="sr-only peer" 
+                                  />
+                                  <div className="w-7 h-4 bg-slate-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-white"></div>
+                                </label>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-2 text-[10px]">
+                              <p className="text-slate-400 leading-relaxed font-sans">
+                                Automatic system alert when Spokane service hours conclude. Direct countdown to safe local log backups.
+                              </p>
+                              
+                              <div className="flex items-center gap-2 pt-1">
+                                <span className="text-slate-500 font-mono">End hour:</span>
+                                <input 
+                                  type="time" 
+                                  value={workdayEndTime} 
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setWorkdayEndTime(val);
+                                    localStorage.setItem("dcp_workday_end_time", val);
+                                    setReminderDismissedForToday(false); // reset trigger state
+                                    addToast("Schedule Configured", `Submission reminder timing scheduled at ${val} daily.`, "success");
+                                  }}
+                                  className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 font-mono text-slate-300 focus:outline-none focus:border-blue-500 text-[10px]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={requestNotificationPermission}
+                                  className="px-1.5 py-0.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded font-mono text-[9px] text-slate-400 hover:text-slate-200 transition-colors uppercase ml-auto inline-flex items-center gap-1"
+                                  title="Enable System/OS Prompts"
+                                >
+                                  <Bell className="w-2.5 h-2.5 text-amber-500 animate-pulse" />
+                                  <span>OS Notify</span>
+                                </button>
+                              </div>
+
+                              {/* Manual Trigger / Fast-testing Alert button */}
+                              <div className="pt-2 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    addToast(
+                                      "🔬 REMINDER DEMO TRIGGERED",
+                                      `Simulated Spokane local driveway workday conclusions. Generate JSON/CSV log backups in the console panel above right now!`,
+                                      "warning",
+                                      10000
+                                    );
+                                    if ("Notification" in window && Notification.permission === "granted") {
+                                      new Notification("D&CP Workday Over: Submit Sync Logs", {
+                                        body: `SIMULATED: Your Spokane billing & sync logs are ready for export and archive.`,
+                                        icon: "/favicon.ico"
+                                      });
+                                    }
+                                  }}
+                                  className="text-[9px] font-bold text-blue-400 hover:underline hover:text-blue-300 transition-colors uppercase font-mono bg-slate-950/40 border border-slate-855 px-2 py-0.5 rounded"
+                                >
+                                  Test Reminder Prompt
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
                   </section>
                 )}
@@ -3246,6 +3736,180 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           <p className="text-slate-350 ml-3 mt-0.5">gcloud service-directory endpoints create <span className="text-yellow-405">main-sensor</span> --service=spectrometer-api --namespace=spokane-lab-networks --location={sdLocationId} --project={sdProjectId} --address=192.168.1.18 --port=8443</p>
                         </div>
                       </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* 5. HIGH-PRIORITY LEAD CALLBACK MODULE */}
+                {labTab === "escalation" && (
+                  <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300">
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-slate-700 pb-4 mb-5 gap-3">
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-5 h-5 text-amber-500 animate-pulse" />
+                        <div>
+                          <h2 className="text-sm font-bold text-white uppercase tracking-tight">Tier 3 Hardware Escalation Callbacks</h2>
+                          <p className="text-xs text-slate-400">Manage high-priority diagnostic leads for complex board-level and moisture repairs.</p>
+                        </div>
+                      </div>
+                      
+                      {authUser && (
+                        <div className="flex items-center gap-2">
+                          <span className="bg-amber-950/80 border border-amber-900 px-2.5 py-1 rounded-lg text-[9px] font-mono font-bold text-amber-300 uppercase">
+                            Firestore sync active
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-5 mb-5 flex-1 items-stretch">
+                      
+                      {/* Left Side: Create Callback Escalation Lead Form (Col-span 5) */}
+                      <div className="col-span-12 lg:col-span-5 bg-slate-900/45 border border-slate-755 rounded-xl p-4 flex flex-col justify-between">
+                        <div>
+                          <div className="border-b border-slate-700/60 pb-2.5 mb-3.5 flex items-center justify-between">
+                            <span className="text-[10.5px] font-bold text-amber-400 uppercase tracking-widest font-mono">Create Escalation</span>
+                            <span className="text-[9px] text-slate-500 font-mono">*Route to Tier 3 queue</span>
+                          </div>
+
+                          <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const form = e.currentTarget;
+                            const fd = new FormData(form);
+                            const name = fd.get("leadCustomer") as string;
+                            const phone = fd.get("leadPhone") as string;
+                            const model = fd.get("leadModel") as string;
+                            handleCreateLead(name, phone, model);
+                            form.reset();
+                          }} className="space-y-4">
+                            <div>
+                              <label htmlFor="leadCustomer" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Customer Name</label>
+                              <input 
+                                id="leadCustomer"
+                                name="leadCustomer"
+                                type="text"
+                                required 
+                                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
+                                placeholder="Sarah Jenkins"
+                              />
+                            </div>
+
+                            <div>
+                              <label htmlFor="leadPhone" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Callback Phone</label>
+                              <input 
+                                id="leadPhone"
+                                name="leadPhone"
+                                type="tel"
+                                required 
+                                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650 font-mono"
+                                placeholder="509-535-4200"
+                              />
+                            </div>
+
+                            <div>
+                              <label htmlFor="leadModel" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Device Model</label>
+                              <input 
+                                id="leadModel"
+                                name="leadModel"
+                                type="text"
+                                required
+                                defaultValue={`${deviceBrand} ${deviceModel}`}
+                                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650 font-mono"
+                                placeholder="iPhone 15 Pro Max"
+                              />
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-md font-mono transition-colors flex items-center justify-center gap-2 mt-4"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              Submit to Callback Queue
+                            </button>
+                          </form>
+                        </div>
+                        
+                        <div className="bg-amber-950/20 border border-amber-900/30 rounded-lg p-3 text-[10px] text-slate-400 mt-4 leading-relaxed font-sans mt-auto">
+                          <strong className="text-amber-300 block mb-0.5 font-mono">Tier 3 Board Diagnostics:</strong>
+                          Requires manual thermal camera scan and micro-soldering. Field technician will call customer within 24 hours to confirm quoted laboratory costs.
+                        </div>
+                      </div>
+
+                      {/* Right Side: Leads Queue & Status Tracker (Col-span 7) */}
+                      <div className="col-span-12 lg:col-span-7 bg-slate-900/45 border border-slate-755 rounded-xl p-4 flex flex-col justify-between">
+                        <div className="flex-1 flex flex-col">
+                          <div className="flex items-center justify-between border-b border-slate-700/60 pb-2.5 mb-3.5">
+                            <span className="text-[10.5px] font-bold text-amber-400 uppercase tracking-widest font-mono">Active Callback Leads</span>
+                            <span className="bg-amber-950/80 border border-amber-900 px-1.5 py-0.2 rounded font-mono text-[9px] text-amber-300 block font-bold">{leads.length} LEADS</span>
+                          </div>
+
+                          {isLoadingLeads ? (
+                            <div className="flex-1 flex items-center justify-center p-8 text-xs text-slate-400 font-mono">
+                              <span className="animate-pulse">Loading leads from Firestore...</span>
+                            </div>
+                          ) : leads.length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-slate-955 border border-dashed border-slate-850 rounded">
+                              <Phone className="w-8 h-8 text-slate-650 mb-2" />
+                              <div className="text-slate-500 font-mono text-[10px]">No high-priority leads mapped to this credential.</div>
+                              <p className="text-[9px] text-slate-500 max-w-sm mt-1">Submit the left form or trigger motherboard damage triage to add callback tickets.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1 flex-1">
+                              {leads.map((lead) => (
+                                <div key={lead.id} className="bg-slate-950/60 border border-slate-850 p-3.5 rounded-xl flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 transition-all hover:border-amber-900/40">
+                                  <div className="space-y-1 text-left">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono text-[9px] font-bold text-amber-400 select-all">{lead.id}</span>
+                                      <span className="bg-slate-900 text-slate-400 border border-slate-800 text-[8px] px-1.5 py-[1px] rounded font-mono">
+                                        {new Date(lead.createdAt).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                    <h4 className="text-xs font-bold text-white leading-relaxed">{lead.customerName}</h4>
+                                    <p className="text-[10.5px] font-mono text-slate-400 flex items-center gap-1">
+                                      <span className="text-slate-500">Device:</span> <strong className="text-slate-350">{lead.deviceModel}</strong>
+                                    </p>
+                                    <p className="text-[10.5px] font-mono text-slate-400 flex items-center gap-1">
+                                      <span className="text-slate-500">Phone:</span> <strong className="text-emerald-450 select-all">{lead.phone}</strong>
+                                    </p>
+                                  </div>
+
+                                  <div className="flex lg:flex-col items-start lg:items-end gap-2 shrink-0">
+                                    <span className={`px-2 py-0.5 rounded font-mono text-[9.5px] font-extrabold uppercase tracking-wide inline-block border ${
+                                      lead.status === "pending" ? "bg-red-950/50 text-red-450 border-red-900" :
+                                      lead.status === "in_progress" ? "bg-yellow-950/50 text-yellow-450 border-yellow-905" :
+                                      lead.status === "contacted" ? "bg-amber-955/50 text-amber-350 border-amber-900" :
+                                      lead.status === "completed" ? "bg-emerald-950/50 text-emerald-450 border-emerald-900" :
+                                      "bg-slate-900 text-slate-500 border-slate-700"
+                                    }`}>
+                                      {lead.status.replace("_", " ")}
+                                    </span>
+
+                                    <div className="flex items-center gap-1.5">
+                                      <label htmlFor={`status-select-${lead.id}`} className="sr-only">Update Status</label>
+                                      <select
+                                        id={`status-select-${lead.id}`}
+                                        value={lead.status}
+                                        onChange={(e) => handleUpdateLeadStatus(lead.id, e.target.value as any)}
+                                        className="bg-slate-950 text-slate-300 font-mono text-[9.5px] rounded border border-slate-800 px-1.5 py-1 outline-none focus:border-amber-600 cursor-pointer"
+                                      >
+                                        <option value="pending">Pending Call</option>
+                                        <option value="in_progress">In Progress</option>
+                                        <option value="contacted">Contacted</option>
+                                        <option value="completed">Completed</option>
+                                        <option value="cancelled">Cancelled</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-[9.5px] text-slate-500 font-mono mt-4 leading-normal select-none">
+                          *Manual callbacks prevent RMA leaks and fulfill sovereign customer relations compliance.
+                        </div>
+                      </div>
+
                     </div>
                   </section>
                 )}

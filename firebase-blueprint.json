@@ -32,6 +32,21 @@
         "userId": { "type": "string" }
       },
       "required": ["id", "customerName", "device", "issueType", "status", "total", "createdAt"]
+    },
+    "HighPriorityLead": {
+      "title": "High Priority Lead",
+      "description": "Stores Tier 3 hardware escalation details for manual technician callback",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "phone": { "type": "string" },
+        "deviceModel": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "contacted", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "customerName", "phone", "deviceModel", "status", "createdAt", "userId"]
     }
   },
   "firestore": {
@@ -42,6 +57,10 @@
     "tickets/{ticketId}": {
       "schema": "RepairTicket",
       "description": "Comprehensive customer repair records synced with local Spokane WA sales details"
+    },
+    "high-priority-leads/{leadId}": {
+      "schema": "HighPriorityLead",
+      "description": "Hot leads representing complex repairs routed to manual technician callback queues"
     }
   }
 }

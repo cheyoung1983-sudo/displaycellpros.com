@@ -52,3 +52,13 @@ export interface QuoteResponse {
   subtotal: number;
   grandTotal: number;
 }
+
+export interface HighPriorityLead {
+  id: string;
+  customerName: string;
+  phone: string;
+  deviceModel: string;
+  status: "pending" | "in_progress" | "contacted" | "completed" | "cancelled";
+  createdAt: string;
+  userId: string;
+}

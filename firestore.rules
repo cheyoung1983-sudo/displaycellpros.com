@@ -50,6 +50,18 @@ service cloud.firestore {
         && data.userId is string && data.userId.size() <= 128;
     }
 
+    function isValidLead(data) {
+      return data.keys().hasAll(['id', 'customerName', 'phone', 'deviceModel', 'status', 'createdAt', 'userId'])
+        && data.keys().size() <= 8
+        && data.id is string && data.id.size() <= 128
+        && data.customerName is string && data.customerName.size() <= 128
+        && data.phone is string && data.phone.size() <= 32
+        && data.deviceModel is string && data.deviceModel.size() <= 128
+        && data.status is string && (data.status == 'pending' || data.status == 'in_progress' || data.status == 'contacted' || data.status == 'completed' || data.status == 'cancelled')
+        && data.createdAt is string
+        && data.userId is string && data.userId.size() <= 128;
+    }
+
     // --- COLLECTION RULES MATCHES ---
     match /users/{userId} {
       allow get: if isSignedIn() && userId == request.auth.uid;
@@ -85,6 +97,23 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid
         && isValidTicket(incoming())
         // Enforce immutable fields
+        && incoming().userId == existing().userId
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt;
+    }
+
+    match /high-priority-leads/{leadId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(leadId)
+        && isValidLead(incoming())
+        && incoming().userId == request.auth.uid;
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && isValidLead(incoming())
         && incoming().userId == existing().userId
         && incoming().id == existing().id
         && incoming().createdAt == existing().createdAt;
