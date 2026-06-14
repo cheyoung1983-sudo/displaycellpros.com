@@ -860,6 +860,20 @@ export default function App() {
         } else {
           setGroundingSources([]);
         }
+        
+        if (data.detectedSpecs) {
+          const specs = data.detectedSpecs;
+          if (specs.brand) setDeviceBrand(specs.brand);
+          if (specs.model) setDeviceModel(specs.model);
+          if (specs.tier) setDeviceTier(specs.tier);
+          if (specs.issue) setIssueType(specs.issue);
+          
+          addToast(
+            "Triage Engine Live-Sync",
+            `State Updated: Brand to [${specs.brand || "Undetected"}], Model to [${specs.model || "Undetected"}], Damage Routed to [${specs.pricingTier || specs.issue || "Undetected"}].`,
+            "success"
+          );
+        }
       } else {
         throw new Error("Chat request failed");
       }
@@ -1682,8 +1696,10 @@ export default function App() {
 
                       {/* Timeout toggler switch */}
                       <div className="mt-2.5 flex items-center justify-between px-1">
-                        <label className="text-[9px] text-slate-400 hover:text-slate-200 font-bold uppercase font-mono tracking-wider cursor-pointer select-none flex items-center gap-2 transition-colors">
+                        <label htmlFor="forceScanTimeout" className="text-[9px] text-slate-400 hover:text-slate-200 font-bold uppercase font-mono tracking-wider cursor-pointer select-none flex items-center gap-2 transition-colors">
                           <input
+                            id="forceScanTimeout"
+                            name="forceScanTimeout"
                             type="checkbox"
                             checked={forceScanTimeout}
                             onChange={(e) => setForceScanTimeout(e.target.checked)}
@@ -1875,8 +1891,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                     {/* Customer details input */}
                     <div>
-                      <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Customer Name</label>
+                      <label htmlFor="customerName" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Customer Name</label>
                       <input 
+                        id="customerName"
+                        name="customerName"
                         type="text" 
                         value={customerName} 
                         onChange={(e) => setCustomerName(e.target.value)}
@@ -1887,8 +1905,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Brand</label>
+                        <label htmlFor="deviceBrand" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Brand</label>
                         <select 
+                          id="deviceBrand"
+                          name="deviceBrand"
                           value={deviceBrand}
                           onChange={(e) => {
                             setDeviceBrand(e.target.value);
@@ -1911,8 +1931,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Model Name</label>
+                        <label htmlFor="deviceModel" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Model Name</label>
                         <input
+                          id="deviceModel"
+                          name="deviceModel"
                           type="text"
                           value={deviceModel}
                           onChange={(e) => setDeviceModel(e.target.value)}
@@ -2045,7 +2067,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                   </p>
                   
                   <form onSubmit={handleVerifyB2B} className="mt-3 flex gap-1.5">
+                    <label htmlFor="b2bEmailInput" className="sr-only">Fleet Corporate Email</label>
                     <input 
+                      id="b2bEmailInput"
+                      name="b2bEmailInput"
                       type="email"
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
@@ -2270,7 +2295,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         {/* Chat interactive panel */}
                         <div className="p-4 border-t border-slate-700 bg-slate-850/45">
                           <form onSubmit={handleSendTriageChat} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2 shadow-inner focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
+                            <label htmlFor="triageChatInput" className="sr-only">Diagnostic message description</label>
                             <input 
+                              id="triageChatInput"
+                              name="triageChatInput"
                               type="text" 
                               value={chatInput}
                               onChange={(e) => setChatInput(e.target.value)}
@@ -2307,8 +2335,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         </div>
 
                         <form onSubmit={handleRunThinkingDiagnostic} className="space-y-3">
-                          <label className="block text-[10px] text-slate-450 uppercase font-bold font-mono tracking-wider">Troubleshooting directive</label>
+                          <label htmlFor="thinkingPrompt" className="block text-[10px] text-slate-450 uppercase font-bold font-mono tracking-wider">Troubleshooting directive</label>
                           <textarea
+                            id="thinkingPrompt"
+                            name="thinkingPrompt"
                             value={thinkingPrompt}
                             onChange={(e) => setThinkingPrompt(e.target.value)}
                             rows={4}
@@ -2352,7 +2382,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500/50 bg-slate-950/40 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-all relative">
+                            <label htmlFor="triageImageUpload" className="sr-only">Upload device photo for mechanical audit</label>
                             <input
+                              id="triageImageUpload"
+                              name="triageImageUpload"
                               type="file"
                               accept="image/*"
                               onChange={handleImageUploadChange}
@@ -2627,9 +2660,11 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         <div className="bg-slate-900 border border-slate-755 rounded-lg p-4 space-y-4 shadow-inner">
                           <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest font-mono">Rate Resolver</h3>
                           <div>
-                            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">WA DESTINATION ZIP</label>
+                            <label htmlFor="waDestinationZip" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">WA DESTINATION ZIP</label>
                             <div className="flex gap-2">
                               <input 
+                                id="waDestinationZip"
+                                name="waDestinationZip"
                                 type="text" 
                                 maxLength={5}
                                 value={zipInput} 
@@ -2796,8 +2831,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     {/* Target Scope Modifier (Inputs for Project ID and Location ID) */}
                     <div className="bg-slate-900 rounded-lg p-4 border border-slate-755/60 mb-5 grid grid-cols-12 gap-4 items-end shadow-inner">
                       <div className="col-span-12 md:col-span-5">
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1 font-mono">GCP PROJECT ID</label>
+                        <label htmlFor="sdProjectId" className="block text-[10px] text-slate-400 font-bold uppercase mb-1 font-mono">GCP PROJECT ID</label>
                         <input
+                          id="sdProjectId"
+                          name="sdProjectId"
                           type="text"
                           value={sdProjectId}
                           onChange={(e) => setSdProjectId(e.target.value.trim())}
@@ -2806,8 +2843,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         />
                       </div>
                       <div className="col-span-12 md:col-span-5">
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1 font-mono">GCP REGION / LOCATION</label>
+                        <label htmlFor="sdLocationId" className="block text-[10px] text-slate-400 font-bold uppercase mb-1 font-mono">GCP REGION / LOCATION</label>
                         <input
+                          id="sdLocationId"
+                          name="sdLocationId"
                           type="text"
                           value={sdLocationId}
                           onChange={(e) => setSdLocationId(e.target.value.trim())}
@@ -2871,8 +2910,11 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           
                           {/* Create Namespace Form */}
                           <form onSubmit={handleCreateNamespace} className="mb-4">
+                            <label htmlFor="newNamespaceId" className="sr-only">New Namespace ID</label>
                             <div className="flex gap-1.5">
                               <input
+                                id="newNamespaceId"
+                                name="newNamespaceId"
                                 type="text"
                                 value={newNamespaceId}
                                 onChange={(e) => setNewNamespaceId(e.target.value)}
@@ -2951,8 +2993,11 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           
                           {/* Create Service Form */}
                           <form onSubmit={handleCreateService} className="mb-4 space-y-2">
+                            <label htmlFor="newServiceId" className="sr-only">New Service ID</label>
                             <div className="flex gap-1.5">
                               <input
+                                id="newServiceId"
+                                name="newServiceId"
                                 type="text"
                                 value={newServiceId}
                                 onChange={(e) => setNewServiceId(e.target.value)}
@@ -2968,7 +3013,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
                             </div>
+                            <label htmlFor="newServiceAnnotations" className="sr-only">Service Annotations</label>
                             <input
+                              id="newServiceAnnotations"
+                              name="newServiceAnnotations"
                               type="text"
                               value={newServiceAnnotations}
                               onChange={(e) => setNewServiceAnnotations(e.target.value)}
@@ -3056,8 +3104,13 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           
                           {/* Create Endpoint Form */}
                           <form onSubmit={handleCreateEndpoint} className="mb-4 space-y-2">
+                            <label htmlFor="newEndpointId" className="sr-only">New Endpoint ID</label>
+                            <label htmlFor="newEndpointAddress" className="sr-only">New Endpoint Address</label>
+                            <label htmlFor="newEndpointPort" className="sr-only">New Endpoint Port</label>
                             <div className="flex gap-1 bg-slate-950 p-1 rounded border border-slate-850">
                               <input
+                                id="newEndpointId"
+                                name="newEndpointId"
                                 type="text"
                                 value={newEndpointId}
                                 onChange={(e) => setNewEndpointId(e.target.value)}
@@ -3066,6 +3119,8 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                 disabled={sdLoading || !selectedService}
                               />
                               <input
+                                id="newEndpointAddress"
+                                name="newEndpointAddress"
                                 type="text"
                                 value={newEndpointAddress}
                                 onChange={(e) => setNewEndpointAddress(e.target.value)}
@@ -3074,6 +3129,8 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                 disabled={sdLoading || !selectedService}
                               />
                               <input
+                                id="newEndpointPort"
+                                name="newEndpointPort"
                                 type="number"
                                 value={newEndpointPort === 0 ? "" : newEndpointPort}
                                 onChange={(e) => setNewEndpointPort(Number(e.target.value))}
@@ -3089,7 +3146,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
                             </div>
+                            <label htmlFor="newEndpointAnnotations" className="sr-only">Endpoint Annotations</label>
                             <input
+                              id="newEndpointAnnotations"
+                              name="newEndpointAnnotations"
                               type="text"
                               value={newEndpointAnnotations}
                               onChange={(e) => setNewEndpointAnnotations(e.target.value)}
@@ -3433,6 +3493,13 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
           deviceBrand={deviceBrand}
           deviceModel={deviceModel}
           deviceTier={deviceTier}
+          issueType={issueType}
+          onUpdateSpecs={(specs) => {
+            if (specs.brand) setDeviceBrand(specs.brand);
+            if (specs.model) setDeviceModel(specs.model);
+            if (specs.tier) setDeviceTier(specs.tier);
+            if (specs.issue) setIssueType(specs.issue);
+          }}
         />
       )}
       
@@ -3681,11 +3748,21 @@ interface AIAssistantProps {
   deviceBrand: string;
   deviceModel: string;
   deviceTier: string;
+  issueType: string;
+  onUpdateSpecs?: (specs: any) => void;
 }
 
-function AIAssistantWidget({ onClose, onNavigateToLab, deviceBrand, deviceModel, deviceTier }: AIAssistantProps) {
+function AIAssistantWidget({ 
+  onClose, 
+  onNavigateToLab, 
+  deviceBrand, 
+  deviceModel, 
+  deviceTier, 
+  issueType,
+  onUpdateSpecs 
+}: AIAssistantProps) {
   const [messages, setMessages] = useState<Array<{ sender: "user" | "ai" | "system"; text: string }>>([
-    { sender: 'ai', text: "Hi there! Welcome to Display & Cell Pros. 🚐💨 We bring the raw hardware repair lab directly to your Spokane driveway! What device issues can we help you solve today?" }
+    { sender: 'ai', text: "Welcome to Display & Cell Pros Mobile Triage Hub! 🚐💨 Seattle and Spokane's top driveway raw hardware lab on wheels. What device issues can we solve for you today?" }
   ]);
   const [input, setInput] = useState<string>("");
   const [isSending, setIsSending] = useState<boolean>(false);
@@ -3723,7 +3800,8 @@ function AIAssistantWidget({ onClose, onNavigateToLab, deviceBrand, deviceModel,
           deviceDetails: {
             brand: deviceBrand,
             model: deviceModel,
-            tier: deviceTier
+            tier: deviceTier,
+            issue: issueType
           }
         })
       });
@@ -3731,6 +3809,9 @@ function AIAssistantWidget({ onClose, onNavigateToLab, deviceBrand, deviceModel,
       if (res.ok) {
         const data = await res.json();
         setMessages(prev => [...prev, { sender: "ai", text: data.text }]);
+        if (data.detectedSpecs && onUpdateSpecs) {
+          onUpdateSpecs(data.detectedSpecs);
+        }
       } else {
         throw new Error("Triage API error response");
       }
@@ -3816,7 +3897,10 @@ function AIAssistantWidget({ onClose, onNavigateToLab, deviceBrand, deviceModel,
         {/* Input Area */}
         <div className="p-4 bg-slate-900 border-t border-slate-800">
           <form onSubmit={handleSend} className="relative flex items-center">
+            <label htmlFor="mainChatInput" className="sr-only">Main Diagnostic Prompt Input</label>
             <input
+              id="mainChatInput"
+              name="mainChatInput"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}

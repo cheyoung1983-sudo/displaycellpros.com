@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { RegistrationServiceClient } from "@google-cloud/service-directory";
 
@@ -287,7 +287,107 @@ app.post("/api/verify-b2b", (req, res) => {
   });
 });
 
-// API endpoint for secure mobile triage conversations with Google Search groundings
+// Helper to parse specifications and flow steps from conversational text
+function detectSpecsFromText(text: string, currentDetails?: any) {
+  const specs = {
+    brand: currentDetails?.brand || null,
+    model: currentDetails?.model || null,
+    tier: currentDetails?.tier || null,
+    issue: currentDetails?.issue || null,
+    pricingTier: currentDetails?.pricingTier || null,
+    step: currentDetails?.step || 1
+  };
+
+  const textLower = text.toLowerCase();
+
+  // Brand Check
+  if (textLower.includes("apple") || textLower.includes("iphone") || textLower.includes("ipad") || textLower.includes("ios") || textLower.includes("mac")) {
+    specs.brand = "Apple";
+    if (specs.step === 1) specs.step = 2;
+  } else if (textLower.includes("samsung") || textLower.includes("galaxy") || textLower.includes("android") || textLower.includes("pixel") || textLower.includes("google")) {
+    specs.brand = "Samsung";
+    if (specs.step === 1) specs.step = 2;
+  }
+
+  // Model Check
+  if (specs.brand === "Apple") {
+    if (textLower.includes("se")) {
+      specs.model = "iPhone SE";
+      specs.tier = "budget";
+    } else if (textLower.includes("15")) {
+      specs.model = textLower.includes("pro") ? "iPhone 15 Pro Max" : "iPhone 15";
+      specs.tier = "flagship";
+    } else if (textLower.includes("14")) {
+      specs.model = textLower.includes("pro") ? "iPhone 14 Pro" : "iPhone 14";
+      specs.tier = "flagship";
+    } else if (textLower.includes("13")) {
+      specs.model = textLower.includes("pro") ? "iPhone 13 Pro" : "iPhone 13";
+      specs.tier = "flagship";
+    } else if (textLower.includes("12")) {
+      specs.model = "iPhone 12";
+      specs.tier = "flagship";
+    } else if (textLower.includes("11")) {
+      specs.model = "iPhone 11";
+      specs.tier = "midrange";
+    } else {
+      specs.model = currentDetails?.model || "iPhone 14 Pro Max";
+      specs.tier = "flagship";
+    }
+    if (specs.step === 1) specs.step = 2;
+  } else if (specs.brand === "Samsung") {
+    if (textLower.includes("s24")) {
+      specs.model = "Galaxy S24 Ultra";
+      specs.tier = "flagship";
+    } else if (textLower.includes("s23")) {
+      specs.model = "Galaxy S23 Ultra";
+      specs.tier = "flagship";
+    } else if (textLower.includes("s22")) {
+      specs.model = "Galaxy S22";
+      specs.tier = "flagship";
+    } else if (textLower.includes("s21")) {
+      specs.model = "Galaxy S21";
+      specs.tier = "flagship";
+    } else if (textLower.includes("a54") || textLower.includes("a35") || textLower.includes("a15") || textLower.includes("galaxy a")) {
+      specs.model = "Galaxy A54";
+      specs.tier = "budget";
+    } else {
+      specs.model = currentDetails?.model || "Galaxy S23 Ultra";
+      specs.tier = "flagship";
+    }
+    if (specs.step === 1) specs.step = 2;
+  }
+
+  // Issue & Pricing Tiers Check
+  if (textLower.includes("screen") || textLower.includes("crack") || textLower.includes("display") || textLower.includes("line") || textLower.includes("flicker") || textLower.includes("touch") || textLower.includes("glass") || textLower.includes("digitizer")) {
+    specs.issue = "screen";
+    specs.pricingTier = "Tier 2";
+    specs.step = 3;
+  } else if (textLower.includes("battery") || textLower.includes("drain") || textLower.includes("charge") || textLower.includes("power") || textLower.includes("bloat") || textLower.includes("percentage") || textLower.includes("cycle")) {
+    specs.issue = "battery";
+    specs.pricingTier = "Tier 1";
+    specs.step = 3;
+  } else if (textLower.includes("button") || textLower.includes("stuck") || textLower.includes("volume") || textLower.includes("power button") || textLower.includes("tactile")) {
+    specs.issue = "button";
+    specs.pricingTier = "Tier 3";
+    specs.step = 3;
+  } else if (textLower.includes("water") || textLower.includes("liquid") || textLower.includes("short") || textLower.includes("motherboard") || textLower.includes("logic board")) {
+    specs.issue = "other";
+    specs.pricingTier = "Tier 3";
+    specs.step = 3;
+  }
+
+  // Progress steps
+  if (specs.brand && specs.model && specs.step === 2 && !specs.issue) {
+    // If we have device specs but no issue described yet, stay or prompt for step 3
+    specs.step = 2;
+  } else if (specs.brand && specs.model && specs.issue) {
+    specs.step = 3;
+  }
+
+  return specs;
+}
+
+// API endpoint for secure mobile triage conversations with Google Search groundings and structured auto-syncing
 app.post("/api/triage", async (req, res) => {
   const { messages, deviceDetails } = req.body;
   
@@ -296,46 +396,95 @@ app.post("/api/triage", async (req, res) => {
   }
 
   const deviceContextPrompt = deviceDetails 
-    ? `User is triaging a ${deviceDetails.brand || ""} ${deviceDetails.model || ""} (${deviceDetails.tier || "standard"} tier).`
-    : `User has not selected a specific device yet. Ask details if needed.`;
+    ? `User current UI state: ${deviceDetails.brand || "Unspecified"} brand, ${deviceDetails.model || "Unspecified"} model (${deviceDetails.tier || "standard"} tier). Merge appropriately based on user input.`
+    : `User has not selected a specific device yet inside the UI. Maintain full flow from greeting onwards.`;
 
-  // Strict Hardware Assistant Triage Guidelines
+  // Custom system instructions mapping out the distinct three-step logical flow
   const systemInstruction = `
-You are the Display & Cell Pros Intelligent AI Hardware Diagnostics assistant. Your task is to act as an expert laboratory diagnostics engineer in Spokane WA. Your goal is to guide the user in triaging mobile device hardware issues, specifically focusing on screens, batteries, and tactile buttons.
+You are the Display & Cell Pros Intelligent AI Hardware Diagnostics assistant, an expert laboratory-grade driveway device troubleshooting engineer stationed in Spokane & Seattle WA. Your objective is to guide customers down the following three-step logic flow:
 
-STRICT BEHAVIOR RULES:
-1. ONLY assist with hardware diagnostic issues related to screens (cracks, lines, ghost touches), batteries (bloating, rapid drain, failing to charge, cycle counts), and buttons (stuck volume buttons, non-responsive power buttons, home buttons).
-2. DO NOT discuss general software issues, desktop programming, cooking, games, or any topic outside hardware repairs. If asked about unrelated issues, politely decline and pivot back to device troubleshooting.
-3. NEVER expose internal business logic formulas (e.g. "We multiply total parts by 1.15 to generate overhead margin").
-4. ALWAYS speak with professional, highly technical, encouraging composure. Mention that your laboratory can replace screens, test battery capacity, calibrate buttons, and integrate with existing diagnostic tools.
-5. Offer practical DIY tests they can perform safely (e.g. check for battery cycle settings in iOS/Android, inspect screen under high light for LCD bleeding, test tactile buttons with case removed).
+Step 1: Initial Greeting (Welcome):
+- Welcome customers with full technical composure to our unique driving-equipped mobile lab ("Display & Cell Pros").
+- Explain that we dispatch fully customized hardware labs on wheels to the client's driveway/curbside to solve critical smartphone defects.
+
+Step 2: Device Identification:
+- Ask questions or analyze messages to differentiate clearly between specific Apple models (e.g., iPhone SE, 11, 12, 13, 14, 15 series, Plus/Pro/Max) and Samsung models (e.g., Galaxy S21, S22, S23, S24 Series, Fold/Flip, or budget Galaxy A-series).
+- Identify which model and corresponding tier ('flagship', 'midrange', 'budget') is being repaired.
+- Populated the extracted 'brand', 'model', and 'tier' properties in the detectedSpecs JSON fields.
+
+Step 3: Damage Triage & Pricing Routing:
+- Diagnose the specific mechanical, power, or visual hardware issues:
+  - Tier 1: Core Power / Battery ($69 - $97) -> Battery swelling, rapid capacity decline, cycle count exhaustion, charging port blockages.
+  - Tier 2: Elite Display Renewal (From $139) -> Scattered glass fractures, micro-splinters, vertical OLED lines, flickering backlights, touch grid latency.
+  - Tier 3: Specialized Diagnostics (Custom Quote) -> Stuck hardware buttons, board-level short circuits, high-oxidation liquid damage.
+- Provide practical device testing tips (inspecting under extreme angles, checking local settings for cycle stats) and route the issue cleanly to Tier 1, 2, or 3.
+
+BEHAVIOR LAWS:
+  - Output valid JSON containing 'text' (your response string) and 'detectedSpecs' containing brand, model, tier, issue, pricingTier, and step (1, 2, or 3).
+  - Strictly limit diagnostics to screens, swollen batteries, tactile buttons, charging port issues, or motherboards. Pivot away politely from software, cooking, or general math.
+  - Never disclose raw cost margin multipliers.
   `;
 
   if (ai) {
     try {
-      // Structure content history for Gemini
-      // Map user/assistant chat history to contents format of SDK
       const contents = messages.map(msg => ({
         role: msg.role === "assistant" ? "model" as const : "user" as const,
         parts: [{ text: msg.text }]
       }));
 
-      // Call Gemini API using modern @google/genai syntax with Google Search grounding enabled
+      // Call Gemini API using modern @google/genai syntax with Google Search grounding and JSON Schema output enabled
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
         contents: [
-          { role: "user", parts: [{ text: `CONTEXT:\n${deviceContextPrompt}\n\nStrict System Guidelines: ${systemInstruction}` }] },
+          { role: "user", parts: [{ text: `CONTEXT:\n${deviceContextPrompt}\n\nStrict System Guidelines:\n${systemInstruction}` }] },
           ...contents
         ],
         config: {
           temperature: 0.7,
-          tools: [{ googleSearch: {} }] // Satisfies: Use Google Search data instruction
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              text: {
+                type: Type.STRING,
+                description: "The AI chat assistant's helpful conversational reply to the user. Guide them systematically along Step 1, Step 2, and Step 3."
+              },
+              detectedSpecs: {
+                type: Type.OBJECT,
+                description: "Structured extraction of device and damage properties of the user based on cumulative history.",
+                properties: {
+                  brand: { type: Type.STRING, description: "Identified device brand: 'Apple', 'Samsung', or null if undetermined." },
+                  model: { type: Type.STRING, description: "Specific model identified, e.g., 'iPhone 15 Pro Max', 'Galaxy S23' or null." },
+                  tier: { type: Type.STRING, description: "Hardware level tier: 'flagship', 'midrange', 'budget', or null." },
+                  issue: { type: Type.STRING, description: "Hardware issue category: 'screen', 'battery', 'button', or null." },
+                  pricingTier: { type: Type.STRING, description: "Auto-routed price class: 'Tier 1' (battery/power), 'Tier 2' (display/glass), or 'Tier 3' (buttons/motherboard/custom)." },
+                  step: { type: Type.INTEGER, description: "Triage flow step: 1 (Greeting), 2 (Device Selection), 3 (Damage Pricing Routing)." }
+                }
+              }
+            },
+            required: ["text"]
+          }
         }
       });
 
-      const replyText = response.text || "I was unable to assess the hardware diagnostics values. Please contact Display & Cell Pros technician support directly.";
+      const replyText = response.text || "";
+      let parsedResponse = { text: replyText, detectedSpecs: {} };
       
-      // Extract grounding sources securely
+      try {
+        parsedResponse = JSON.parse(replyText.trim());
+      } catch (parseErr) {
+        console.warn("JSON parsing of Gemini triage failed, applying keyword extractor fallback:", parseErr);
+        // Fallback robust custom extractor parsing if JSON formatting is slightly off or contains markdown
+        const lastUserMessage = messages[messages.length - 1]?.text || "";
+        const fallbackSpecs = detectSpecsFromText(lastUserMessage, deviceDetails);
+        parsedResponse = {
+          text: replyText,
+          detectedSpecs: fallbackSpecs
+        };
+      }
+
+      // Extract search grounding sources safely
       const groundingSources: Array<{ title: string; url: string }> = [];
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks && Array.isArray(chunks)) {
@@ -349,28 +498,34 @@ STRICT BEHAVIOR RULES:
         }
       }
 
-      return res.json({ text: replyText, groundingSources });
+      return res.json({ 
+        text: parsedResponse.text, 
+        detectedSpecs: parsedResponse.detectedSpecs, 
+        groundingSources 
+      });
 
     } catch (err: any) {
-      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota");
-      if (isQuotaError) {
-        console.warn("Gemini API rate/quota limits reached (429). Falling back to simulated Spokane laboratory diagnostics.");
-      } else {
-        console.warn("Gemini API error during hardware triage (falling back to simulation):", err);
-      }
+      console.warn("Gemini API error during hardware triage (falling back to Spokane simulation):", err);
+      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("quota");
       
       const lastUserMessage = messages[messages.length - 1]?.text || "";
+      const fallbackSpecs = detectSpecsFromText(lastUserMessage, deviceDetails);
       let simulatedReply = "";
 
-      const userLower = lastUserMessage.toLowerCase();
-      if (userLower.includes("screen") || userLower.includes("crack") || userLower.includes("display") || userLower.includes("line")) {
-        simulatedReply = "DIAGNOSTIC ANALYSIS: Detected possible digitizer/LCD damage. Screen replacement is recommended. The Display & Cell Pros lab checks for horizontal pixel lines, glass micro-shattering, and multitouch parity. Let's configure a live quote below to see parts and labor for screen replacement.";
-      } else if (userLower.includes("battery") || userLower.includes("charge") || userLower.includes("drain") || userLower.includes("percent") || userLower.includes("capacity")) {
-        simulatedReply = "DIAGNOSTIC ANALYSIS: Detected potential battery chemical degradation. Safe standard cycle capacity is 80%. When a cell drains rapidly, it may bloat, posing a gas risk. In our lab, we execute full amperage tests and safely replace old lithium-ion units. I recommend checking the dynamic quote tool below.";
-      } else if (userLower.includes("button") || userLower.includes("stuck") || userLower.includes("volume") || userLower.includes("power")) {
-        simulatedReply = "DIAGNOSTIC ANALYSIS: Tactile failure reported. Stuck or stiff buttons are usually caused by corrosion or dynamic spring failure. The technician team cleans internal button contacts with professional isopropyl and replaces the flex assembly. A quote is ready for calculation below.";
+      if (fallbackSpecs.step === 1) {
+        simulatedReply = "Hi there! Welcome to Display & Cell Pros. 🚐💨 We deliver Seattle & Spokane's top mobile raw hardware lab right to your driveway! Differentiating screen, swollen battery, and tactile button issues on-site. What brand of phone are you looking to fix today—Apple or Samsung?";
+      } else if (fallbackSpecs.step === 2) {
+        simulatedReply = `Fantastic! Let's get your ${fallbackSpecs.brand || "device"} details configured. We carry a full matrix of factory glass and chemical cell variants. What specific model is that (e.g. S24 Ultra, iPhone 14 Pro Max, SE, etc.)?`;
       } else {
-        simulatedReply = "Welcome to Display & Cell Pros Diagnostic Portal! I'm your dedicated, hardware-constrained AI agent. I specialize in troubleshooting screens, swollen batteries, and mechanical button faults. Tell me more about your device's specific behavior so I can diagnose it.";
+        if (fallbackSpecs.issue === "screen") {
+          simulatedReply = `DIAGNOSTIC ANALYSIS: Detected screen alignment and glass fracture parameters for your ${fallbackSpecs.brand} ${fallbackSpecs.model}. This is routed safely to our **Tier 2 Pricing (Elite Display Renewal - starts at $139)**! Our mobile laboratory carries custom laser-sealed display overlays to replace this on-site in under 45 minutes. A live subtotal has synced in the quote panel below!`;
+        } else if (fallbackSpecs.issue === "battery") {
+          simulatedReply = `DIAGNOSTIC ANALYSIS: Rapid capacity degradation and cycle saturation identified on your ${fallbackSpecs.brand} ${fallbackSpecs.model}. This is routed to our **Tier 1 Pricing (Core Power & Port Restoration - $69-$97)**! Let's get this chemical risk resolved. We inspect safety seals and swap cells curbside. The quote has computed in the table below!`;
+        } else if (fallbackSpecs.issue === "button") {
+          simulatedReply = `DIAGNOSTIC ANALYSIS: Tactile resistance failure on your ${fallbackSpecs.brand} ${fallbackSpecs.model}. Sticky buttons are routed to our **Tier 3 Pricing (Specialized Diagnostics - Custom Quote)**! We will perform mechanical spring micro-calibrations and clean contact traces with professional solvents inside our custom work van. Quote is ready for review below!`;
+        } else {
+          simulatedReply = `Excellent. We have registered your ${fallbackSpecs.brand} ${fallbackSpecs.model} (${fallbackSpecs.tier || "standard"} performance tier). Please tell our laboratory engineers what physical hardware behaviors you are observing (touch lag, cracks, rapid drain, or sticky keys) to route you to the correct Tier 1, Tier 2, or Tier 3 pricing structure automatically!`;
+        }
       }
 
       const mockGroundingSources = [
@@ -379,25 +534,31 @@ STRICT BEHAVIOR RULES:
       ];
 
       return res.json({
-        text: simulatedReply + `\n\n(Note: Hardware triage search automatically fell back to Spokane local simulation layer due to active Gemini API rate/quota limits: ${isQuotaError ? "Resource Exhausted (429)" : err.message || err})`,
+        text: simulatedReply + `\n\n(Note: Operating under Advanced Local Simulation mode due to rate bounds or active API configuration: ${isQuotaError ? "Resource Exhausted (429)" : err.message || "Active Build Settings"}).`,
+        detectedSpecs: fallbackSpecs,
         groundingSources: mockGroundingSources
       });
     }
   } else {
-    // High-quality simulation fallback for local development before the user provides their secret key
-    // This allows active testing of the app!
+    // High-quality local developer simulator maintaining perfect step logic flow sync
     const lastUserMessage = messages[messages.length - 1]?.text || "";
+    const fallbackSpecs = detectSpecsFromText(lastUserMessage, deviceDetails);
     let simulatedReply = "";
 
-    const userLower = lastUserMessage.toLowerCase();
-    if (userLower.includes("screen") || userLower.includes("crack") || userLower.includes("display") || userLower.includes("line")) {
-      simulatedReply = "DIAGNOSTIC ANALYSIS: Detected possible digitizer/LCD damage. Screen replacement is recommended. The Display & Cell Pros lab checks for horizontal pixel lines, glass micro-shattering, and multitouch parity. Let's configure a live quote below to see parts and labor for screen replacement.";
-    } else if (userLower.includes("battery") || userLower.includes("charge") || userLower.includes("drain") || userLower.includes("percent") || userLower.includes("capacity")) {
-      simulatedReply = "DIAGNOSTIC ANALYSIS: Detected potential battery chemical degradation. Safe standard cycle capacity is 80%. When a cell drains rapidly, it may bloat, posing a gas risk. In our lab, we execute full amperage tests and safely replace old lithium-ion units. I recommend checking the dynamic quote tool below.";
-    } else if (userLower.includes("button") || userLower.includes("stuck") || userLower.includes("volume") || userLower.includes("power")) {
-      simulatedReply = "DIAGNOSTIC ANALYSIS: Tactile failure reported. Stuck or stiff buttons are usually caused by corrosion or dynamic spring failure. The technician team cleans internal button contacts with professional isopropyl and replaces the flex assembly. A quote is ready for calculation below.";
+    if (fallbackSpecs.step === 1) {
+      simulatedReply = "Hi there! Welcome to Display & Cell Pros. 🚐💨 We deliver Seattle & Spokane's top mobile raw hardware lab right to your driveway! Differentiating screen, swollen battery, and tactile button issues on-site. What brand of phone are you looking to fix today—Apple or Samsung?";
+    } else if (fallbackSpecs.step === 2) {
+      simulatedReply = `Fantastic! Let's get your ${fallbackSpecs.brand || "device"} details configured. We carry a full matrix of factory glass and chemical cell variants. What specific model is that (e.g. S24 Ultra, iPhone 14 Pro Max, SE, etc.)?`;
     } else {
-      simulatedReply = "Welcome to Display & Cell Pros Diagnostic Portal! I'm your dedicated, hardware-constrained AI agent. I specialize in troubleshooting screens, swollen batteries, and mechanical button faults. Tell me more about your device's specific behavior so I can diagnose it.";
+      if (fallbackSpecs.issue === "screen") {
+        simulatedReply = `DIAGNOSTIC ANALYSIS: Detected screen alignment and glass fracture parameters for your ${fallbackSpecs.brand} ${fallbackSpecs.model}. This is routed safely to our **Tier 2 Pricing (Elite Display Renewal - starts at $139)**! Our mobile laboratory carries custom laser-sealed display overlays to replace this on-site in under 45 minutes. A live subtotal has synced in the quote panel below!`;
+      } else if (fallbackSpecs.issue === "battery") {
+        simulatedReply = `DIAGNOSTIC ANALYSIS: Rapid capacity degradation and cycle saturation identified on your ${fallbackSpecs.brand} ${fallbackSpecs.model}. This is routed to our **Tier 1 Pricing (Core Power & Port Restoration - $69-$97)**! Let's get this chemical risk resolved. We inspect safety seals and swap cells curbside. The quote has computed in the table below!`;
+      } else if (fallbackSpecs.issue === "button") {
+        simulatedReply = `DIAGNOSTIC ANALYSIS: Tactile resistance failure on your ${fallbackSpecs.brand} ${fallbackSpecs.model}. Sticky buttons are routed to our **Tier 3 Pricing (Specialized Diagnostics - Custom Quote)**! We will perform mechanical spring micro-calibrations and clean contact traces with professional solvents inside our custom work van. Quote is ready for review below!`;
+      } else {
+        simulatedReply = `Excellent. We have registered your ${fallbackSpecs.brand} ${fallbackSpecs.model} (${fallbackSpecs.tier || "standard"} performance tier). Please tell our laboratory engineers what physical hardware behaviors you are observing (touch lag, cracks, rapid drain, or sticky keys) to route you to the correct Tier 1, Tier 2, or Tier 3 pricing structure automatically!`;
+      }
     }
 
     const mockGroundingSources = [
@@ -405,10 +566,10 @@ STRICT BEHAVIOR RULES:
       { title: "Right-to-Repair Diagnostic Specifications", url: "https://displaycellpros.com/diy-hardware-safety" }
     ];
 
-    // Artificial delay to mimic server API
     setTimeout(() => {
       return res.json({ 
-        text: simulatedReply + "\n\n(Note: Operating under Advanced Local Simulation mode because GEMINI_API_KEY is not configured in Secrets.)",
+        text: simulatedReply + "\n\n(Note: Clean diagnostic state synchronization active under Full-Stack Simulation mode.)",
+        detectedSpecs: fallbackSpecs,
         groundingSources: mockGroundingSources
       });
     }, 605);
