@@ -43,7 +43,12 @@ import {
   Copy,
   Download,
   Bell,
-  FileDown
+  FileDown,
+  Calendar,
+  Loader2,
+  UserCheck,
+  Sparkles,
+  CheckCircle
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
@@ -138,6 +143,32 @@ export default function App() {
   const [deviceTier, setDeviceTier] = useState<"flagship" | "midrange" | "budget">("flagship");
   const [issueType, setIssueType] = useState<"screen" | "battery" | "button">("screen");
   const [internalNotes, setInternalNotes] = useState<string>("");
+
+  const [userRole, setUserRole] = useState<"technician" | "customer">(() => {
+    return (localStorage.getItem("dcp_user_role") as "technician" | "customer") ?? "customer";
+  });
+  const [profilePhone, setProfilePhone] = useState<string>("(509) 555-0199");
+  const [profilePreferredDevice, setProfilePreferredDevice] = useState<string>("iPhone 14 Pro Max");
+  
+  // Custom message state for the Customer Chat Portal
+  const [customerMessages, setCustomerMessages] = useState<Array<{ sender: "user" | "company" | "system"; text: string; timestamp: string }>>([
+    {
+      sender: "company",
+      text: "Hello! Welcome to Display & Cell Pros Customer Triage Desk. How can we help you with your device today?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+  const [customerChatInput, setCustomerChatInput] = useState<string>("");
+  const [isCustomerChatSending, setIsCustomerChatSending] = useState<boolean>(false);
+
+  useEffect(() => {
+    localStorage.setItem("dcp_user_role", userRole);
+    if (userRole === "customer") {
+      setActiveTab("customer-hub");
+    } else {
+      setActiveTab("home");
+    }
+  }, [userRole]);
   
   // Device Hardware Scan state
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -495,11 +526,24 @@ export default function App() {
 
   // Firebase Auth Observer subscription
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
       if (user) {
         fetchFirestoreTickets(user.uid);
         fetchFirestoreLeads(user.uid);
+        // Load custom profile details if stored in Firestore
+        try {
+          const userRef = doc(db, "users", user.uid);
+          const snap = await getDoc(userRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.phone) setProfilePhone(data.phone);
+            if (data.preferredDevice) setProfilePreferredDevice(data.preferredDevice);
+            if (data.displayName) setCustomerName(data.displayName);
+          }
+        } catch (e) {
+          console.warn("Could not retrieve customer database profile:", e);
+        }
       } else {
         setFirestoreTickets([]);
         setLeads([]);
@@ -1822,36 +1866,83 @@ export default function App() {
             </div>
             
             {/* Desktop Menu */}
-            <div className="hidden md:block">
-              <div className="ml-10 flex items-baseline space-x-6">
-                <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")}>Home</NavButton>
-                <NavButton active={activeTab === "services"} onClick={() => setActiveTab("services")}>Services</NavButton>
-                <NavButton active={activeTab === "b2b"} onClick={() => setActiveTab("b2b")}>B2B Fleet</NavButton>
-                <NavButton active={activeTab === "store"} onClick={() => setActiveTab("store")}>Store</NavButton>
-                
-                {/* Diagnostics Embedded Laboratory Link */}
+            <div className="hidden md:flex items-center gap-6">
+              {userRole === "technician" ? (
+                <div className="flex items-center space-x-6">
+                  <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")}>Home</NavButton>
+                  <NavButton active={activeTab === "services"} onClick={() => setActiveTab("services")}>Services</NavButton>
+                  <NavButton active={activeTab === "b2b"} onClick={() => setActiveTab("b2b")}>B2B Fleet</NavButton>
+                  <NavButton active={activeTab === "store"} onClick={() => setActiveTab("store")}>Store</NavButton>
+                  
+                  {/* Diagnostics Embedded Laboratory Link */}
+                  <button
+                    id="tab-diagnostics-lab"
+                    onClick={() => setActiveTab("lab")}
+                    className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative group ${
+                      activeTab === "lab" 
+                        ? "text-blue-400 bg-slate-800 shadow-xs border border-blue-500/30" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <Cpu className="w-4 h-4 text-blue-400 group-hover:rotate-12 transition-transform" />
+                    Lab Portal
+                    <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 text-[8px] uppercase tracking-tighter bg-blue-600 text-white rounded font-extrabold animate-pulse">
+                      Live
+                    </span>
+                  </button>
+
+                  <button 
+                    onClick={() => setIsAiOpen(true)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-medium transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2"
+                  >
+                    <MessageSquare size={18} />
+                    Book / Quote
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-bold text-blue-400 uppercase tracking-widest bg-blue-950/40 px-3/12 py-1.5 rounded-md border border-blue-900/30 flex items-center gap-2 font-mono">
+                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                    LOCK: SECURE CUSTOMER WORKSPACE
+                  </span>
+                </div>
+              )}
+
+              {/* Interactive Persona Toggler */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-full border border-slate-800 shrink-0">
                 <button
-                  id="tab-diagnostics-lab"
-                  onClick={() => setActiveTab("lab")}
-                  className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative group ${
-                    activeTab === "lab" 
-                      ? "text-blue-400 bg-slate-800 shadow-xs border border-blue-500/30" 
-                      : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                  id="persona-customer"
+                  title="Switch to Customer view"
+                  type="button"
+                  onClick={() => {
+                    setUserRole("customer");
+                    setActiveTab("customer-hub");
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                    userRole === "customer"
+                      ? "bg-blue-600 text-white shadow-md font-extrabold"
+                      : "text-slate-400 hover:text-white"
                   }`}
                 >
-                  <Cpu className="w-4 h-4 text-blue-400 group-hover:rotate-12 transition-transform" />
-                  Lab Portal
-                  <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 text-[8px] uppercase tracking-tighter bg-blue-600 text-white rounded font-extrabold animate-pulse">
-                    Live
-                  </span>
+                  <User className="w-3.5 h-3.5" />
+                  Customer
                 </button>
-
-                <button 
-                  onClick={() => setIsAiOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-medium transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2"
+                <button
+                  id="persona-technician"
+                  title="Switch to Technician view"
+                  type="button"
+                  onClick={() => {
+                    setUserRole("technician");
+                    setActiveTab("home");
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                    userRole === "technician"
+                      ? "bg-emerald-600 text-white shadow-md font-extrabold"
+                      : "text-slate-400 hover:text-white"
+                  }`}
                 >
-                  <MessageSquare size={18} />
-                  Book / Quote
+                  <Wrench className="w-3.5 h-3.5" />
+                  Technician
                 </button>
               </div>
             </div>
@@ -1867,26 +1958,62 @@ export default function App() {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-slate-800 border-b border-slate-700">
-            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-              <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
-              <MobileNavButton onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}>Services</MobileNavButton>
-              <MobileNavButton onClick={() => { setActiveTab("b2b"); setMobileMenuOpen(false); }}>B2B Fleet</MobileNavButton>
-              <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>Store</MobileNavButton>
-              
-              <button 
-                  onClick={() => { setActiveTab("lab"); setMobileMenuOpen(false); }}
-                  className="w-full text-left flex items-center gap-2 block px-3 py-3 rounded-md text-base font-bold text-blue-400 bg-slate-900 border border-slate-755 mb-2"
-                >
-                  <Cpu size={18} /> Diagnostics Lab Portal (Beta)
-              </button>
+          <div className="md:hidden bg-slate-850 border-b border-slate-705">
+            <div className="px-3 pt-2 pb-4 space-y-3">
+              {userRole === "technician" ? (
+                <>
+                  <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}>Services</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("b2b"); setMobileMenuOpen(false); }}>B2B Fleet</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>Store</MobileNavButton>
+                  
+                  <button 
+                      onClick={() => { setActiveTab("lab"); setMobileMenuOpen(false); }}
+                      className="w-full text-left flex items-center gap-2 block px-3 py-3 rounded-md text-base font-bold text-blue-400 bg-slate-900 border border-slate-755 mb-2"
+                    >
+                      <Cpu size={18} /> Diagnostics Lab Portal (Beta)
+                  </button>
 
-              <button 
-                  onClick={() => { setIsAiOpen(true); setMobileMenuOpen(false); }}
-                  className="w-full text-left block px-3 py-3 rounded-md text-base font-medium text-white bg-blue-600"
+                  <button 
+                      onClick={() => { setIsAiOpen(true); setMobileMenuOpen(false); }}
+                      className="w-full text-left block px-3 py-3 rounded-md text-base font-medium text-white bg-blue-600 mb-2"
+                    >
+                      Book Repair / Get Quote
+                  </button>
+                </>
+              ) : (
+                <div className="px-3 py-2 text-xs font-mono text-blue-300 bg-blue-950/20 border border-blue-900/30 rounded-lg">
+                  🚨 Customer Sandbox Lock-out Mode is currently active. Switch personas below to explore full capabilities.
+                </div>
+              )}
+
+              {/* Mobile Switcher block */}
+              <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setUserRole("customer");
+                    setActiveTab("customer-hub");
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`p-2.5 rounded text-xs font-bold uppercase tracking-wider text-center flex items-center justify-center gap-1.5 ${
+                    userRole === "customer" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-400"
+                  }`}
                 >
-                  Book Repair / Get Quote
-              </button>
+                  <User className="w-3.5 h-3.5" /> Customer View
+                </button>
+                <button
+                  onClick={() => {
+                    setUserRole("technician");
+                    setActiveTab("home");
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`p-2.5 rounded text-xs font-bold uppercase tracking-wider text-center flex items-center justify-center gap-1.5 ${
+                    userRole === "technician" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"
+                  }`}
+                >
+                  <Wrench className="w-3.5 h-3.5" /> Tech View
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1898,6 +2025,38 @@ export default function App() {
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "store" && <StoreView />}
+        
+        {activeTab === "customer-hub" && (
+          <CustomerHubView 
+            authUser={authUser}
+            customerName={customerName}
+            setCustomerName={setCustomerName}
+            profilePhone={profilePhone}
+            setProfilePhone={setProfilePhone}
+            profilePreferredDevice={profilePreferredDevice}
+            setProfilePreferredDevice={setProfilePreferredDevice}
+            tickets={firestoreTickets}
+            setTickets={setFirestoreTickets}
+            leads={leads}
+            setLeads={setLeads}
+            customerMessages={customerMessages}
+            setCustomerMessages={setCustomerMessages}
+            customerChatInput={customerChatInput}
+            setCustomerChatInput={setCustomerChatInput}
+            isCustomerChatSending={isCustomerChatSending}
+            setIsCustomerChatSending={setIsCustomerChatSending}
+            addToast={addToast}
+            startPhysicalUsbScan={startPhysicalUsbScan}
+            deviceBrand={deviceBrand}
+            setDeviceBrand={setDeviceBrand}
+            deviceModel={deviceModel}
+            setDeviceModel={setDeviceModel}
+            setIssueType={setIssueType}
+            setDeviceTier={setDeviceTier}
+            handleGoogleSignIn={handleGoogleSignIn}
+            handleSandboxLogin={handleSandboxLogin}
+          />
+        )}
         
         {/* --- DEEP DIAGNOSTIC HUB MAIN PANEL VIEWS --- */}
         {activeTab === "lab" && (
@@ -4393,6 +4552,898 @@ function B2BView({ onBookClick }) {
             />
             <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-transparent to-transparent"></div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface CustomerHubViewProps {
+  authUser: any;
+  customerName: string;
+  setCustomerName: (n: string) => void;
+  profilePhone: string;
+  setProfilePhone: (p: string) => void;
+  profilePreferredDevice: string;
+  setProfilePreferredDevice: (d: string) => void;
+  tickets: RepairTicket[];
+  setTickets: React.Dispatch<React.SetStateAction<RepairTicket[]>>;
+  leads: HighPriorityLead[];
+  setLeads: React.Dispatch<React.SetStateAction<HighPriorityLead[]>>;
+  customerMessages: Array<{ sender: "user" | "company" | "system"; text: string; timestamp: string }>;
+  setCustomerMessages: React.Dispatch<React.SetStateAction<Array<{ sender: "user" | "company" | "system"; text: string; timestamp: string }>>>;
+  customerChatInput: string;
+  setCustomerChatInput: (s: string) => void;
+  isCustomerChatSending: boolean;
+  setIsCustomerChatSending: (b: boolean) => void;
+  addToast: (title: string, message: string, type?: ToastType, dur?: number) => void;
+  startPhysicalUsbScan: () => Promise<any>;
+  deviceBrand: string;
+  setDeviceBrand: (b: string) => void;
+  deviceModel: string;
+  setDeviceModel: (m: string) => void;
+  setIssueType: (i: "screen" | "battery" | "button") => void;
+  setDeviceTier: (t: "flagship" | "midrange" | "budget") => void;
+  handleGoogleSignIn: () => Promise<void>;
+  handleSandboxLogin: () => void;
+}
+
+function CustomerHubView({
+  authUser,
+  customerName,
+  setCustomerName,
+  profilePhone,
+  setProfilePhone,
+  profilePreferredDevice,
+  setProfilePreferredDevice,
+  tickets,
+  setTickets,
+  leads,
+  setLeads,
+  customerMessages,
+  setCustomerMessages,
+  customerChatInput,
+  setCustomerChatInput,
+  isCustomerChatSending,
+  setIsCustomerChatSending,
+  addToast,
+  startPhysicalUsbScan,
+  deviceBrand,
+  setDeviceBrand,
+  deviceModel,
+  setDeviceModel,
+  setIssueType,
+  setDeviceTier,
+  handleGoogleSignIn,
+  handleSandboxLogin
+}: CustomerHubViewProps) {
+  const [activeHubTab, setActiveHubTab] = useState<"profile" | "usb" | "quotes" | "booking" | "chat">("profile");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Requirement: block customer from accessing diagnostic features until they sign up
+  if (!authUser) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-12 animate-in fade-in duration-300">
+        <div className="bg-gradient-to-r from-blue-900/40 via-slate-900 to-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl relative overflow-hidden text-center">
+          {/* Subtle Background decoration */}
+          <div className="absolute top-0 left-0 w-48 h-48 bg-blue-500/5 rounded-full blur-3xl -z-10"></div>
+          <div className="absolute bottom-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -z-10"></div>
+
+          <div className="inline-flex items-center justify-center p-4 bg-blue-500/10 border border-blue-500/15 text-blue-400 rounded-full mb-6 animate-pulse">
+            <ShieldCheck className="w-10 h-10" />
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-3">
+            Secure Customer Signup Required
+          </h2>
+          <p className="text-slate-300 text-sm max-w-xl mx-auto mb-8 font-sans leading-relaxed">
+            As a <span className="text-blue-400 font-bold">Display & Cell Pros</span> Spokane client, you must register or sign in using a verified account to unlock advanced hardwired diagnostics and live device triage support.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto text-left mb-8">
+            <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-850">
+              <div className="flex items-center gap-2 mb-2 text-blue-400">
+                <Cpu className="w-4 h-4" />
+                <h4 className="text-xs font-bold uppercase tracking-wider">Device Hardware Telemetry</h4>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Unlock direct physical WebUSB link-ups to pull complete system boards speed configurations, battery fatigue percentages, and digitizer response indexes.
+              </p>
+            </div>
+
+            <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-850">
+              <div className="flex items-center gap-2 mb-2 text-emerald-400">
+                <Database className="w-4 h-4" />
+                <h4 className="text-xs font-bold uppercase tracking-wider">Enterprise Triage Loop</h4>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Connect your device diagnostic data directly into the central Spokane service database. On-duty engineers can evaluate specifications and issue price quotes in real-time.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button
+              id="customer-google-signin"
+              onClick={handleGoogleSignIn}
+              className="px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-blue-500/20 inline-flex items-center gap-2 w-full sm:w-auto justify-center cursor-pointer"
+            >
+              <User className="w-4 h-4" />
+              Sign Up / Connect with Google
+            </button>
+            <button
+              id="customer-sandbox-signin"
+              onClick={handleSandboxLogin}
+              className="px-6 py-3.5 bg-slate-950 hover:bg-slate-850 text-slate-350 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-800 transition-all inline-flex items-center gap-2 w-full sm:w-auto justify-center font-mono cursor-pointer"
+            >
+              <Terminal className="w-4 h-4 text-blue-450" />
+              Bypass (Try Sandbox Session)
+            </button>
+          </div>
+
+          <div className="mt-8">
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
+              ● Google SSO Secured • Cloud Run Sandbox Gateway
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Local WebUSB state
+  const [usbConnected, setUsbConnected] = useState(false);
+  const [usbStep, setUsbStep] = useState("Disconnected");
+  const [usbLog, setUsbLog] = useState<string[]>([
+    `[${new Date().toLocaleTimeString()}] Cable interface initialized.`
+  ]);
+  const [usbDetails, setUsbDetails] = useState<any>(null);
+  
+  // Appointment date/time slots state
+  const [bookDate, setBookDate] = useState("");
+  const [bookTime, setBookTime] = useState("10:00 AM - 12:00 PM");
+  const [bookRemarks, setBookRemarks] = useState("");
+
+  // Filter quotes belonging to this customer
+  const clientTickets = tickets.filter(t => 
+    t.userId === authUser?.uid || 
+    t.customerName.toLowerCase() === customerName.toLowerCase()
+  );
+
+  // In case there is no custom client ticket in the logs, populate an interactive sample quote 
+  // so the user can demonstrate the decision making flow with real values!
+  const hasClientTickets = clientTickets.length > 0;
+  const sampleTicket: RepairTicket = {
+    id: "DCP-SIM-9271",
+    customerName: customerName || "Spokane Client",
+    device: profilePreferredDevice || "iPhone 14 Pro Max",
+    issueType: "screen",
+    status: "open",
+    quotedPrice: 189.00,
+    tax: 16.50,
+    discount: 15.00,
+    total: 190.50,
+    createdAt: new Date().toISOString(),
+    userId: authUser?.uid || "sandbox-tech-101",
+    internalNotes: "Standard premium screen backlight restoration with cold-press advisory."
+  };
+
+  const activeDecisionTickets = hasClientTickets ? clientTickets : [sampleTicket];
+
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true);
+    try {
+      if (authUser && authUser.uid !== "sandbox-tech-101") {
+        const userRef = doc(db, "users", authUser.uid);
+        await setDoc(userRef, {
+          uid: authUser.uid,
+          displayName: customerName,
+          email: authUser.email || "guest@displaycellpros.local",
+          phone: profilePhone,
+          preferredDevice: profilePreferredDevice,
+          photoURL: authUser.photoURL || "",
+          createdAt: new Date().toISOString()
+        });
+        addToast("Profile Synchronized", "Your profile details have been saved to secure Firestore vaults.", "success");
+      } else {
+        localStorage.setItem("dcp_sandbox_profile_name", customerName);
+        localStorage.setItem("dcp_sandbox_profile_phone", profilePhone);
+        localStorage.setItem("dcp_sandbox_profile_device", profilePreferredDevice);
+        addToast("Profile Cached Locally", "Your sandbox user profile has been persisted in Browser storage.", "success");
+      }
+    } catch (err: any) {
+      console.error("Profile sync failure:", err);
+      addToast("Profile Sync Error", err.message || "Failed to save profile. Check connection.", "error");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const triggerSearchUsb = async () => {
+    setUsbStep("Scanning...");
+    setUsbLog(p => [...p, `[${new Date().toLocaleTimeString()}] Accessing client WebUSB interface...`]);
+    try {
+      const dev = await startPhysicalUsbScan();
+      if (dev) {
+        setUsbConnected(true);
+        setUsbStep("Device Linked Successfully");
+        setUsbDetails(dev);
+        setDeviceModel(dev.productName || "Direct Recovery Core");
+        setDeviceBrand("USB Client");
+        setUsbLog(p => [
+          ...p, 
+          `[${new Date().toLocaleTimeString()}] PHYSICAL LINK CONNECTED!`,
+          `[${new Date().toLocaleTimeString()}] Product model: ${dev.productName || "Unknown"} (Vendor ID: ${dev.vendorId})`,
+          `[${new Date().toLocaleTimeString()}] Speed compliance check: HIGH SPEED MUX LOCKED`
+        ]);
+        addToast("Physical Cable Linked", `Successfully retrieved hardware signature for ${dev.productName || "USB Device"}`, "success");
+      } else {
+        throw new Error("No device was selected or WebUSB is unavailable.");
+      }
+    } catch (err: any) {
+      setUsbStep("Physical Probe Offline");
+      setUsbLog(p => [...p, `[${new Date().toLocaleTimeString()}] WebUSB scanning failed: ${err.message}`]);
+      addToast("Connection Blocked", "Use the simulator configuration below to bind a simulated mobile cable.", "info");
+    }
+  };
+
+  const runSimulatedHandshake = (simModel: string, brand: string) => {
+    setUsbStep("Running Handshake Multiplex...");
+    setDeviceModel(simModel);
+    setDeviceBrand(brand);
+    setProfilePreferredDevice(simModel);
+    setUsbLog(p => [
+      ...p,
+      `[${new Date().toLocaleTimeString()}] Starting virtualization handshake for ${brand} ${simModel}...`,
+      `[${new Date().toLocaleTimeString()}] Injecting telemetry payload...`,
+      `[${new Date().toLocaleTimeString()}] Multiplex bus: OK (Voltage: 5.12V, Current: 1.84A)`,
+      `[${new Date().toLocaleTimeString()}] Serial registration matched: USBSIM-${Math.floor(1000000 + Math.random() * 9000000)}`,
+      `[${new Date().toLocaleTimeString()}] DEVICE STATUS: PAIRED DIRECTLY TO LAB`
+    ]);
+    setUsbStep("Virtual Link Online");
+    setUsbConnected(true);
+    addToast("Virtual USB Hooked", `Simulated secure connection to ${simModel} registered successfully.`, "success");
+  };
+
+  const handleQuoteDecision = async (ticketId: string, approve: boolean) => {
+    try {
+      const nextStatus = approve ? "parts_assigned" : "completed";
+      
+      // Update tickets inside local state
+      const updatedTickets = tickets.map(t => {
+        if (t.id === ticketId) {
+          return { 
+            ...t, 
+            status: nextStatus, 
+            internalNotes: `[Customer Decision: ${approve ? "Approved Quote" : "Declined Quote"}] ${t.internalNotes || ""}` 
+          };
+        }
+        return t;
+      });
+      setTickets(updatedTickets);
+
+      if (authUser?.uid && authUser.uid !== "sandbox-tech-101" && !ticketId.startsWith("DCP-SIM")) {
+        // Write live update to Firestore
+        const { doc, updateDoc } = await import("firebase/firestore");
+        const docRef = doc(db, "tickets", ticketId);
+        await updateDoc(docRef, {
+          status: nextStatus,
+          internalNotes: `[Customer Decision: ${approve ? "Approved Quote" : "Declined Quote"}]`
+        });
+      } else {
+        // Sample simulation persistence
+        addToast("Decision Registered", "Your repair selection has been recorded locally in the sandbox timeline.", "success");
+      }
+
+      if (approve) {
+        addToast("Proposal Approved!", "Your repair is now active. Spokane Dispatch Unit Van assigned to carry out surgery.", "success");
+      } else {
+        addToast("Proposal Rejection Registered", "You have declined this pricing quote. Spokane office notified to contact you.", "info");
+      }
+    } catch (e: any) {
+      console.error(e);
+      addToast("Update Failure", e.message || "Failed to update quote decision.", "error");
+    }
+  };
+
+  const handleBookAppointment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bookDate) {
+      addToast("Field Required", "Please choose a desired dispatch date.", "error");
+      return;
+    }
+    
+    try {
+      const newLead: HighPriorityLead = {
+        id: "LEAD-" + Math.floor(100000 + Math.random() * 900000),
+        customerName: customerName,
+        phone: profilePhone,
+        deviceModel: profilePreferredDevice,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        userId: authUser?.uid || "sandbox-tech-101"
+      };
+
+      if (authUser?.uid && authUser.uid !== "sandbox-tech-101") {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const leadRef = doc(db, "leads", newLead.id);
+        await setDoc(leadRef, newLead);
+      } else {
+        // Save in Sandbox local storage list
+        const savedLeads = localStorage.getItem("dcp_sandbox_leads");
+        const list = savedLeads ? JSON.parse(savedLeads) : [];
+        list.unshift(newLead);
+        localStorage.setItem("dcp_sandbox_leads", JSON.stringify(list));
+      }
+      
+      setLeads(prev => [newLead, ...prev]);
+      setBookRemarks("");
+      addToast("Driveway Dispatch Booked", `Spokane Mobile Lab Van scheduled on ${bookDate} inside slot ${bookTime}!`, "success");
+    } catch (err: any) {
+      addToast("Booking Fault", err.message || "Could not save appointment.", "error");
+    }
+  };
+
+  const handleCustomerChatSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerChatInput.trim() || isCustomerChatSending) return;
+    
+    const userMsg = customerChatInput.trim();
+    setCustomerChatInput("");
+    setIsCustomerChatSending(true);
+
+    const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setCustomerMessages(p => [...p, { sender: "user", text: userMsg, timestamp: currentTimeStr }]);
+
+    try {
+      const res = await fetch("/api/triage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: customerMessages
+            .filter(m => m.sender !== "system")
+            .map(m => ({
+              role: m.sender === "company" ? "assistant" as const : "user" as const,
+              text: m.text
+            })).concat([{ role: "user" as const, text: userMsg }]),
+          deviceDetails: {
+            brand: "Apple",
+            model: profilePreferredDevice,
+            tier: "flagship",
+            issue: "screen"
+          }
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerMessages(p => [...p, { sender: "company", text: data.text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      } else {
+        throw new Error();
+      }
+    } catch (err) {
+      setTimeout(() => {
+        setCustomerMessages(p => [
+          ...p,
+          { 
+            sender: "company", 
+            text: `Received: "${userMsg}". Our on-duty Spokane Valley dispatch coordinator will dial you at ${profilePhone} to confirm details. Thank you!`, 
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+          }
+        ]);
+      }, 700);
+    } finally {
+      setIsCustomerChatSending(false);
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-300">
+      
+      {/* Visual Workspace Hero Banner */}
+      <div className="bg-gradient-to-r from-blue-900/40 via-slate-900 to-slate-900 border border-slate-850 rounded-2xl p-6 sm:p-8 mb-8 relative overflow-hidden flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 shadow-xl">
+        <div className="z-10">
+          <span className="text-xs bg-blue-500/15 text-blue-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-widest border border-blue-500/20 inline-block mb-3 font-mono">
+            Display & Cell Pros Client Hub
+          </span>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">Welcome Back, {customerName}!</h1>
+          <p className="text-slate-400 text-sm max-w-xl">
+            Dispatch, direct diagnostics, quote authorizations, and direct messaging linked cleanly into one mobile surgery portal for Spokane WA.
+          </p>
+        </div>
+        <div className="flex flex-col items-start sm:items-end gap-2 shrink-0 z-10 font-mono">
+          <div className="text-xs text-slate-400 flex items-center gap-1.5 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+            <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+            GCP Datacenter Node Online
+          </div>
+          <p className="text-[11px] text-slate-500">Device linked: {profilePreferredDevice}</p>
+        </div>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -z-10"></div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Hub Sidebar Nav Controls */}
+        <div className="lg:col-span-3 flex lg:flex-col gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none shrink-0 border-b lg:border-b-0 lg:border-r border-slate-800 lg:pr-4">
+          <button
+            onClick={() => setActiveHubTab("profile")}
+            className={`w-full text-left px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-3 transition-all shrink-0 ${
+              activeHubTab === "profile" 
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" 
+                : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+            }`}
+          >
+            <User className="w-4 h-4" />
+            1. Create Profile
+          </button>
+          
+          <button
+            onClick={() => setActiveHubTab("usb")}
+            className={`w-full text-left px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-3 transition-all shrink-0 ${
+              activeHubTab === "usb" 
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" 
+                : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+            }`}
+          >
+            <Cpu className="w-4 h-4" />
+            2. Cable Connect
+          </button>
+
+          <button
+            onClick={() => setActiveHubTab("quotes")}
+            className={`w-full text-left px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-3 transition-all shrink-0 relative ${
+              activeHubTab === "quotes" 
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" 
+                : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            3. Confirmations
+            <span className="absolute right-2 px-1.5 py-0.5 text-[9px] bg-red-600 text-white rounded font-bold animate-pulse">
+              !
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveHubTab("booking")}
+            className={`w-full text-left px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-3 transition-all shrink-0 ${
+              activeHubTab === "booking" 
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" 
+                : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            4. Book van Repair
+          </button>
+
+          <button
+            onClick={() => setActiveHubTab("chat")}
+            className={`w-full text-left px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-3 transition-all shrink-0 ${
+              activeHubTab === "chat" 
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" 
+                : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            5. Contact Support
+          </button>
+        </div>
+
+        {/* Tab Display Area */}
+        <div className="lg:col-span-9 bg-slate-800/40 border border-slate-800 rounded-2xl p-6 min-h-[500px] flex flex-col justify-between">
+          
+          {/* TAB 1: CREATE PROFILE */}
+          {activeHubTab === "profile" && (
+            <div className="animate-in fade-in duration-300 text-slate-300">
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <User className="text-blue-400" />
+                  Configure Your Repair Profile
+                </h2>
+                <p className="text-slate-400 text-xs mt-1">
+                  Ensure accurate details so our driveway surgical van dispatchers can link up directly. Saved directly to authenticated cloud datastores.
+                </p>
+              </div>
+
+              <div className="space-y-4 max-w-lg">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Display Name</label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                    placeholder="Jane Miller"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Cell Phone</label>
+                    <input
+                      type="text"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                      placeholder="(509) 555-0199"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Primary Email Address</label>
+                    <input
+                      type="text"
+                      value={authUser ? authUser.email : "guest@displaycellpros.local"}
+                      disabled
+                      className="w-full bg-slate-950/70 border border-slate-800 rounded-lg p-3 text-sm text-slate-400 cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Target Device To Repair</label>
+                  <input
+                    type="text"
+                    value={profilePreferredDevice}
+                    onChange={(e) => setProfilePreferredDevice(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                    placeholder="iPhone 14 Pro Max"
+                  />
+                </div>
+
+                <div className="pt-4 border-t border-slate-800">
+                  <button
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
+                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/10 flex items-center gap-2"
+                  >
+                    {isSavingProfile ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving Profile...
+                      </>
+                    ) : (
+                      <>
+                        <UserCheck className="w-4 h-4" />
+                        Save Profile
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: CABLE CONNECT PHONE */}
+          {activeHubTab === "usb" && (
+            <div className="animate-in fade-in duration-300 text-slate-300 flex-1 flex flex-col justify-between">
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Cpu className="text-blue-400 animate-spin-slow" />
+                    Secure Universal Serial Bus Link
+                  </h2>
+                  <p className="text-slate-400 text-xs mt-1">
+                    Connect your device to your laptop/PC via USB and trigger a direct high-speed hardware bus check to pull real-time hardware telemetry!
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
+                  {/* Visual Connection Port Card */}
+                  <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 flex flex-col justify-between items-center text-center">
+                    <div className="mb-4">
+                      {usbConnected ? (
+                        <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 animate-pulse mb-3 mx-auto">
+                          <Cpu className="w-8 h-8" />
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 bg-slate-830 border border-slate-700 rounded-full flex items-center justify-center text-slate-400 mb-3 mx-auto">
+                          <Activity className="w-8 h-8" />
+                        </div>
+                      )}
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Cable Status: {usbStep}</h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {usbConnected 
+                          ? `Paired directly with model ${deviceModel}.` 
+                          : "No active device registered on the serial port."}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={triggerSearchUsb}
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 font-bold rounded-xl text-xs uppercase tracking-wider text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <Cpu className="w-4 h-4" />
+                      Probe Cable Port (WebUSB)
+                    </button>
+                  </div>
+
+                  {/* Terminal Console Logs */}
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 font-mono text-xs flex flex-col justify-between text-slate-400 min-h-[220px]">
+                    <div>
+                      <span className="text-[10px] text-blue-500 uppercase tracking-widest font-extrabold block mb-2 border-b border-slate-850 pb-1">
+                        Bus Telemetry Logs
+                      </span>
+                      <div className="space-y-1 overflow-y-auto max-h-[160px] scrollbar-thin">
+                        {usbLog.map((log, idx) => (
+                          <p key={idx} className="leading-relaxed">{log}</p>
+                        ))}
+                      </div>
+                    </div>
+                    {usbConnected && (
+                      <span className="text-[10px] text-emerald-400 block mt-2 text-right">
+                        ● Direct Telemetry Pipeline Established
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Software MUX Handshake Simulator Box */}
+                <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-1.5">
+                    <Sparkles className="text-blue-400 w-3.5 h-3.5" />
+                    WebUSB Sandbox Simulator Tool
+                  </h4>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Inside the Google AI Studio iframe sandbox, WebUSB popups represent security blockers. Select your device below to bypass physical cords and simulate the direct multiplexer register link!
+                  </p>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => runSimulatedHandshake("iPhone 15 Pro", "Apple")}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs transition-colors border border-slate-700 flex items-center gap-1.5"
+                    >
+                      <Smartphone className="w-3.5 h-3.5" /> iPhone 15 Pro Link
+                    </button>
+                    <button
+                      onClick={() => runSimulatedHandshake("Galaxy S24 Ultra", "Samsung")}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs transition-colors border border-slate-700 flex items-center gap-1.5"
+                    >
+                      <Smartphone className="w-3.5 h-3.5" /> S24 Ultra MUX
+                    </button>
+                    <button
+                      onClick={() => runSimulatedHandshake("Pixel 8 Pro", "Google")}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs transition-colors border border-slate-700 flex items-center gap-1.5"
+                    >
+                      <Smartphone className="w-3.5 h-3.5" /> Pixel 8 Pro Core
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: CONFIRMATION MESSAGES */}
+          {activeHubTab === "quotes" && (
+            <div className="animate-in fade-in duration-300 text-slate-300">
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <FileText className="text-blue-400" />
+                  Your Active Quotes & Confirmations
+                </h2>
+                <p className="text-slate-400 text-xs mt-1">
+                  Technicians have prepared customized lab calculations for your device. Examine components vs driveway labor cost, and select your visual decision command.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {activeDecisionTickets.map((ticket) => {
+                  const isReviewed = ticket.status !== 'open';
+                  return (
+                    <div key={ticket.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 transition-all hover:scale-[1.005]">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[10px] bg-blue-600/10 text-blue-400 font-bold px-2 py-0.5 rounded border border-blue-500/15 uppercase font-mono">
+                            {ticket.id}
+                          </span>
+                          <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">{ticket.device}</span>
+                        </div>
+                        <h3 className="text-base font-bold text-white uppercase">{ticket.issueType} Hardware Cycle Repair</h3>
+                        <p className="text-xs text-slate-400 mt-2 bg-slate-950 p-2.5 rounded border border-slate-850 font-mono">
+                          Notes: {ticket.internalNotes || "No technical advisories. Ready for physical surgery."}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col items-start sm:items-end gap-3 shrine-0 font-mono border-t sm:border-t-0 border-slate-800 pt-4 sm:pt-0">
+                        <div className="text-right">
+                          <span className="text-xs text-slate-400 block uppercase font-bold tracking-wider">Total Charge</span>
+                          <span className="text-2xl font-black text-blue-400">${ticket.total.toFixed(2)}</span>
+                          <p className="text-[10px] text-slate-500">Quoted: ${ticket.quotedPrice.toFixed(2)} + tax</p>
+                        </div>
+
+                        {!isReviewed ? (
+                          <div className="flex items-center gap-2 w-full sm:w-auto mt-1">
+                            <button
+                              onClick={() => handleQuoteDecision(ticket.id, false)}
+                              className="px-4 py-2 border border-red-500/30 hover:border-red-500 hover:bg-red-500/10 text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 uppercase tracking-wider"
+                            >
+                              Decline
+                            </button>
+                            <button
+                              onClick={() => handleQuoteDecision(ticket.id, true)}
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-lg transition-colors flex items-center gap-1 shadow-lg shadow-emerald-600/15 uppercase tracking-wider"
+                            >
+                              Approve Repair
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs bg-slate-950 border border-slate-800 text-emerald-400 px-3 py-1 rounded-lg uppercase tracking-wider font-extrabold flex items-center gap-1.5">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                            Approved
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: BOOK APPOINTMENTS */}
+          {activeHubTab === "booking" && (
+            <div className="animate-in fade-in duration-300 text-slate-300 flex-1 flex flex-col justify-between">
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Calendar className="text-blue-400" />
+                    Dispatch Driveway Laboratory
+                  </h2>
+                  <p className="text-slate-400 text-xs mt-1">
+                    Book a physical driveway visit from our Spokane Valley tech van. The tech will carry out microscopic logic board soldering and screen repairs right in your driveway!
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+                  {/* Form */}
+                  <form onSubmit={handleBookAppointment} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Desire Date</label>
+                      <input
+                        type="date"
+                        value={bookDate}
+                        onChange={(e) => setBookDate(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Target Time Window</label>
+                      <select
+                        value={bookTime}
+                        onChange={(e) => setBookTime(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="10:00 AM - 12:00 PM">Morning Dispatch (10:00 AM - 12:00 PM)</option>
+                        <option value="12:00 PM - 2:00 PM">Midday Dispatch (12:00 PM - 2:00 PM)</option>
+                        <option value="2:00 PM - 4:00 PM">Afternoon Dispatch (2:00 PM - 4:00 PM)</option>
+                        <option value="4:00 PM - 6:00 PM">Evening Dispatch (4:00 PM - 6:00 PM)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Driveway Remarks & Parking Directions</label>
+                      <textarea
+                        value={bookRemarks}
+                        onChange={(e) => setBookRemarks(e.target.value)}
+                        rows={3}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 resize-none"
+                        placeholder="Please pull into the second driveway. Beware of friendly golden retriever!"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs uppercase tracking-widest transition-all shadow-md shadow-blue-500/15"
+                    >
+                      Schedule Dispatch Van Booking
+                    </button>
+                  </form>
+
+                  {/* Your Appointments List */}
+                  <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-3">Your Booked Dispatch Flights</h3>
+                      <div className="space-y-3 overflow-y-auto max-h-[220px]">
+                        {leads.length > 0 ? (
+                          leads.map((lead) => (
+                            <div key={lead.id} className="bg-slate-950 p-3 rounded-lg border border-slate-850 flex items-center justify-between gap-3 font-mono">
+                              <div>
+                                <span className="text-[10px] text-blue-400 font-bold block">{lead.id}</span>
+                                <span className="text-xs text-white uppercase block mt-1">{lead.deviceModel || "Device Config"}</span>
+                                <span className="text-[10px] text-slate-500 block mt-0.5">Created: {new Date(lead.createdAt).toLocaleDateString()}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="inline-block text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                  {lead.status}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-slate-500 text-center py-8 text-xs font-mono">
+                            No dispatch flights scheduled. Setup a date on the left.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: COMMUNICATE WITH THE COMPANY */}
+          {activeHubTab === "chat" && (
+            <div className="animate-in fade-in duration-300 text-slate-300 flex-1 flex flex-col justify-between h-[520px]">
+              <div className="flex flex-col flex-grow justify-between h-full">
+                
+                {/* Header info */}
+                <div className="mb-4 shrink-0 border-b border-slate-800 pb-3 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <MessageSquare className="text-blue-400 w-4 h-4 animate-pulse" />
+                      Direct Triage Helpdesk Connection
+                    </h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Chat directly with the office AI supervisor and on-call hardware reverse engineering leads of Spokane.
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 bg-emerald-900/10 border border-emerald-500/20 px-2 py-1 rounded inline-block uppercase font-mono tracking-widest">
+                    ● SECURE DIRECT CHANNEL
+                  </span>
+                </div>
+
+                {/* Message list */}
+                <div className="flex-1 overflow-y-auto p-4 bg-slate-950 rounded-xl border border-slate-850 space-y-4 mb-4 min-h-[280px] max-h-[300px]">
+                  {customerMessages.map((msg, idx) => {
+                    const isClient = msg.sender === "user";
+                    return (
+                      <div key={idx} className={`flex ${isClient ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] rounded-2xl p-3.5 relative ${
+                          isClient 
+                            ? "bg-blue-600 text-white rounded-br-none" 
+                            : "bg-slate-880/70 text-slate-200 rounded-bl-none border border-slate-705"
+                        }`}>
+                          <p className="text-xs leading-relaxed">{msg.text}</p>
+                          <span className="text-[9px] text-slate-400 mt-1.5 block text-right font-mono">
+                            {msg.timestamp}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {isCustomerChatSending && (
+                    <div className="flex justify-start">
+                      <div className="bg-slate-880/70 border border-slate-705 text-slate-400 rounded-2xl p-3.5 rounded-bl-none flex items-center gap-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                        <span className="text-xs font-mono">Triage Supervisor typing...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Input frame */}
+                <form onSubmit={handleCustomerChatSend} className="shrink-0 flex gap-2">
+                  <input
+                    type="text"
+                    value={customerChatInput}
+                    onChange={(e) => setCustomerChatInput(e.target.value)}
+                    disabled={isCustomerChatSending}
+                    placeholder={`Type technical or scheduling details for your ${profilePreferredDevice}...`}
+                    className="flex-1 bg-slate-900 border border-slate-705 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 pr-10"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isCustomerChatSending}
+                    className="px-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </form>
+
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
