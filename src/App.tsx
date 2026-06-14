@@ -137,6 +137,7 @@ export default function App() {
   const [deviceModel, setDeviceModel] = useState<string>("iPhone 14 Pro Max");
   const [deviceTier, setDeviceTier] = useState<"flagship" | "midrange" | "budget">("flagship");
   const [issueType, setIssueType] = useState<"screen" | "battery" | "button">("screen");
+  const [internalNotes, setInternalNotes] = useState<string>("");
   
   // Device Hardware Scan state
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -356,7 +357,8 @@ export default function App() {
       discount: quote.discountInfo.amount,
       total: quote.grandTotal,
       createdAt: new Date().toISOString(),
-      userId: authUser.uid
+      userId: authUser.uid,
+      internalNotes: internalNotes.trim() || undefined
     };
 
     if (authUser.uid === "sandbox-tech-101") {
@@ -366,10 +368,11 @@ export default function App() {
       localStorage.setItem("dcp_sandbox_tickets", JSON.stringify(list));
       setFirestoreTickets(list);
       setTicketCreationSuccess(true);
+      setInternalNotes("");
       setTimeout(() => setTicketCreationSuccess(false), 3000);
       addToast(
         "Sandbox Cloud Backup Success",
-        `D&CP Ticket ${ticketId} simulated backup and registered successfully in sandbox memory logs!`,
+        `D&CP Ticket ${ticketId} simulated backup with internal notes and registered successfully in sandbox memory logs!`,
         "success"
       );
       return;
@@ -380,6 +383,7 @@ export default function App() {
       const docRef = doc(db, "tickets", ticketId);
       await setDoc(docRef, newTicket);
       setTicketCreationSuccess(true);
+      setInternalNotes("");
       setTimeout(() => setTicketCreationSuccess(false), 3000);
       fetchFirestoreTickets(authUser.uid);
     } catch (err) {
@@ -511,8 +515,14 @@ export default function App() {
       text: "Display & Cell Pros Diagnostic Cloud activated. Secure GCP Cloud Run instance online. Please describe your hardware issue. I am constrained strictly to screen, battery, and button diagnostics." 
     }
   ]);
-  const [chatInput, setChatInput] = useState<string>("Screen touch lag and horizontal pink lines");
+  const [chatInput, setChatInput] = useState<string>(() => {
+    return localStorage.getItem("dcp_unsent_diagnostic_input") ?? "Screen touch lag and horizontal pink lines";
+  });
   const [isChatSending, setIsChatSending] = useState<boolean>(false);
+
+  useEffect(() => {
+    localStorage.setItem("dcp_unsent_diagnostic_input", chatInput);
+  }, [chatInput]);
 
   // POS Tickets and Live Synchronization Logs
   const [tickets, setTickets] = useState<RepairTicket[]>([]);
@@ -2305,6 +2315,19 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         ))}
                       </div>
                     </div>
+
+                    <div>
+                      <label htmlFor="internalNotes" className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5 font-mono">Internal Technical Notes</label>
+                      <textarea
+                        id="internalNotes"
+                        name="internalNotes"
+                        rows={3}
+                        value={internalNotes}
+                        onChange={(e) => setInternalNotes(e.target.value)}
+                        placeholder="Enter free-form findings, diagnostic codes, micro-soldering tasks, or voltage readings..."
+                        className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded p-2 text-xs focus:outline-none focus:border-blue-500 font-mono resize-none leading-relaxed placeholder:text-slate-650"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2666,7 +2689,14 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                             </button>
                           </form>
                           <div className="flex items-center gap-2 mt-2 px-1 justify-between text-[9px] text-slate-500 font-mono">
-                            <span>Google Grounded live query mode active. Spokane-focused local indexes applied.</span>
+                            <span className="flex items-center gap-2">
+                              <span>Google Grounded live query mode active. Spokane-focused local indexes applied.</span>
+                              {chatInput.trim() && (
+                                <span className="text-amber-500 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 animate-pulse">
+                                  ● DRAFT AUTO-SAVED
+                                </span>
+                              )}
+                            </span>
                             <span className="font-semibold text-emerald-500">🛡️ SECURE TLS LINK</span>
                           </div>
                         </div>
@@ -2935,6 +2965,11 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                     <td className="p-3 text-slate-300 font-sans">
                                       {ft.device}
                                       <div className="text-[9px] text-slate-500 uppercase mt-0.5">{ft.issueType}</div>
+                                      {ft.internalNotes && (
+                                        <div className="text-[9.5px] text-emerald-400 border-l-2 border-emerald-500 bg-emerald-500/5 px-1.5 py-0.5 rounded mt-1 select-all font-mono leading-relaxed max-w-[180px] break-words" title={ft.internalNotes}>
+                                          ✍️ {ft.internalNotes}
+                                        </div>
+                                      )}
                                     </td>
                                     <td className="p-3 text-white font-bold">
                                       ${ft.total.toFixed(2)}

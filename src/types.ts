@@ -11,6 +11,7 @@ export interface RepairTicket {
   total: number;
   createdAt: string;
   userId?: string;
+  internalNotes?: string;
 }
 
 export interface POSLog {

@@ -29,7 +29,8 @@
         "discount": { "type": "number" },
         "total": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "userId": { "type": "string" }
+        "userId": { "type": "string" },
+        "internalNotes": { "type": "string" }
       },
       "required": ["id", "customerName", "device", "issueType", "status", "total", "createdAt"]
     },

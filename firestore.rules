@@ -36,7 +36,7 @@ service cloud.firestore {
 
     function isValidTicket(data) {
       return data.keys().hasAll(['id', 'customerName', 'device', 'issueType', 'status', 'quotedPrice', 'tax', 'discount', 'total', 'createdAt', 'userId'])
-        && data.keys().size() <= 12
+        && data.keys().size() <= 13
         && data.id is string && data.id.size() <= 32
         && data.customerName is string && data.customerName.size() <= 128
         && data.device is string && data.device.size() <= 128
@@ -47,7 +47,8 @@ service cloud.firestore {
         && data.discount is number
         && data.total is number
         && data.createdAt is string
-        && data.userId is string && data.userId.size() <= 128;
+        && data.userId is string && data.userId.size() <= 128
+        && (!data.keys().hasAny(['internalNotes']) || (data.internalNotes is string && data.internalNotes.size() <= 4096));
     }
 
     function isValidLead(data) {
