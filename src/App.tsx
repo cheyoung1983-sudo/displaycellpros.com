@@ -247,6 +247,10 @@ export default function App() {
         setFirestoreTickets(list);
         return;
       }
+      if (!auth.currentUser) {
+        console.warn("Skipping Firestore tickets fetch: No authenticated user session active.");
+        return;
+      }
       const ticketsRef = collection(db, "tickets");
       const q = query(ticketsRef, where("userId", "==", uid));
       const querySnapshot = await getDocs(q);
@@ -273,6 +277,10 @@ export default function App() {
         const existing = localStorage.getItem("dcp_sandbox_leads");
         const list = existing ? JSON.parse(existing) : [];
         setLeads(list);
+        return;
+      }
+      if (!auth.currentUser) {
+        console.warn("Skipping Firestore leads fetch: No authenticated user session active.");
         return;
       }
       const leadsRef = collection(db, "high-priority-leads");
@@ -5441,7 +5449,7 @@ function CustomerHubView({
 
       if (authUser?.uid && authUser.uid !== "sandbox-tech-101") {
         const { doc, setDoc } = await import("firebase/firestore");
-        const leadRef = doc(db, "leads", newLead.id);
+        const leadRef = doc(db, "high-priority-leads", newLead.id);
         await setDoc(leadRef, newLead);
       } else {
         // Save in Sandbox local storage list
