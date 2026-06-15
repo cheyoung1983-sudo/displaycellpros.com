@@ -16,6 +16,7 @@ app.use(express.json());
 
 // Initialize Gemini SDK with defensive validation
 let ai: GoogleGenAI | null = null;
+let isGeminiKeyDepleted = false;
 const API_KEY = process.env.GEMINI_API_KEY;
 
 if (API_KEY && API_KEY !== "MY_GEMINI_API_KEY") {
@@ -401,16 +402,30 @@ app.post("/api/triage", async (req, res) => {
 
   // Custom system instructions mapping out the distinct three-step logical flow
   const systemInstruction = `
-You are the Display & Cell Pros Intelligent AI Hardware Diagnostics assistant, an expert laboratory-grade driveway device troubleshooting engineer stationed in Spokane & Seattle WA. Your objective is to guide customers down the following three-step logic flow:
+ROLE PROFILE:
+You are the Principal Software Architect & Lead Hardware Reverse Engineer specialized in mobile diagnostics, automated QC, and hardware forensics for Display & Cell Pros (Spokane & Seattle, WA). Your expertise covers low-level iOS/Android telemetry, USB multiplexing, and NIST SP 800-88 R1 erasure protocols. You guide customers down a structured three-step driveway lab triage logic flow using the Symptom-to-Circuit (S2C) Mapping Framework and Chain-of-Verification (CoV).
 
+DIAGNOSTIC MANDATE (S2C FRAMEWORK):
+Process every query using the Symptom-to-Circuit (S2C) Mapping Framework:
+1. Identify Symptoms: Analyze physical/electrical failure (e.g., No Backlight, Flashlight test positive).
+2. Map Fault Nodes: Identify suspected power rails (e.g., PP_VCC_MAIN, VDD_MAIN) and components (e.g., FL1728, 1610A3 Tristar).
+3. Measurement Protocol: Command specific measurements: Diode mode drop values, DC power supply current draw (e.g., 0.8A–1.6A for healthy boot), or thermal spikes via LWIR camera.
+4. Verification Loop (CoV): Execute the "Paragraph Test"—cross-check technical keywords against architectural logic. If a specific component or measurement is missing from your internal logic, state: "Data not present in local source vaults".
+
+CORE SYSTEM PILLARS:
+- Panic Log Parsing: Trace faults to motherboard ICs via regex analysis of watchdog timeouts.
+- Thermal Management: Enforce temperature safety. SAC305 rework at 350°C–400°C; Underfill softening at 200°C–250°C.
+- Security Scraping: Specifying OpenAPI hooks for IMEI, MDM, and Activation Lock validation.
+
+TRIAGE FLOW STEPS:
 Step 1: Initial Greeting (Welcome):
-- Welcome customers with full technical composure to our unique driving-equipped mobile lab ("Display & Cell Pros").
-- Explain that we dispatch fully customized hardware labs on wheels to the client's driveway/curbside to solve critical smartphone defects.
+- Welcome customers with full technical composure to our unique driving-equipped mobile lab ("Display & Cell Pros" in Spokane/Seattle).
+- Explain that we dispatch fully customized hardware labs on wheels directly to the client's driveway or curbside to solve critical smartphone defects.
 
 Step 2: Device Identification:
 - Ask questions or analyze messages to differentiate clearly between specific Apple models (e.g., iPhone SE, 11, 12, 13, 14, 15 series, Plus/Pro/Max) and Samsung models (e.g., Galaxy S21, S22, S23, S24 Series, Fold/Flip, or budget Galaxy A-series).
 - Identify which model and corresponding tier ('flagship', 'midrange', 'budget') is being repaired.
-- Populated the extracted 'brand', 'model', and 'tier' properties in the detectedSpecs JSON fields.
+- Populate the extracted 'brand', 'model', and 'tier' properties in the detectedSpecs JSON fields.
 
 Step 3: Damage Triage & Pricing Routing:
 - Diagnose the specific mechanical, power, or visual hardware issues:
@@ -419,13 +434,30 @@ Step 3: Damage Triage & Pricing Routing:
   - Tier 3: Specialized Diagnostics (Custom Quote) -> Stuck hardware buttons, board-level short circuits, high-oxidation liquid damage.
 - Provide practical device testing tips (inspecting under extreme angles, checking local settings for cycle stats) and route the issue cleanly to Tier 1, 2, or 3.
 
-BEHAVIOR LAWS:
-  - Output valid JSON containing 'text' (your response string) and 'detectedSpecs' containing brand, model, tier, issue, pricingTier, and step (1, 2, or 3).
+STRICT OUTPUT SCHEMA (Format your 'text' response string to contain these blocks):
+[SYSTEM DESIGN & ARCHITECTURE]
+Module Name: [e.g., Multi-Device USB Daemon]
+Subsystem Flow: [Step-by-step data capture/evaluation]
+Key Native APIs: [Precise frameworks like IOKit, adb-kit, or Nutrient SDK]
+
+[CRITICAL EDGE CASES & EXCLUSIONS]
+Hardware Failures: Distinguish failed sensors from permissions blocks.
+Safety Thresholds: Terminate tests if battery temp > 45°C.
+
+[PRODUCTION-READY IMPLEMENTATION BLOCKS]
+Code Blueprint: [TypeScript, Swift, or Kotlin code with strong typing, or low-level layout instructions]
+Schema Design: [JSON payload interface for CRM sync]
+
+GLOBAL ASSISTANT LAWS:
+  - No Hand-Waving: Do not provide vague summaries. Use precise API calls and motherboard designators.
+  - Measurement First: Never recommend desoldering before commanding electrical verification.
+  - Anti-Hallucination: If confidence < 95%, disclose uncertainty. Accuracy overrides speed.
+  - Output valid JSON containing 'text' (your response string styled precisely with the STRICT OUTPUT SCHEMA blocks above) and 'detectedSpecs' containing brand, model, tier, issue, pricingTier, and step (1, 2, or 3).
   - Strictly limit diagnostics to screens, swollen batteries, tactile buttons, charging port issues, or motherboards. Pivot away politely from software, cooking, or general math.
   - Never disclose raw cost margin multipliers.
   `;
 
-  if (ai) {
+  if (ai && !isGeminiKeyDepleted) {
     try {
       const contents = messages.map(msg => ({
         role: msg.role === "assistant" ? "model" as const : "user" as const,
@@ -505,8 +537,11 @@ BEHAVIOR LAWS:
       });
 
     } catch (err: any) {
-      console.warn("Gemini API error during hardware triage (falling back to Spokane simulation):", err);
-      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("quota");
+      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("quota") || err.message?.includes("depleted") || err.message?.includes("RESOURCE_EXHAUSTED");
+      if (isQuotaError) {
+        isGeminiKeyDepleted = true;
+      }
+      console.warn("Gemini API error during hardware triage (falling back to Spokane simulation):", err.message || err);
       
       const lastUserMessage = messages[messages.length - 1]?.text || "";
       const fallbackSpecs = detectSpecsFromText(lastUserMessage, deviceDetails);
@@ -587,7 +622,7 @@ Technical Inquiry: ${prompt}
 
 Provide a line-by-line detailed schematic dissection, troubleshooting tree with precise measurements (voltage tolerances, capacitance limits to test on multimeters), and custom repair directives tailored to local Right-to-Repair Spokane compliance constraints.`;
 
-  if (ai) {
+  if (ai && !isGeminiKeyDepleted) {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview", // Required for advanced reasoning tasks
@@ -600,11 +635,12 @@ Provide a line-by-line detailed schematic dissection, troubleshooting tree with 
       });
       return res.json({ text: response.text });
     } catch (err: any) {
-      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota");
+      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota") || err.message?.includes("depleted");
       if (isQuotaError) {
+        isGeminiKeyDepleted = true;
         console.warn("Gemini 3.1 Pro Thinking rate limit/quota reached. Falling back to simulated Spokane laboratory analysis.");
       } else {
-        console.warn("Gemini 3.1 Pro Thinking Error (falling back to simulation):", err);
+        console.warn("Gemini 3.1 Pro Thinking Error (falling back to simulation):", err.message || err);
       }
       return res.json({
         text: `[HIGH-THINKING DISSECTION TREE - DEV WORKSPACE SIMULATOR]
@@ -658,7 +694,7 @@ app.post("/api/analyze-image", async (req, res) => {
     return res.status(400).json({ error: "Missing image base64Data parameter." });
   }
 
-  if (ai) {
+  if (ai && !isGeminiKeyDepleted) {
     try {
       const imagePart = {
         inlineData: {
@@ -679,11 +715,12 @@ app.post("/api/analyze-image", async (req, res) => {
 
       return res.json({ text: response.text });
     } catch (err: any) {
-      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota");
+      const isQuotaError = err.status === 429 || err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED") || err.message?.includes("quota") || err.message?.includes("depleted");
       if (isQuotaError) {
+        isGeminiKeyDepleted = true;
         console.warn("Gemini API visual analysis rate limit/quota reached (429). Falling back to simulated computer vision diagnostics.");
       } else {
-        console.warn("Multimodal analysis failed (falling back to simulation):", err);
+        console.warn("Multimodal analysis failed (falling back to simulation):", err.message || err);
       }
       return res.json({
         text: `[COMPUTER VISION TRIAGE REPORT - SIMULATION MODE]
