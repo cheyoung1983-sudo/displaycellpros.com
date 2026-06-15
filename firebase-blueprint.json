@@ -50,6 +50,23 @@
         "userId": { "type": "string" }
       },
       "required": ["id", "customerName", "phone", "deviceModel", "status", "createdAt", "userId"]
+    },
+    "S2CFeedback": {
+      "title": "S2C Feedback",
+      "description": "Stores user ratings and correction notes for logical circuit maps",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "pathway": { "type": "string" },
+        "rating": { "type": "string", "enum": ["up", "down"] },
+        "deviceModel": { "type": "string" },
+        "notes": { "type": "string" },
+        "ammeterReading": { "type": "number" },
+        "batteryTemp": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "pathway", "rating", "deviceModel", "createdAt"]
     }
   },
   "firestore": {
@@ -64,6 +81,10 @@
     "high-priority-leads/{leadId}": {
       "schema": "HighPriorityLead",
       "description": "Hot leads representing complex repairs routed to manual technician callback queues"
+    },
+    "s2c-feedback/{feedbackId}": {
+      "schema": "S2CFeedback",
+      "description": "Technician ratings and comments indicating validation quality of logic board circuits"
     }
   }
 }

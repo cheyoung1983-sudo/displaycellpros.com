@@ -66,6 +66,20 @@ service cloud.firestore {
         && data.userId is string && data.userId.size() <= 128;
     }
 
+    function isValidS2CFeedback(data) {
+      return data.keys().hasAll(['id', 'userId', 'pathway', 'rating', 'deviceModel', 'createdAt'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.pathway is string && data.pathway.size() <= 64
+        && data.rating is string && (data.rating == 'up' || data.rating == 'down')
+        && data.deviceModel is string && data.deviceModel.size() <= 128
+        && data.createdAt is string
+        && (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 2048))
+        && (!data.keys().hasAny(['ammeterReading']) || data.ammeterReading is number)
+        && (!data.keys().hasAny(['batteryTemp']) || data.batteryTemp is number);
+    }
+
     // --- COLLECTION RULES MATCHES ---
     match /users/{userId} {
       allow get: if isSignedIn() && userId == request.auth.uid;
@@ -121,6 +135,16 @@ service cloud.firestore {
         && incoming().userId == existing().userId
         && incoming().id == existing().id
         && incoming().createdAt == existing().createdAt;
+    }
+
+    match /s2c-feedback/{feedbackId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(feedbackId)
+        && isValidS2CFeedback(incoming())
+        && incoming().userId == request.auth.uid;
     }
   }
 }

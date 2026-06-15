@@ -48,11 +48,20 @@ import {
   Loader2,
   UserCheck,
   Sparkles,
-  CheckCircle
+  CheckCircle,
+  ThumbsUp,
+  ThumbsDown,
+  Sliders,
+  SlidersHorizontal,
+  Brain,
+  ShieldAlert,
+  Filter
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
 import { HardwareScanChart } from "./components/HardwareScanChart";
+import { ForensicsView } from "./components/ForensicsView";
+import { TechnicianDashboard } from "./components/TechnicianDashboard";
 import { jsPDF } from "jspdf";
 import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
@@ -101,6 +110,22 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>("home");
   const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [storeCart, setStoreCart] = useState<Record<number, number>>({});
+
+  // --- STORE INVENTORY STATES & THRESHOLDS ---
+  const [storeStock, setStoreStock] = useState<Record<number, number>>({
+    1: 3,   // Casper Tempered Glass (High-Turnover, starts below threshold)
+    2: 2,   // AmpSentrix Fast Charger (20W) (High-Turnover, starts below threshold)
+    3: 12,  // CPO iPhone 13 Pro (128GB)
+    4: 15   // Heavy Duty Fleet Case
+  });
+  const [stockThreshold, setStockThreshold] = useState<number>(5);
+
+  const hasLowStockHighTurnover = Object.entries(storeStock).some(([idStr, stock]) => {
+    const id = parseInt(idStr);
+    const isHighTurnover = id === 1 || id === 2; // Tempered Glass and Fast Chargers
+    return isHighTurnover && stock < stockThreshold;
+  });
 
   // --- DIAGNOSTIC HUB STATES ---
   const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics">("triage");
@@ -151,6 +176,50 @@ export default function App() {
     "Tristar-1610A3-USB-Multiplexer.pdf": false,
     "NIST-SP-800-88-R1-Compliance.pdf": true,
   });
+
+  // --- S2C DIAGNOSTIC CORE ENG STATES ---
+  const [s2cActivePathway, setS2cActivePathway] = useState<"backlight" | "charging" | "short_rail">("backlight");
+  const [s2cActiveCodeTab, setS2cActiveCodeTab] = useState<"typescript" | "json">("typescript");
+  const [s2cBatteryTemp, setS2cBatteryTemp] = useState<number>(34.2);
+  const [s2cAmmeterReading, setS2cAmmeterReading] = useState<number>(1.12);
+  const [s2cIsSimulatingCheck, setS2cIsSimulatingCheck] = useState<boolean>(false);
+  const [s2cCheckLogs, setS2cCheckLogs] = useState<string[]>([]);
+  const [s2cCheckStatus, setS2cCheckStatus] = useState<"idle" | "testing" | "passed" | "thermal_halt">("idle");
+
+  const [s2cFeedbackRating, setS2cFeedbackRating] = useState<Record<string, "up" | "down" | null>>({
+    backlight: null,
+    charging: null,
+    short_rail: null,
+  });
+  const [s2cFeedbackNotes, setS2cFeedbackNotes] = useState<Record<string, string>>({
+    backlight: "",
+    charging: "",
+    short_rail: "",
+  });
+  const [s2cFeedbackSubmitted, setS2cFeedbackSubmitted] = useState<Record<string, boolean>>({
+    backlight: false,
+    charging: false,
+    short_rail: false,
+  });
+  const [s2cIsSubmittingFeedback, setS2cIsSubmittingFeedback] = useState<boolean>(false);
+
+  // --- FORENSICS ORCHESTRATOR VISUAL SUB-STATES ---
+  const [telemetrySpecTab, setTelemetrySpecTab] = useState<"visual" | "android" | "ios" | "macos">("visual");
+  const [activePlanTier, setActivePlanTier] = useState<"standard" | "plus" | "pro" | "ultra" | "enterprise">("enterprise");
+  const [referenceMode, setReferenceMode] = useState<"solder_matrices" | "thermal_seeker" | "handshake_failures">("solder_matrices");
+  const [hallucinationSimulatedKeyword, setHallucinationSimulatedKeyword] = useState<string>("");
+
+  // --- CHAIN-OF-VERIFICATION (CoV) & SOURCE NARROWING STATES ---
+  const [covThreshold, setCovThreshold] = useState<number>(0.35);
+  const [covCustomDraft, setCovCustomDraft] = useState<string>("");
+  const [isCovRunning, setIsCovRunning] = useState<boolean>(false);
+  const [covLogs, setCovLogs] = useState<string[]>([]);
+  const [covStatus, setCovStatus] = useState<"PASS" | "REDO" | "IDLE">("IDLE");
+  const [covAuditResult, setCovAuditResult] = useState<any>(null);
+  const [isNarrowingActive, setIsNarrowingActive] = useState<boolean>(false);
+  const [narrowingLogs, setNarrowingLogs] = useState<string[]>([]);
+  const [narrowedAudit, setNarrowedAudit] = useState<any>(null);
+  const [selectedCovTab, setSelectedCovTab] = useState<"interactive" | "payload">("interactive");
 
   // Active Customer & Device Details
   const [customerName, setCustomerName] = useState<string>("Jane Miller");
@@ -509,6 +578,167 @@ export default function App() {
     );
   };
 
+  const handleS2cSimulate = () => {
+    setS2cIsSimulatingCheck(true);
+    setS2cCheckStatus("testing");
+    setS2cCheckLogs([]);
+
+    const baseLogs = [
+      `[S2C Engine] Initializing Symptom-to-Circuit mapping analysis pipeline...`,
+      `[Telemetry] Polling digital ammeter live data. Value read: ${s2cAmmeterReading}A.`,
+      `[Telemetry] Sensor monitoring active... Battery Temp: ${s2cBatteryTemp}°C.`,
+    ];
+
+    let currentLogs: string[] = [];
+    let logIndex = 0;
+
+    const runLogStep = () => {
+      if (logIndex < baseLogs.length) {
+        currentLogs.push(baseLogs[logIndex]);
+        setS2cCheckLogs([...currentLogs]);
+        logIndex++;
+        setTimeout(runLogStep, 400);
+      } else {
+        // Assert safety threshold FIRST
+        if (s2cBatteryTemp > 45) {
+          currentLogs.push(`[🚨 FATAL CRITICAL EXCLUSION] BATTERY TEMPERATURE DETECTED AS EXCESSIVE (${s2cBatteryTemp}°C > 45.0°C).`);
+          currentLogs.push(`[🚨 SYSTEM SHUTDOWN] Terminating forensic diagnostic session programmatically to prevent thermal runaway & chemical flashover.`);
+          setS2cCheckLogs([...currentLogs]);
+          setS2cCheckStatus("thermal_halt");
+          setS2cIsSimulatingCheck(false);
+          addToast("Thermal Shutdown", "Diagnostic session terminated! Battery exceeds safety limits (45°C).", "error");
+          return;
+        }
+
+        // Add pathway specific logs
+        if (s2cActivePathway === "backlight") {
+          const backlightLogs = [
+            `[S2C Mapping] Cross-referencing "Backlight failure" symptoms against 1,000,000-token schematics...`,
+            `[S2C Mapping] Identified target voltage rail: PP_LCM_BL_ANODE (Backlight Boost Out)`,
+            `[S2C Fault Isolation] Suspected component focal point: FL1728 (Filter Fuse)`,
+            `[Verification Cmd] MANDATORY CHECK: Probe FL1728 terminals for continuity. Expected impedance < 0.5 Ω.`,
+            `[S2C Outcome] SUCCESS: Backlight pathway mapped successfully (Fidelity verified: PASS).`
+          ];
+          let subIdx = 0;
+          const runSub = () => {
+            if (subIdx < backlightLogs.length) {
+              currentLogs.push(backlightLogs[subIdx]);
+              setS2cCheckLogs([...currentLogs]);
+              subIdx++;
+              setTimeout(runSub, 350);
+            } else {
+              setS2cCheckStatus("passed");
+              setS2cIsSimulatingCheck(false);
+              addToast("Mapping Succeeded", "Backlight circuit paths mapped successfully!", "success");
+            }
+          };
+          runSub();
+        } else if (s2cActivePathway === "charging") {
+          const chargingLogs = [
+            `[S2C Mapping] Analysing non-charging symptoms & ammeter readings...`,
+            `[S2C Mapping] Identified target voltage rails: USB_VBUS / PMU_USB_BRICKID`,
+            `[S2C Fault Isolation] Suspected controller IC: 1610A3 (Tristar Charging Multiplexer)`,
+            `[Verification Cmd] MANDATORY CHECK: Examine battery terminals. If flat-voltage < 2.0V or diode-drop fails, Tristar failure confirmed.`,
+            `[S2C Outcome] SUCCESS: Charging controller pathway mapped successfully.`
+          ];
+          let subIdx = 0;
+          const runSub = () => {
+            if (subIdx < chargingLogs.length) {
+              currentLogs.push(chargingLogs[subIdx]);
+              setS2cCheckLogs([...currentLogs]);
+              subIdx++;
+              setTimeout(runSub, 350);
+            } else {
+              setS2cCheckStatus("passed");
+              setS2cIsSimulatingCheck(false);
+              addToast("Mapping Succeeded", "U2/Tristar pathway mapped successfully!", "success");
+            }
+          };
+          runSub();
+        } else {
+          const shortLogs = [
+            `[S2C Mapping] Analyzing primary VDD_MAIN 1.1A deadlock...`,
+            `[S2C Mapping] Suspicious active main rail found: VDD_MAIN (Direct short to ground)`,
+            `[S2C Fault Isolation] Localized thermal target pinpointed on LWIR camera: Capacitor C247_W`,
+            `[Verification Cmd] MANDATORY CHECK: Probe C247_W in diode mode. Replace & clear main short before injecting current.`,
+            `[S2C Outcome] SUCCESS: Primary rail short-circuit pathway identified.`
+          ];
+          let subIdx = 0;
+          const runSub = () => {
+            if (subIdx < shortLogs.length) {
+              currentLogs.push(shortLogs[subIdx]);
+              setS2cCheckLogs([...currentLogs]);
+              subIdx++;
+              setTimeout(runSub, 350);
+            } else {
+              setS2cCheckStatus("passed");
+              setS2cIsSimulatingCheck(false);
+              addToast("Mapping Succeeded", "Main rail shorts isolated successfully!", "success");
+            }
+          };
+          runSub();
+        }
+      }
+    };
+    runLogStep();
+  };
+
+  const handleS2cFeedbackSubmit = async (pathwayId: string) => {
+    const rtg = s2cFeedbackRating[pathwayId];
+    if (!rtg) {
+      addToast("Feedback Required", "Please select thumbs up or thumbs down before submitting.", "warning");
+      return;
+    }
+
+    setS2cIsSubmittingFeedback(true);
+    const feedbackId = `S2C-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const currentDevice = s2cActivePathway === "backlight" ? "iPad Pro 9.7" : s2cActivePathway === "charging" ? "Apple iPhone XR" : "iPhone XR Board";
+    const feedbackPayload = {
+      id: feedbackId,
+      userId: authUser?.uid || "sandbox-tech-101",
+      pathway: pathwayId,
+      rating: rtg,
+      deviceModel: currentDevice,
+      notes: s2cFeedbackNotes[pathwayId] || "",
+      ammeterReading: s2cAmmeterReading,
+      batteryTemp: s2cBatteryTemp,
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      if (authUser && authUser.uid !== "sandbox-tech-101") {
+        const collectionRef = collection(db, "s2c-feedback");
+        const docRef = doc(collectionRef, feedbackId);
+        await setDoc(docRef, feedbackPayload);
+        addToast(
+          "Feedback Submitted",
+          `Thank you! Your circuit mapping feedback for ${currentDevice} has been stored in Cloud Firestore for future model refinement.`,
+          "success"
+        );
+      } else {
+        const existing = localStorage.getItem("dcp_sandbox_s2c_feedback");
+        const list = existing ? JSON.parse(existing) : [];
+        list.push(feedbackPayload);
+        localStorage.setItem("dcp_sandbox_s2c_feedback", JSON.stringify(list));
+        addToast(
+          "Sandbox Feedback Submitted",
+          `Feedback simulated successfully! Pathway of ${currentDevice} rated "${rtg}" and saved in browser sandbox memory logs!`,
+          "success"
+        );
+      }
+      setS2cFeedbackSubmitted((prev) => ({ ...prev, [pathwayId]: true }));
+    } catch (error) {
+      console.error("Failed to save S2C feedback:", error);
+      try {
+        handleFirestoreError(error, OperationType.WRITE, `s2c-feedback/${feedbackId}`);
+      } catch (jsonErr: any) {
+        addToast("Submission Error", jsonErr.message || "Could not synchronize S2C feedback rating.", "error");
+      }
+    } finally {
+      setS2cIsSubmittingFeedback(false);
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     try {
       setFirestoreError(null);
@@ -810,6 +1040,60 @@ export default function App() {
     }
   };
 
+  const handleAddSampleTickets = () => {
+    const brands = ["Apple", "Samsung", "Google"];
+    const models = ["iPhone 15 Pro", "Galaxy S24 Ultra", "Pixel 8 Pro", "iPad Pro", "iPhone 14"];
+    const issues = ["screen", "battery", "button"];
+    const customers = ["Liam Spokane", "Emma Henderson", "Sophia Martinez", "Olivia Davis", "Jackson Reed"];
+    const companies = ["Avista Utilities", "Spokane Fire Dept", "Gonzaga Univ", "Spokane Public Schools", "MultiCare Health"];
+    
+    const newItems: RepairTicket[] = [];
+    const now = Date.now();
+    
+    for (let i = 0; i < 5; i++) {
+      const isCompleted = Math.random() > 0.3;
+      const status: "open" | "parts_assigned" | "technician_working" | "quality_check" | "completed" = isCompleted 
+        ? "completed" 
+        : Math.random() > 0.5 ? "technician_working" : "open";
+      
+      const issue = issues[Math.floor(Math.random() * issues.length)];
+      const brand = brands[Math.floor(Math.random() * brands.length)];
+      const model = models[Math.floor(Math.random() * models.length)];
+      const customer = customers[i];
+      const company = Math.random() > 0.4 ? companies[i] : undefined;
+      
+      const basePrice = issue === "screen" ? 220 : issue === "battery" ? 99 : 149;
+      const discount = company ? Math.round(basePrice * 0.2) : 0;
+      const taxStr = ((basePrice - discount) * 0.1035).toFixed(2);
+      const tax = parseFloat(taxStr);
+      const total = basePrice - discount + tax;
+      
+      const hoursAgo = Math.floor(Math.random() * 12); // mostly today
+      const createdAt = new Date(now - hoursAgo * 3600000).toISOString();
+      const completedAt = status === "completed" 
+        ? new Date(new Date(createdAt).getTime() + (Math.random() * 1.5 + 0.5) * 3600000).toISOString()
+        : undefined;
+
+      newItems.push({
+        id: `DCP-${Math.floor(1000 + Math.random() * 9000)}`,
+        customerName: customer,
+        companyName: company,
+        device: `${brand} ${model}`,
+        issueType: issue,
+        status,
+        quotedPrice: basePrice,
+        tax,
+        discount,
+        total,
+        createdAt,
+        completedAt
+      });
+    }
+    
+    setTickets(prev => [...newItems, ...prev]);
+    addToast("Sample Data Pre-loaded", "5 enriched operating records merged with POS ledger charts!", "success");
+  };
+
   useEffect(() => {
     localStorage.setItem("dcp_user_role", userRole);
     
@@ -900,6 +1184,268 @@ export default function App() {
       handleTaxLookup(cleaned);
     }
   }, [zipInput]);
+
+  const getPathwayDraft = (pathway: string) => {
+    if (pathway === "backlight") {
+      return `Level 3 Revision Draft:
+Checking "No Backlight" symptom for iPad Pro 9.7 display assembly.
+Analysis of vector board maps reveals suspected fault node: FL1728 filter fuse. Ensure to test diode mode line drop on PP_LCM_BL_ANODE. 
+If FL1728 has blown open, bypass using 0.02mm enameled copper microjumper or swap with a lead-free SAC305 replacement. 
+Rework at 350-400C with high-resolution microscope magnification.`;
+    } else if (pathway === "charging") {
+      return `Level 3 Revision Draft:
+Analyzing USB non-charging symptom on iPhone XR motherboards.
+Cross-referencing charging rails USB_VBUS and PMU_USB_BRICKID to locate power routing path. 
+Suspected integrated controller: 161093 Tristar multiplexer reference. If flat battery voltage drops under 2.0V, Tristar swap is mandated.
+Check 1610A3 charging manager. Solder replacement with SAC305 flux at 370C.`;
+    } else {
+      return `Level 3 Revision Draft:
+VDD_MAIN primary voltage line shorted to ground causing 1.1A deadlocks.
+Thermal spike on LWIR imaging first points to filter capacitor C247_W as the localized hot zone.
+Note: Adjacent capacitors might show false-positives due to thermal soak. Probe C247_W resistance to ground.
+If short is confirmed, replace C247_W immediately. Check sandwich layers interface on iPhone XS+ models.`;
+    }
+  };
+
+  useEffect(() => {
+    setCovCustomDraft(getPathwayDraft(s2cActivePathway));
+    setCovStatus("IDLE");
+    setNarrowedAudit(null);
+    setNarrowingLogs([]);
+  }, [s2cActivePathway]);
+
+  const scanKeywords = (text: string) => {
+    const list: { keyword: string; matched: boolean; sourceDoc: string }[] = [];
+    const lower = text.toLowerCase();
+    
+    if (lower.includes("fl1728")) {
+      list.push({ keyword: "FL1728", matched: !!mountedSources["iPad-Pro-9.7-Backlight-FL1728.pdf"], sourceDoc: "iPad-Pro-9.7-Backlight-FL1728.pdf" });
+    }
+    if (lower.includes("pp_lcm_bl_anode")) {
+      list.push({ keyword: "PP_LCM_BL_ANODE", matched: !!mountedSources["iPad-Pro-9.7-Backlight-FL1728.pdf"], sourceDoc: "iPad-Pro-9.7-Backlight-FL1728.pdf" });
+    }
+    if (lower.includes("1610a3") || lower.includes("tristar")) {
+      list.push({ keyword: "1610A3", matched: !!mountedSources["Tristar-1610A3-USB-Multiplexer.pdf"], sourceDoc: "Tristar-1610A3-USB-Multiplexer.pdf" });
+    }
+    if (lower.includes("usb_vbus") || lower.includes("pmu_usb_brickid")) {
+      list.push({ keyword: "USB_VBUS", matched: !!mountedSources["Tristar-1610A3-USB-Multiplexer.pdf"], sourceDoc: "Tristar-1610A3-USB-Multiplexer.pdf" });
+    }
+    if (lower.includes("c247_w")) {
+      list.push({ keyword: "C247_W", matched: !!mountedSources["iPhone-XR-Schematics-Power-Rails.pdf"], sourceDoc: "iPhone-XR-Schematics-Power-Rails.pdf" });
+    }
+    if (lower.includes("vdd_main") || lower.includes("pp_vcc_main")) {
+      list.push({ keyword: "VDD_MAIN", matched: !!mountedSources["iPhone-XR-Schematics-Power-Rails.pdf"], sourceDoc: "iPhone-XR-Schematics-Power-Rails.pdf" });
+    }
+    
+    // Dynamic Simulation: Check for unmounted or unrecognized components (Strict Abstention Protocol Trigger)
+    if (lower.includes("fl9999")) {
+      list.push({ keyword: "FL9999", matched: false, sourceDoc: "(Unrecognized Component Code)" });
+    }
+    if (lower.includes("c9999")) {
+      list.push({ keyword: "C9999", matched: false, sourceDoc: "(Unrecognized Component Code)" });
+    }
+    if (lower.includes("u9999")) {
+      list.push({ keyword: "U9999", matched: false, sourceDoc: "(Unrecognized Component Code)" });
+    }
+    return list;
+  };
+
+  const runChainOfVerification = () => {
+    setIsCovRunning(true);
+    setCovLogs(["[CoV Phase 1] Initiating Chain-of-Verification (CoV) loop on current draft claims..."]);
+    
+    setTimeout(() => {
+      setCovLogs(prev => [...prev, "[CoV Phase 2] Breaking draft into individual diagnostic claims..."]);
+    }, 200);
+
+    setTimeout(() => {
+      const keywords = scanKeywords(covCustomDraft);
+      const kNames = keywords.map(k => k.keyword);
+      setCovLogs(prev => [
+        ...prev, 
+        `[CoV Phase 2] Granular Extraction: Identified hardware nodes and rails: [${kNames.length > 0 ? kNames.join(", ") : "None Detected"}]`
+      ]);
+    }, 450);
+
+    setTimeout(() => {
+      setCovLogs(prev => [...prev, "[CoV Phase 3] Cross-referencing against active vector schematic layouts... checking layout matching accuracy."]);
+    }, 700);
+
+    setTimeout(() => {
+      const keywords = scanKeywords(covCustomDraft);
+      const totalKeywords = keywords.length;
+      const verifiedKeywordsCount = keywords.filter(k => k.matched).length;
+      
+      let baseOverlap = totalKeywords > 0 ? (verifiedKeywordsCount / totalKeywords) : 0;
+      
+      const activeSourcesCount = Object.values(mountedSources).filter(Boolean).length;
+      let noisePenalty = 0;
+      if (activeSourcesCount > 2) {
+        noisePenalty = 0.15 * (activeSourcesCount - 2);
+      }
+      
+      const calculatedFidelity = Math.max(0, baseOverlap - noisePenalty);
+      
+      const pass = calculatedFidelity >= covThreshold;
+      setCovStatus(pass ? "PASS" : "REDO");
+      
+      setCovLogs(prev => [
+        ...prev,
+        `[CoV Phase 3] Verification complete. Net Fidelity Score: ${(calculatedFidelity * 100).toFixed(0)}% (Required Threshold: ${(covThreshold * 100).toFixed(0)}%).`,
+        pass 
+          ? "✔️ VERIFICATION PASS: Strict factual grounding confirmed! Diagnostic draft is certified safe."
+          : `❌ FIDELITY BREACH: Fidelity score is ${(calculatedFidelity * 100).toFixed(0)}%, which is below the safe threshold of ${(covThreshold * 100).toFixed(0)}%. Context narrowing is required to resolve signal dilution!`
+      ]);
+
+      const auditPayload = {
+        verification_audit: {
+          status: pass ? "PASS" : "REDO",
+          method: "Chain-of-Verification (CoV)",
+          threshold_enforced: covThreshold,
+          audit_metrics: {
+            paragraphs_tested: covCustomDraft.split("\n\n").length,
+            keywords_extracted: keywords.map(k => k.keyword),
+            keywords_verified: keywords.filter(k => k.matched).map(k => k.keyword),
+            context_flooding_files: activeSourcesCount,
+            noise_penalty_applied: noisePenalty,
+            fidelity_score: parseFloat(calculatedFidelity.toFixed(2))
+          },
+          source_grounding: {
+            cited_docs: keywords.filter(k => k.matched).map(k => k.sourceDoc),
+            verification_mode: "STRICT_FACTUAL"
+          }
+        }
+      };
+
+      setCovAuditResult(auditPayload);
+      setIsCovRunning(false);
+      
+      if (pass) {
+        addToast("CoV Check Passed", "High-fidelity diagnostic alignment verified!", "success");
+      } else {
+        addToast("Fidelity Error Detected", "Verification failed. Please trigger Source Narrowing to increase resolution.", "error");
+      }
+    }, 1100);
+  };
+
+  const triggerSourceNarrowing = () => {
+    setIsNarrowingActive(true);
+    setNarrowingLogs(["[CPO Phase 1] Contextual Precision Orchestrator initiated..."]);
+    
+    setTimeout(() => {
+      setNarrowingLogs(prev => [...prev, `[CPO Phase 1: Symptom-Based Filtering] Analyzing reported symptom path: "${s2cActivePathway}"`]);
+    }, 250);
+
+    setTimeout(() => {
+      let targetSubsystem = "";
+      let requiredDoc = "";
+      if (s2cActivePathway === "backlight") {
+        targetSubsystem = "iPad Backlight Core Power Layout";
+        requiredDoc = "iPad-Pro-9.7-Backlight-FL1728.pdf";
+      } else if (s2cActivePathway === "charging") {
+        targetSubsystem = "Tristar USB Charger Interface";
+        requiredDoc = "Tristar-1610A3-USB-Multiplexer.pdf";
+      } else {
+        targetSubsystem = "iPhone VDD_MAIN Power Rails Module";
+        requiredDoc = "iPhone-XR-Schematics-Power-Rails.pdf";
+      }
+
+      setNarrowingLogs(prev => [
+        ...prev,
+        `[CPO Phase 1] Target required subsystem pinpointed: ${targetSubsystem}.`,
+        `[CPO Phase 2: Citation Audit] Audit complete. Relevant source blueprint file identified: ${requiredDoc}`
+      ]);
+    }, 600);
+
+    setTimeout(() => {
+      setNarrowingLogs(prev => [...prev, "[CPO Phase 2: Source Pruning] Disengaging unrelated context files to mitigate context flooding risk..."]);
+    }, 1000);
+
+    setTimeout(() => {
+      let requiredDoc = "";
+      if (s2cActivePathway === "backlight") {
+        requiredDoc = "iPad-Pro-9.7-Backlight-FL1728.pdf";
+      } else if (s2cActivePathway === "charging") {
+        requiredDoc = "Tristar-1610A3-USB-Multiplexer.pdf";
+      } else {
+        requiredDoc = "iPhone-XR-Schematics-Power-Rails.pdf";
+      }
+
+      // Update mountedSources in state: mount only the required document, unmount the others
+      setMountedSources({
+        "iPhone-XR-Schematics-Power-Rails.pdf": requiredDoc === "iPhone-XR-Schematics-Power-Rails.pdf",
+        "iPad-Pro-9.7-Backlight-FL1728.pdf": requiredDoc === "iPad-Pro-9.7-Backlight-FL1728.pdf",
+        "Tristar-1610A3-USB-Multiplexer.pdf": requiredDoc === "Tristar-1610A3-USB-Multiplexer.pdf",
+        "NIST-SP-800-88-R1-Compliance.pdf": false
+      });
+
+      setNarrowingLogs(prev => [
+        ...prev,
+        `[CPO Phase 2] Programmatic unmounting complete. Only high-signal "${requiredDoc}" remains active.`,
+        "[Full-Text Retrieval] Mounting restricted 1-million-token full text into grounding cache..."
+      ]);
+    }, 1400);
+
+    setTimeout(() => {
+      setNarrowingLogs(prev => [...prev, "[CoV Recheck] Re-executing paragraph verification pipeline with zero noise index..."]);
+    }, 1800);
+
+    setTimeout(() => {
+      const activePathway = s2cActivePathway;
+      const targetSubsystem = activePathway === "backlight" ? "iPad Backlight Boost" : activePathway === "charging" ? "Tristar Charging Multiplexer" : "iPhone VDD_MAIN Voltage Line";
+      const requiredDoc = activePathway === "backlight" ? "iPad-Pro-9.7-Backlight-FL1728.pdf" : activePathway === "charging" ? "Tristar-1610A3-USB-Multiplexer.pdf" : "iPhone-XR-Schematics-Power-Rails.pdf";
+      const faultNode = activePathway === "backlight" ? "FL1728" : activePathway === "charging" ? "1610A3" : "C247_W";
+
+      const auditPayload = {
+        narrowed_diagnostic_audit: {
+          target_system: targetSubsystem,
+          narrowing_metrics: {
+            initial_sources_available: 300,
+            sources_selected_for_query: 1,
+            signal_to_noise_optimization: "REFINED"
+          },
+          grounded_result: {
+            fault_node: faultNode,
+            verification_status: "PASS (The Paragraph Test)",
+            cited_context: `${requiredDoc}, Page 14`
+          }
+        }
+      };
+
+      setNarrowedAudit(auditPayload);
+      setCovStatus("PASS");
+      setIsNarrowingActive(false);
+
+      // Re-fill logs for CoV as well to reflect the success
+      setCovLogs(prev => [
+        ...prev,
+        `[CPO Bypass Update] Diagnostic recheck passed! Grounded with 100% precision. Hallucination probability reduced to 0%.`
+      ]);
+
+      addToast("Source Precision Active", "Signal concentration maximized. Hallucination risk mitigated!", "success");
+    }, 2200);
+  };
+
+  // Live Reactive CoV Calculations
+  const keywordsList = scanKeywords(covCustomDraft);
+  const totalKeywords = keywordsList.length;
+  const verifiedKeywordsCount = keywordsList.filter(k => k.matched).length;
+  
+  const baseOverlap = totalKeywords > 0 ? (verifiedKeywordsCount / totalKeywords) : 0;
+  
+  const activeSourcesCount = Object.values(mountedSources).filter(Boolean).length;
+  let noisePenalty = 0;
+  if (activeSourcesCount > 2) {
+    noisePenalty = 0.15 * (activeSourcesCount - 2);
+  }
+  
+  const calculatedFidelity = Math.max(0, baseOverlap - noisePenalty);
+  const pass = calculatedFidelity >= covThreshold;
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    addToast("Copied to Clipboard", "Audit schema JSON copied successfully!", "success");
+  };
 
   // --- GOOGLE CLOUD SERVICE DIRECTORY INTEGRATION FUNCTIONS ---
   
@@ -1963,9 +2509,42 @@ export default function App() {
     }
   };
 
+  const cartItemCount = Object.values(storeCart).reduce((acc: number, qty) => acc + (qty as number), 0) as number;
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-blue-500/30 flex flex-col justify-between">
       
+      {/* PROFESSIONAL BUSINESS TOP UTILITY BAR */}
+      <div className="bg-slate-950 border-b border-slate-800 text-slate-400 text-xs py-2 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 shrink-0 select-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-[11px] font-medium">
+            <span className="flex items-center gap-1.5 text-slate-300">
+              <Phone className="w-3.5 h-3.5 text-blue-500" />
+              <span>Direct Hotline: <strong className="text-white font-extrabold">(509) 555-0199</strong></span>
+            </span>
+            <span className="hidden md:inline text-slate-700">|</span>
+            <span className="flex items-center gap-1.5 text-slate-300">
+              <MapPin className="w-3.5 h-3.5 text-red-500" />
+              <span>Spokane Mobile Lab Dispatch Service Area</span>
+            </span>
+            <span className="hidden md:inline text-slate-700">|</span>
+            <span className="flex items-center gap-1.5 text-slate-300">
+              <Clock className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Mon - Sat: 8:00 AM - 6:00 PM</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-900/30 uppercase font-black tracking-widest px-2 py-0.5 rounded flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Mobile Dispatch Active
+            </span>
+            <span className="text-[9px] bg-blue-950 text-blue-400 border border-blue-950/40 uppercase font-bold tracking-widest px-2 py-0.5 rounded">
+              NIST 800-88 Compliant
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* HEADER / NAVIGATION BAR */}
       <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 shrink-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1986,13 +2565,38 @@ export default function App() {
                   <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")}>Home</NavButton>
                   <NavButton active={activeTab === "services"} onClick={() => setActiveTab("services")}>Services</NavButton>
                   <NavButton active={activeTab === "b2b"} onClick={() => setActiveTab("b2b")}>B2B Fleet</NavButton>
-                  <NavButton active={activeTab === "store"} onClick={() => setActiveTab("store")}>Store</NavButton>
+                  
+                  {/* Shopping Cart button */}
+                  <button
+                    onClick={() => setActiveTab("store")}
+                    className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative cursor-pointer ${
+                      activeTab === "store" 
+                        ? "text-blue-400 bg-slate-800 border border-blue-500/30" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                    }`}
+                  >
+                    {hasLowStockHighTurnover && (
+                      <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5" title="High-Turnover Item Low Stock Warn!">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500 border border-slate-900 justify-center items-center">
+                          <span className="text-[8px] text-slate-950 font-black leading-none">!</span>
+                        </span>
+                      </span>
+                    )}
+                    <ShoppingCart className="w-4 h-4 text-blue-400" />
+                    <span>Store / Supply</span>
+                    {cartItemCount > 0 && (
+                      <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[10px] font-black rounded-full h-5 w-5 flex items-center justify-center border border-slate-900 animate-bounce">
+                        {cartItemCount}
+                      </span>
+                    )}
+                  </button>
                   
                   {/* Diagnostics Embedded Laboratory Link */}
                   <button
                     id="tab-diagnostics-lab"
                     onClick={() => setActiveTab("lab")}
-                    className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative group ${
+                    className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative group cursor-pointer ${
                       activeTab === "lab" 
                         ? "text-blue-400 bg-slate-800 shadow-xs border border-blue-500/30" 
                         : "text-slate-300 hover:text-white hover:bg-slate-800/50"
@@ -2007,7 +2611,7 @@ export default function App() {
 
                   <button 
                     onClick={() => setIsAiOpen(true)}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-medium transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2"
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-medium transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2 cursor-pointer"
                   >
                     <MessageSquare size={18} />
                     Book / Quote
@@ -2079,7 +2683,9 @@ export default function App() {
                   <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}>Services</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("b2b"); setMobileMenuOpen(false); }}>B2B Fleet</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>Store</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>
+                    Store {hasLowStockHighTurnover && "⚠️ (LOW STOCK Alert!)"}
+                  </MobileNavButton>
                   
                   <button 
                       onClick={() => { setActiveTab("lab"); setMobileMenuOpen(false); }}
@@ -2138,7 +2744,17 @@ export default function App() {
         {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} />}
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
-        {activeTab === "store" && <StoreView />}
+        {activeTab === "store" && (
+          <StoreView 
+            storeCart={storeCart} 
+            setStoreCart={setStoreCart} 
+            addToast={addToast} 
+            storeStock={storeStock}
+            setStoreStock={setStoreStock}
+            stockThreshold={stockThreshold}
+            setStockThreshold={setStockThreshold}
+          />
+        )}
         
         {activeTab === "customer-hub" && (
           <CustomerHubView 
@@ -3120,8 +3736,14 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                 {/* 2. POS API SYNC MODULE */}
                 {labTab === "pos" && (
-                  <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5">
-                    <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
+                  <div className="flex flex-col flex-1 gap-6">
+                    <TechnicianDashboard 
+                      tickets={tickets} 
+                      onAddSampleTickets={handleAddSampleTickets}
+                      isLoading={isLoadingLogs}
+                    />
+                    <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300">
+                      <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
                       <div className="flex items-center gap-2">
                         <Activity className="w-5 h-5 text-blue-400" />
                         <div>
@@ -3453,6 +4075,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                     </div>
                   </section>
+                  </div>
                 )}
 
                 {/* 3. TAX COMPLIANCE CONSOLE */}
@@ -4238,6 +4861,89 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                 )}
 
                 {labTab === "forensics" && (
+                  <ForensicsView
+                    forensicDevice={forensicDevice}
+                    setForensicDevice={setForensicDevice}
+                    isForensicScanning={isForensicScanning}
+                    setIsForensicScanning={setIsForensicScanning}
+                    forensicProgress={forensicProgress}
+                    setForensicProgress={setForensicProgress}
+                    forensicLogs={forensicLogs}
+                    setForensicLogs={setForensicLogs}
+                    forensicSOP={forensicSOP}
+                    setForensicSOP={setForensicSOP}
+                    mountedSources={mountedSources}
+                    setMountedSources={setMountedSources}
+                    s2cActivePathway={s2cActivePathway}
+                    setS2cActivePathway={setS2cActivePathway}
+                    s2cActiveCodeTab={s2cActiveCodeTab}
+                    setS2cActiveCodeTab={setS2cActiveCodeTab}
+                    s2cBatteryTemp={s2cBatteryTemp}
+                    setS2cBatteryTemp={setS2cBatteryTemp}
+                    s2cAmmeterReading={s2cAmmeterReading}
+                    setS2cAmmeterReading={setS2cAmmeterReading}
+                    s2cIsSimulatingCheck={s2cIsSimulatingCheck}
+                    setS2cIsSimulatingCheck={setS2cIsSimulatingCheck}
+                    s2cCheckLogs={s2cCheckLogs}
+                    setS2cCheckLogs={setS2cCheckLogs}
+                    s2cCheckStatus={s2cCheckStatus}
+                    setS2cCheckStatus={setS2cCheckStatus}
+                    s2cFeedbackRating={s2cFeedbackRating}
+                    setS2cFeedbackRating={setS2cFeedbackRating}
+                    s2cFeedbackNotes={s2cFeedbackNotes}
+                    setS2cFeedbackNotes={setS2cFeedbackNotes}
+                    s2cFeedbackSubmitted={s2cFeedbackSubmitted}
+                    setS2cFeedbackSubmitted={setS2cFeedbackSubmitted}
+                    s2cIsSubmittingFeedback={s2cIsSubmittingFeedback}
+                    setS2cIsSubmittingFeedback={setS2cIsSubmittingFeedback}
+                    covThreshold={covThreshold}
+                    setCovThreshold={setCovThreshold}
+                    covCustomDraft={covCustomDraft}
+                    setCovCustomDraft={setCovCustomDraft}
+                    isCovRunning={isCovRunning}
+                    setIsCovRunning={setIsCovRunning}
+                    covLogs={covLogs}
+                    setCovLogs={setCovLogs}
+                    covStatus={covStatus}
+                    setCovStatus={setCovStatus}
+                    covAuditResult={covAuditResult}
+                    setCovAuditResult={setCovAuditResult}
+                    isNarrowingActive={isNarrowingActive}
+                    setIsNarrowingActive={setIsNarrowingActive}
+                    narrowingLogs={narrowingLogs}
+                    setNarrowingLogs={setNarrowingLogs}
+                    narrowedAudit={narrowedAudit}
+                    setNarrowedAudit={setNarrowedAudit}
+                    selectedCovTab={selectedCovTab}
+                    setSelectedCovTab={setSelectedCovTab}
+                    telemetrySpecTab={telemetrySpecTab}
+                    setTelemetrySpecTab={setTelemetrySpecTab}
+                    activePlanTier={activePlanTier}
+                    setActivePlanTier={setActivePlanTier}
+                    referenceMode={referenceMode}
+                    setReferenceMode={setReferenceMode}
+                    hallucinationSimulatedKeyword={hallucinationSimulatedKeyword}
+                    setHallucinationSimulatedKeyword={setHallucinationSimulatedKeyword}
+                    imeiInput={imeiInput}
+                    setImeiInput={setImeiInput}
+                    isSecurityScraping={isSecurityScraping}
+                    setIsSecurityScraping={setIsSecurityScraping}
+                    securityCheckResult={securityCheckResult}
+                    setSecurityCheckResult={setSecurityCheckResult}
+                    addToast={addToast}
+                    getPathwayDraft={getPathwayDraft}
+                    runChainOfVerification={runChainOfVerification}
+                    triggerSourceNarrowing={triggerSourceNarrowing}
+                    handleS2cFeedbackSubmit={handleS2cFeedbackSubmit}
+                    copyToClipboard={copyToClipboard}
+                    keywordsList={keywordsList}
+                    calculatedFidelity={calculatedFidelity}
+                    noisePenalty={noisePenalty}
+                    pass={pass}
+                  />
+                )}
+
+                {labTab === "forensics_deprecated" && (
                   <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300 font-sans text-left">
                     <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-slate-700 pb-4 mb-5 gap-3">
                       <div className="flex items-center gap-2">
@@ -4569,6 +5275,899 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                       </div>
                     )}
+
+                    {/* --- Symptom-to-Circuit (S2C) Core Engine Interface --- */}
+                    <div className="bg-slate-900/60 border border-slate-750 rounded-xl p-5 mt-6 block text-left">
+                      <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-slate-755 pb-3 mb-4 gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 bg-indigo-950/50 border border-indigo-700/35 rounded-lg">
+                            <Activity className="w-5 h-5 text-indigo-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                              Symptom-to-Circuit (S2C) Forensic Core Engine
+                            </h3>
+                            <p className="text-xs text-slate-400">
+                              Direct physical telemetry to logic board schematics mapper. Eliminates random parts-swapping through measurement-driven validation pathways.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 self-start xl:self-center">
+                          <span className="text-[10px] bg-indigo-950 text-indigo-300 font-extrabold uppercase font-mono px-2 py-0.5 rounded border border-indigo-900/40 tracking-wider">
+                            S2C_V3_CORE_ENG
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Diagnostic Pathway Grid Wrapper */}
+                      <div className="grid grid-cols-12 gap-5 mb-5">
+                        
+                        {/* LEFT: Pathway Select & Telemetry Inputs */}
+                        <div className="col-span-12 lg:col-span-4 bg-slate-950/45 border border-slate-850 p-4 rounded-xl flex flex-col justify-between space-y-4">
+                          <div className="space-y-4">
+                            <div>
+                              <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block border-b border-slate-850 pb-1.5 mb-2.5 font-mono">1. Select S2C Circuit Pathway</span>
+                              <div className="space-y-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setS2cActivePathway("backlight");
+                                    setS2cCheckStatus("idle");
+                                    setS2cCheckLogs([]);
+                                  }}
+                                  className={`w-full text-left p-2.5 rounded-lg border font-mono transition-all flex justify-between items-center cursor-pointer ${
+                                    s2cActivePathway === "backlight"
+                                      ? "bg-indigo-950/40 border-indigo-500/70 text-white"
+                                      : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+                                  }`}
+                                >
+                                  <div className="text-[11.5px]">
+                                    <div className="font-extrabold text-[12px] text-white">💡 Backlight Subsystem Path</div>
+                                    <div className="text-[10px] text-slate-400">Filter FL1728 open loop</div>
+                                  </div>
+                                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setS2cActivePathway("charging");
+                                    setS2cCheckStatus("idle");
+                                    setS2cCheckLogs([]);
+                                  }}
+                                  className={`w-full text-left p-2.5 rounded-lg border font-mono transition-all flex justify-between items-center cursor-pointer ${
+                                    s2cActivePathway === "charging"
+                                      ? "bg-indigo-950/40 border-indigo-500/70 text-white"
+                                      : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+                                  }`}
+                                >
+                                  <div className="text-[11.5px]">
+                                    <div className="font-extrabold text-[12px] text-white">🔌 Tristar charging paths</div>
+                                    <div className="text-[10px] text-slate-400">Intel BB / 1610A3 Multiplexer</div>
+                                  </div>
+                                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setS2cActivePathway("short_rail");
+                                    setS2cCheckStatus("idle");
+                                    setS2cCheckLogs([]);
+                                  }}
+                                  className={`w-full text-left p-2.5 rounded-lg border font-mono transition-all flex justify-between items-center cursor-pointer ${
+                                    s2cActivePathway === "short_rail"
+                                      ? "bg-indigo-950/40 border-indigo-500/70 text-white"
+                                      : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+                                  }`}
+                                >
+                                  <div className="text-[11.5px]">
+                                    <div className="font-extrabold text-[12px] text-white">⚡ Primary VDD_MAIN Short</div>
+                                    <div className="text-[10px] text-slate-400">Core deadlocks & capacitor C247_W</div>
+                                  </div>
+                                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Telemetry Control Inputs */}
+                            <div className="space-y-3">
+                              <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block border-b border-slate-850 pb-1.5 font-mono">2. Simulate Bench Telemetry Inputs</span>
+                              
+                              {/* Battery Temperature control */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center font-mono text-[10.5px]">
+                                  <span className="text-slate-400">Target Battery Temperature:</span>
+                                  <strong className={s2cBatteryTemp > 45 ? "text-red-400 animate-pulse font-bold" : "text-white"}>
+                                    {s2cBatteryTemp}°C
+                                  </strong>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <input 
+                                    aria-label="Simulate Battery Temperature Selector"
+                                    type="range"
+                                    min="20"
+                                    max="60"
+                                    step="0.5"
+                                    value={s2cBatteryTemp}
+                                    onChange={(e) => {
+                                      setS2cBatteryTemp(parseFloat(e.target.value));
+                                      if (parseFloat(e.target.value) <= 45 && s2cCheckStatus === "thermal_halt") {
+                                        setS2cCheckStatus("idle");
+                                        setS2cCheckLogs([]);
+                                      }
+                                    }}
+                                    className="flex-1 accent-indigo-500 bg-slate-900 h-1.5 rounded-lg cursor-pointer"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setS2cBatteryTemp(48.5);
+                                      addToast("Overheat Induced", "Battery artificially heated to 48.5°C trigger limits.", "info");
+                                    }}
+                                    className="bg-red-950/60 text-red-400 border border-red-900/40 text-[9px] font-bold uppercase tracking-wider font-mono px-2 py-0.5 rounded"
+                                  >
+                                    HEARTEST (48°C)
+                                  </button>
+                                </div>
+                                {s2cBatteryTemp > 45 && (
+                                  <div className="p-2 bg-red-950/40 border border-red-900/30 rounded text-[9.5px] font-mono text-red-300 leading-normal flex items-start gap-1.5 animate-pulse mt-1">
+                                    <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                                    <span>
+                                      <strong>Strict Safety Guard Activated</strong>: Battery temperature exceeds the 45°C limit. Diagnostics lock out automatically.
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Ammeter Current draw control */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center font-mono text-[10.5px]">
+                                  <span className="text-slate-400">Digital Ammeter Boot Current:</span>
+                                  <strong className="text-white">{s2cAmmeterReading} A</strong>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <input 
+                                    aria-label="Ammeter Current Draw Selector"
+                                    type="number"
+                                    min="0.0"
+                                    max="3.0"
+                                    step="0.05"
+                                    value={s2cAmmeterReading}
+                                    onChange={(e) => setS2cAmmeterReading(parseFloat(e.target.value) || 0)}
+                                    className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white font-mono flex-1 outline-none focus:border-indigo-600"
+                                  />
+                                  <div className="flex gap-1 shrink-0">
+                                    <button 
+                                      type="button"
+                                      onClick={() => setS2cAmmeterReading(1.10)}
+                                      className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[9px] text-slate-300 px-1.5 py-1 rounded font-mono"
+                                    >
+                                      1.1A
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => setS2cAmmeterReading(0.01)}
+                                      className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[9px] text-slate-300 px-1.5 py-1 rounded font-mono"
+                                    >
+                                      0.01A
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <button
+                              type="button"
+                              disabled={s2cIsSimulatingCheck}
+                              onClick={handleS2cSimulate}
+                              className={`w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-md font-mono transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+                                s2cIsSimulatingCheck ? "opacity-60 cursor-not-allowed" : ""
+                              }`}
+                            >
+                              <Zap className="w-3.5 h-3.5 text-yellow-300" />
+                              {s2cIsSimulatingCheck ? "Running S2C Circuit Map..." : "Initiate S2C Mapping Triage"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* CENTER: The 4-Stage Subsystem Flow Animator */}
+                        <div className="col-span-12 lg:col-span-4 bg-slate-955/55 border border-slate-850 p-4 rounded-xl flex flex-col justify-between">
+                          <div>
+                            <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block border-b border-slate-850 pb-1.5 mb-3 font-mono">3. Subsystem Flow Stage State</span>
+                            
+                            {/* Visual Timeline Stepper */}
+                            <div className="space-y-4 text-left font-mono relative">
+                              {/* Step 1 */}
+                              <div className={`p-2.5 rounded-lg border transition-all flex items-start gap-2.5 ${
+                                s2cCheckStatus === "testing" || s2cCheckStatus === "passed"
+                                  ? "bg-indigo-950/20 border-indigo-800/60"
+                                  : "bg-slate-950/20 border-slate-900"
+                              }`}>
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
+                                  s2cCheckStatus === "passed" || s2cCheckStatus === "testing"
+                                    ? "bg-indigo-900 text-indigo-300 border border-indigo-700"
+                                    : "bg-slate-900 text-slate-600 border border-slate-800"
+                                }`}>
+                                  1
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="text-[11px] font-extrabold text-white uppercase tracking-wide">Symptom Identification</div>
+                                  <div className="text-[9.5px] text-slate-450 leading-relaxed">
+                                    {s2cActivePathway === "backlight" && "No Backlight symptom, flashlight test reveals positive image shadow."}
+                                    {s2cActivePathway === "charging" && "Draws ≤ 0.008A. Zero current, continuity failure state suspected."}
+                                    {s2cActivePathway === "short_rail" && "Static 1.1A current draw. Deadlock state, immediate secondary short suspected!"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Step 2 */}
+                              <div className={`p-2.5 rounded-lg border transition-all flex items-start gap-2.5 ${
+                                s2cCheckStatus === "passed" || (s2cCheckStatus === "testing" && s2cCheckLogs.length >= 4)
+                                  ? "bg-indigo-950/20 border-indigo-800/60 animate-pulse-subtle"
+                                  : "bg-slate-950/20 border-slate-900"
+                              }`}>
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
+                                  s2cCheckStatus === "passed" || (s2cCheckStatus === "testing" && s2cCheckLogs.length >= 4)
+                                    ? "bg-indigo-900 text-indigo-300 border border-indigo-700"
+                                    : "bg-slate-900 text-slate-600 border border-slate-800"
+                                }`}>
+                                  2
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="text-[11px] font-extrabold text-white uppercase tracking-wide">Circuit Path Mapping</div>
+                                  <div className="text-[9.5px] text-slate-450 leading-relaxed">
+                                    {s2cActivePathway === "backlight" && "RAG map -> Pin anodes -> target voltage rail PP_LCM_BL_ANODE"}
+                                    {s2cActivePathway === "charging" && "Identify power loop: USB_VBUS / PMU_USB_BRICKID to ground"}
+                                    {s2cActivePathway === "short_rail" && "Primary Rail trace -> VDD_MAIN & PP_VCC_MAIN layers check"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Step 3 */}
+                              <div className={`p-2.5 rounded-lg border transition-all flex items-start gap-2.5 ${
+                                s2cCheckStatus === "passed" || (s2cCheckStatus === "testing" && s2cCheckLogs.length >= 6)
+                                  ? "bg-indigo-950/20 border-indigo-800/60"
+                                  : "bg-slate-950/20 border-slate-900"
+                              }`}>
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
+                                  s2cCheckStatus === "passed" || (s2cCheckStatus === "testing" && s2cCheckLogs.length >= 6)
+                                    ? "bg-indigo-900 text-indigo-300 border border-indigo-700"
+                                    : "bg-slate-900 text-slate-600 border border-slate-800"
+                                }`}>
+                                  3
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="text-[11px] font-extrabold text-white uppercase tracking-wide">Fault Node Isolation</div>
+                                  <div className="text-[9.5px] text-slate-450 leading-relaxed">
+                                    {s2cActivePathway === "backlight" && "Localizing component designator: FL1728 backlight filter fuse"}
+                                    {s2cActivePathway === "charging" && "Target node pinpoint: Tristar IC model 1610A3 charging controller"}
+                                    {s2cActivePathway === "short_rail" && "Thermal check on Seek LWIR: high temperature localized on capacitor C247_W"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Step 4 */}
+                              <div className={`p-2.5 rounded-lg border transition-all flex items-start gap-2.5 ${
+                                s2cCheckStatus === "passed"
+                                  ? "bg-emerald-950/15 border-emerald-900/40"
+                                  : "bg-slate-950/20 border-slate-900"
+                              }`}>
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
+                                  s2cCheckStatus === "passed"
+                                    ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
+                                    : "bg-slate-900 text-slate-600 border border-slate-800"
+                                }`}>
+                                  4
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="text-[11px] font-extrabold text-white uppercase tracking-wide flex items-center gap-1">
+                                    Verification Command {s2cCheckStatus === "passed" && <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />}
+                                  </div>
+                                  <div className="text-[9.5px] text-slate-450 leading-relaxed">
+                                    {s2cActivePathway === "backlight" && "Probe FL1728 for continuity. Expected impedance < 0.5 Ω. Bridge if open."}
+                                    {s2cActivePathway === "charging" && "Test battery diode dropdown on U2 bus line. Expecting 0.350V boot delay drops."}
+                                    {s2cActivePathway === "short_rail" && "Test resistance of C247_W. Replace capacitor if Direct Main Rail short is confirmed."}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* RIGHT: Blueprint & JSON Schema Code Viewer */}
+                        <div className="col-span-12 lg:col-span-4 bg-slate-950 border border-slate-850 p-4 rounded-xl flex flex-col justify-between">
+                          <div className="space-y-3">
+                            <div className="flex justify-between items-center border-b border-slate-850 pb-2 mb-2 font-mono">
+                              <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block">4. Production Schema Explorer</span>
+                              <div className="flex bg-slate-900 border border-slate-800 rounded p-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setS2cActiveCodeTab("typescript")}
+                                  className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono transition-all cursor-pointer ${
+                                    s2cActiveCodeTab === "typescript" ? "bg-indigo-950 text-indigo-300 border border-indigo-900/40" : "text-slate-500 hover:text-slate-300"
+                                  }`}
+                                >
+                                  TypeScript
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setS2cActiveCodeTab("json")}
+                                  className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono transition-all cursor-pointer ${
+                                    s2cActiveCodeTab === "json" ? "bg-indigo-950 text-indigo-300 border border-indigo-900/40" : "text-slate-500 hover:text-slate-300"
+                                  }`}
+                                >
+                                  JSON Schema
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Mapped view of syntax highlighting block */}
+                            {s2cActiveCodeTab === "typescript" ? (
+                              <div className="p-3 bg-slate-955 rounded-lg border border-slate-900 text-[10.5px] font-mono text-slate-300 text-left overflow-x-auto max-h-[195px] overflow-y-auto block leading-normal space-y-1 select-text">
+                                <p><span className="text-pink-400 font-bold">interface</span> <span className="text-yellow-300">DiagnosticSymptom</span> &#123;</p>
+                                <p>&nbsp;&nbsp;type: <span className="text-teal-400 font-semibold">{s2cActivePathway === "backlight" ? '"NO_BACKLIGHT"' : s2cActivePathway === "charging" ? '"NO_CHARGING"' : '"NO_POWER"'}</span>;</p>
+                                <p>&nbsp;&nbsp;flashlightTestPositive?: <span className="text-violet-400 font-semibold">boolean</span>;</p>
+                                <p>&#125;</p>
+                                <p className="text-slate-500 mt-2">// Symptom-to-Circuit logical mapper</p>
+                                <p><span className="text-pink-400 font-bold">function</span> <span className="text-blue-300">mapSymptomToCircuit</span>(symptom: <span className="text-yellow-300">DiagnosticSymptom</span>) &#123;</p>
+                                {s2cActivePathway === "backlight" && (
+                                  <>
+                                    <p>&nbsp;&nbsp;<span className="text-pink-400 font-bold">if</span> (symptom.type === <span className="text-emerald-400">"NO_BACKLIGHT"</span> && symptom.flashlightTestPositive) &#123;</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400 font-bold">return</span> <span className="text-emerald-400">`</span></p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">MAPPED_RAIL:</span> PP_LCM_BL_ANODE (Backlight)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">SUSPECTED_NODES:</span> FL1728 (Filter Fuse)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">MANDATORY_CHECK:</span> Probe continuity (Beep=PASS)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-emerald-400">`</span>;</p>
+                                    <p>&nbsp;&nbsp;&#125;</p>
+                                  </>
+                                )}
+                                {s2cActivePathway === "charging" && (
+                                  <>
+                                    <p>&nbsp;&nbsp;<span className="text-pink-400 font-bold">if</span> (symptom.type === <span className="text-emerald-400">"NO_CHARGING"</span>) &#123;</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400 font-bold">return</span> <span className="text-emerald-400">`</span></p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">MAPPED_RAIL:</span> USB_VBUS / PMU_USB_BRICKID</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">SUSPECTED_NODES:</span> 1610A3 (Tristar IC)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">MANDATORY_CHECK:</span> Test impedance values ($&lt;2.0V$=Tristar Fail)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-emerald-400">`</span>;</p>
+                                    <p>&nbsp;&nbsp;&#125;</p>
+                                  </>
+                                )}
+                                {s2cActivePathway === "short_rail" && (
+                                  <>
+                                    <p>&nbsp;&nbsp;<span className="text-pink-400 font-bold">if</span> (symptom.type === <span className="text-emerald-400">"NO_POWER"</span>) &#123;</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400 font-bold">return</span> <span className="text-emerald-400">`</span></p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">MAPPED_RAIL:</span> VDD_MAIN (Short to Ground)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">SUSPECTED_NODES:</span> C247_W (Filter Capacitor)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-amber-400">MANDATORY_CHECK:</span> Probe C247_W drop values ($0.1\Omega$=Direct Main Short)</p>
+                                    <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-emerald-400">`</span>;</p>
+                                    <p>&nbsp;&nbsp;&#125;</p>
+                                  </>
+                                )}
+                                <p>&#125;</p>
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-slate-955 rounded-lg border border-slate-900 text-[10.5px] font-mono text-indigo-300 text-left overflow-x-auto max-h-[195px] overflow-y-auto block leading-normal space-y-1 select-text">
+                                <p>&#123;</p>
+                                <p>&nbsp;&nbsp;<span className="text-pink-400">"s2c_diagnostic_payload"</span>: &#123;</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"device_model"</span>: <span className="text-emerald-400">"{s2cActivePathway === "backlight" ? "iPad Pro 9.7" : s2cActivePathway === "charging" ? "Apple iPhone XR" : "iPhone XR Board"}"</span>,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"tier"</span>: <span className="text-emerald-400">"Tier 3 Board solder escalation"</span>,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"symptom"</span>: <span className="text-emerald-400">"{s2cActivePathway === "backlight" ? "Dark screen, image visible with flashlight" : s2cActivePathway === "charging" ? "BMT charging loop failure" : "Core main voltage line deadlock"}"</span>,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"circuit_mapping"</span>: &#123;</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"suspected_rail"</span>: <span className="text-emerald-400">"{s2cActivePathway === "backlight" ? "PP_LCM_BL_ANODE" : s2cActivePathway === "charging" ? "USB_VBUS / PMU_USB_BRICKID" : "VDD_MAIN"}"</span>,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"target_component"</span>: <span className="text-emerald-400">"{s2cActivePathway === "backlight" ? "FL1728" : s2cActivePathway === "charging" ? "1610A3 (Tristar IC)" : "C247_W"}"</span>,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"expected_behavior"</span>: <span className="text-emerald-400">"{s2cActivePathway === "backlight" ? "Continuity (0.1 - 0.5 Ω)" : s2cActivePathway === "charging" ? "Healthy VBUS voltage drops" : "Resistance < 0.1 Ω direct short"}"</span></p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&#125;,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"reconstruction_specs"</span>: &#123;</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"alloy_requirement"</span>: <span className="text-emerald-400">"SAC305 Lead-Free"</span>,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"rework_temp"</span>: <span className="text-emerald-400">"350C - 400C"</span>,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"jumper_spec"</span>: <span className="text-emerald-400">"0.02mm enameled copper"</span></p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&#125;,</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"verification_status"</span>: <span className="text-emerald-400">"PASS (The Paragraph Test)"</span></p>
+                                <p>&nbsp;&nbsp;&#125;</p>
+                                <p>&#125;</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Interactive Feedback Panel: Thumbs Up / Thumbs Down */}
+                      {s2cCheckStatus === "passed" && (
+                        <div className="mt-5 p-4 bg-slate-950/75 border border-indigo-900/30 rounded-xl transition-all animate-in fade-in duration-300">
+                          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-900 pb-3 mb-3">
+                            <div>
+                              <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                                Technician Circuit Mapping Refinement Loop
+                              </h4>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                Did the mapped node (<span className="text-white font-semibold font-mono">{s2cActivePathway === "backlight" ? "FL1728" : s2cActivePathway === "charging" ? "1610A3" : "C247_W"}</span>) match your live bench impedance measurements? Let the model learn!
+                              </p>
+                            </div>
+
+                            {/* Thumbs up / down selection buttons */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                disabled={s2cFeedbackSubmitted[s2cActivePathway]}
+                                onClick={() => {
+                                  setS2cFeedbackRating((prev) => ({ ...prev, [s2cActivePathway]: "up" }));
+                                }}
+                                className={`p-2 rounded-lg border flex items-center gap-1.5 font-mono text-[11px] font-bold transition-all cursor-pointer ${
+                                  s2cFeedbackRating[s2cActivePathway] === "up"
+                                    ? "bg-emerald-950/50 border-emerald-500 text-emerald-400 font-extrabold shadow-sm shadow-emerald-500/10"
+                                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-300 hover:border-slate-700"
+                                } ${s2cFeedbackSubmitted[s2cActivePathway] ? "opacity-65 cursor-not-allowed" : ""}`}
+                                title="Accurate Mapping (Thumbs Up)"
+                              >
+                                <ThumbsUp className="w-3.5 h-3.5" />
+                                <span>YES</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={s2cFeedbackSubmitted[s2cActivePathway]}
+                                onClick={() => {
+                                  setS2cFeedbackRating((prev) => ({ ...prev, [s2cActivePathway]: "down" }));
+                                }}
+                                className={`p-2 rounded-lg border flex items-center gap-1.5 font-mono text-[11px] font-bold transition-all cursor-pointer ${
+                                  s2cFeedbackRating[s2cActivePathway] === "down"
+                                    ? "bg-red-950/50 border-red-500 text-red-400 font-extrabold shadow-sm shadow-red-500/10"
+                                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-300 hover:border-slate-700"
+                                } ${s2cFeedbackSubmitted[s2cActivePathway] ? "opacity-65 cursor-not-allowed" : ""}`}
+                                title="Incorrect Mapping (Thumbs Down)"
+                              >
+                                <ThumbsDown className="w-3.5 h-3.5" />
+                                <span>NO</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Notes and submission */}
+                          {!s2cFeedbackSubmitted[s2cActivePathway] ? (
+                            <div className="space-y-3">
+                              <div>
+                                <label htmlFor="s2cCorrectionNotes" className="block text-[10px] text-slate-400 font-bold uppercase font-mono mb-1.5">
+                                  Triage Correction or Bench Remarks (Optional)
+                                </label>
+                                <textarea
+                                  id="s2cCorrectionNotes"
+                                  rows={2}
+                                  value={s2cFeedbackNotes[s2cActivePathway] || ""}
+                                  onChange={(e) => {
+                                    setS2cFeedbackNotes((prev) => ({ ...prev, [s2cActivePathway]: e.target.value }));
+                                  }}
+                                  placeholder={
+                                    s2cFeedbackRating[s2cActivePathway] === "down"
+                                      ? "e.g., Short was on adjacent capacitor C240_W, or line showed correct 0.450V drop."
+                                      : "e.g., Confirmed Open loop on FL1728. Replaced with 0201 fuse. Backlight fully restored."
+                                  }
+                                  className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-300 font-mono outline-none focus:border-indigo-650 resize-none"
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  Rating: {s2cFeedbackRating[s2cActivePathway] ? (s2cFeedbackRating[s2cActivePathway] === "up" ? "Positive Match (Accurate)" : "Faulty Mapping Alert") : "Select mapping accuracy above"}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={s2cIsSubmittingFeedback || !s2cFeedbackRating[s2cActivePathway]}
+                                  onClick={() => handleS2cFeedbackSubmit(s2cActivePathway)}
+                                  className={`px-3 py-1.5 text-[11.5px] font-bold font-mono tracking-wide uppercase rounded transition-all cursor-pointer ${
+                                    s2cFeedbackRating[s2cActivePathway]
+                                      ? "bg-indigo-600 text-white hover:bg-indigo-500 hover:shadow-lg shadow-indigo-600/10"
+                                      : "bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed"
+                                  } flex items-center gap-1.5`}
+                                >
+                                  {s2cIsSubmittingFeedback ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      Syncing Feedback...
+                                    </>
+                                  ) : (
+                                    "Register Bench Feedback"
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-indigo-950/20 border border-indigo-900/30 rounded-lg flex items-center justify-between font-mono text-[11px] text-slate-350">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4 text-emerald-450 shrink-0" />
+                                <span>
+                                  Feedback logged with <strong className="text-white">{s2cFeedbackRating[s2cActivePathway] === "up" ? "Positive (Yes)" : "Negative (No)"}</strong> rating. Bench notes registered!
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setS2cFeedbackSubmitted((prev) => ({ ...prev, [s2cActivePathway]: false }));
+                                  setS2cFeedbackRating((prev) => ({ ...prev, [s2cActivePathway]: null }));
+                                  setS2cFeedbackNotes((prev) => ({ ...prev, [s2cActivePathway]: "" }));
+                                }}
+                                className="text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                              >
+                                Revise response
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* DOWN: Interactive S2C Command Trace Console Logs */}
+                      {s2cCheckLogs.length > 0 && (
+                        <div className="bg-slate-950 p-3 rounded-lg border border-slate-850 text-[10.5px] font-mono text-slate-300 space-y-1 block text-left max-h-[140px] overflow-y-auto w-full transition-all animate-in fade-in">
+                          <span className="text-[8.5px] text-indigo-400 font-extrabold block uppercase tracking-wide border-b border-indigo-900 pb-1 mb-1 flex justify-between items-center">
+                            <span>S2C Trace Logic Telemetry Logs</span>
+                            <span className="text-[8.5px] text-indigo-500 font-bold tracking-widest">{s2cCheckStatus.toUpperCase()}</span>
+                          </span>
+                          {s2cCheckLogs.map((log, idx) => (
+                            <div key={idx} className="leading-relaxed">
+                              <span className="text-slate-600 select-none">[{idx + 1}]</span>{" "} 
+                              <span className={log.includes("🚨") ? "text-red-400 font-bold" : log.includes("SUCCESS") ? "text-emerald-450 font-bold" : "text-slate-300"}>
+                                {log}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Bottom Alert Warning Section */}
+                      <div className="mt-4 p-3 bg-indigo-950/20 border border-indigo-900/30 rounded-lg flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                        <div className="text-xs font-mono leading-relaxed text-slate-400">
+                          <strong className="text-white">Forensic Warning Registry:</strong> Thermals false-positives are common on primary lines. Ensure adjacent capacitors are verified before removal. Modern split-spaced layouts (XS Max+) require sandwiched division checks. Always sustain <strong className="text-indigo-300">SAC305 alloy</strong> standards.
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* --- AUTOMATED COV FIDELITY & SOURCE NARROWING INTERACTIVE PIPELINE --- */}
+                    <div className="bg-slate-900/60 border border-violet-900/35 rounded-xl p-5 mt-6 block text-left">
+                      <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-slate-755 pb-3 mb-4 gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 bg-violet-950/50 border border-violet-700/35 rounded-lg text-violet-400">
+                            <Brain className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                              Automated CoV Fidelity & Source Precision Pipeline
+                            </h3>
+                            <p className="text-xs text-slate-400">
+                              Enforce the strict Paragraph Test to filter out LLM hallucinations. Programmatically prune context flooding files using Two-Phase precision heuristics.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] bg-violet-950 text-violet-300 font-extrabold uppercase font-mono px-2 py-0.5 rounded border border-violet-900/40 tracking-wider">
+                            CoV_AUTOMATION_ACTIVE
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-12 gap-5 mb-5">
+                        {/* LEFT COLUMN: Draft Input & Verification Controls */}
+                        <div className="col-span-12 lg:col-span-6 bg-slate-950/45 border border-slate-850 p-4 rounded-xl flex flex-col justify-between space-y-4">
+                          <div className="space-y-3.5">
+                            <div className="flex items-center justify-between border-b border-slate-850 pb-2">
+                              <span className="text-[10px] text-violet-400 font-extrabold uppercase tracking-widest font-mono">1. Raw SOP Draft Selection (Editable)</span>
+                              <div className="flex bg-slate-900 border border-slate-800 rounded p-0.5 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setS2cActivePathway("backlight");
+                                    addToast("Backlight Scenario Loaded", "iPad Pro Backlight draft initialized.", "info");
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono transition-all cursor-pointer ${
+                                    s2cActivePathway === "backlight" ? "bg-violet-950 text-violet-300 border border-violet-900/40" : "text-slate-500 hover:text-slate-300"
+                                  }`}
+                                >
+                                  Backlight
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setS2cActivePathway("charging");
+                                    addToast("Charging Scenario Loaded", "iPhone XR Tristar draft initialized.", "info");
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono transition-all cursor-pointer ${
+                                    s2cActivePathway === "charging" ? "bg-violet-950 text-violet-300 border border-violet-900/40" : "text-slate-500 hover:text-slate-300"
+                                  }`}
+                                >
+                                  Charging
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setS2cActivePathway("short_rail");
+                                    addToast("Short Rail Scenario Loaded", "iPhone XR Short Rail draft initialized.", "info");
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono transition-all cursor-pointer ${
+                                    s2cActivePathway === "short_rail" ? "bg-violet-950 text-violet-300 border border-violet-900/40" : "text-slate-500 hover:text-slate-300"
+                                  }`}
+                                >
+                                  Short Rail
+                                </button>
+                              </div>
+                            </div>
+
+                            <p className="text-[11px] text-slate-400 leading-normal">
+                              Modify or write custom component labels below. The verification scheduler will live-match labels against your vector schema files to prevent product-version hallucinations.
+                            </p>
+
+                            <textarea
+                              rows={5}
+                              value={covCustomDraft}
+                              onChange={(e) => setCovCustomDraft(e.target.value)}
+                              placeholder="Type or paste draft diagnostic response here..."
+                              className="w-full bg-slate-900/90 border border-slate-800 rounded px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-violet-650 resize-none leading-relaxed select-text"
+                            />
+
+                            {/* Verification Threshold Setting Sliders */}
+                            <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-900 space-y-2">
+                              <div className="flex justify-between items-center text-[10.5px] font-mono">
+                                <span className="text-slate-400 font-bold uppercase tracking-tight flex items-center gap-1.5">
+                                  <Sliders className="w-3.5 h-3.5 text-violet-400" />
+                                  CoV Overlap Threshold
+                                </span>
+                                <strong className="text-violet-300 text-xs font-extrabold font-mono">{(covThreshold * 100).toFixed(0)}%</strong>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.10"
+                                max="0.90"
+                                step="0.05"
+                                value={covThreshold}
+                                onChange={(e) => setCovThreshold(parseFloat(e.target.value))}
+                                className="w-full h-1.5 bg-slate-850 rounded-lg appearance-none cursor-pointer accent-violet-600 outline-none"
+                              />
+                              <p className="text-[9.5px] text-slate-500 leading-normal font-sans">
+                                Redo is forced if net matching components score is less than this. Higher values ensure strict mathematical grounding.
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={isCovRunning || isNarrowingActive}
+                            onClick={runChainOfVerification}
+                            className={`w-full py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all text-white ${
+                              isCovRunning 
+                                ? "bg-violet-950 text-violet-500 cursor-not-allowed" 
+                                : "bg-gradient-to-r from-violet-750 to-indigo-700 hover:from-violet-700 hover:to-indigo-600 shadow-md shadow-violet-900/10 cursor-pointer"
+                            }`}
+                          >
+                            {isCovRunning ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Evaluating Claims...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Run CoV Verification Audit
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* RIGHT COLUMN: Interactive Grounding Visualizer & Metrics */}
+                        <div className="col-span-12 lg:col-span-6 bg-slate-950/45 border border-slate-850 p-4 rounded-xl flex flex-col justify-between space-y-4">
+                          <div className="space-y-4">
+                            <span className="text-[10px] text-violet-400 font-extrabold uppercase tracking-widest block border-b border-slate-850 pb-2 font-mono">2. Programmatic Grounding Feedback</span>
+                            
+                            {/* Fidelity Meter Grid */}
+                            <div className="grid grid-cols-2 gap-4 bg-slate-900/30 p-3 rounded-xl border border-slate-900">
+                              <div>
+                                <span className="text-[9px] text-slate-550 uppercase font-mono block">CoV Fidelity Score</span>
+                                <div className="flex items-baseline gap-1 mt-1">
+                                  <strong className={`text-2xl font-mono tracking-tight font-extrabold ${calculatedFidelity >= covThreshold ? "text-emerald-400" : "text-amber-500"}`}>
+                                    {(calculatedFidelity * 100).toFixed(0)}%
+                                  </strong>
+                                  <span className="text-[10px] text-slate-500">/ 100%</span>
+                                </div>
+                                <div className="w-full bg-slate-900 h-1.5 rounded-full mt-2 overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-500 ${calculatedFidelity >= covThreshold ? "bg-emerald-500" : "bg-amber-500"}`} 
+                                    style={{ width: `${calculatedFidelity * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="border-l border-slate-900 pl-4">
+                                <span className="text-[9px] text-slate-550 uppercase font-mono block">Context Flooding Penalty</span>
+                                <div className="flex items-baseline gap-1 mt-1">
+                                  <strong className={`text-xl font-mono tracking-tight font-extrabold ${noisePenalty > 0 ? "text-red-400" : "text-emerald-450"}`}>
+                                    {noisePenalty > 0 ? `-${(noisePenalty * 100).toFixed(0)}%` : "0%"}
+                                  </strong>
+                                </div>
+                                <span className="text-[9.5px] text-slate-450 mt-1 block leading-tight font-mono">
+                                  {noisePenalty > 0 ? `${activeSourcesCount} books mounted (Penalty: -15% / source > 2)` : "Premium signal focus"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Section: Live Claims Verification (The Paragraph Test) */}
+                            <div className="space-y-2">
+                              <span className="text-[9.5px] text-slate-500 font-bold uppercase tracking-wide font-mono block">Live Claim Paragraph Verification (The Paragraph Test)</span>
+                              <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                                {keywordsList.length > 0 ? (
+                                  keywordsList.map((k, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-2 rounded bg-slate-900/50 border border-slate-900 font-mono text-[11px]">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-white font-semibold">{k.keyword}</span>
+                                        <span className="text-[9px] text-slate-500 truncate max-w-[200px]" title="Required Schematic Source Document">
+                                          ({k.sourceDoc})
+                                        </span>
+                                      </div>
+                                      {k.matched ? (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950/50 text-emerald-400 border border-emerald-900/30 font-bold">
+                                          ✔️ VERIFIED
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-950/50 text-red-400 border border-red-900/30 font-bold">
+                                          ❌ UNMOUNTED
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="p-3 bg-slate-900/20 border border-slate-900 text-center rounded text-slate-500 font-mono text-[10.5px]">
+                                    ⚠️ No component designators detected in current draft text. Use standard tags like FL1728 or C247_W.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Abstention Shield safeguard alerts */}
+                            {/u2_or_c9000/i.test(covCustomDraft) && (
+                              <div className="p-2.5 bg-red-950/20 border border-red-900/30 rounded-lg flex items-start gap-2">
+                                <ShieldAlert className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                                <div className="text-[10px] text-slate-400 font-mono leading-relaxed">
+                                  <strong className="text-red-400 uppercase font-extrabold block">Abstention Shield Alert triggered</strong>
+                                  Custom component unrecognized by local source vaults! Mandate: State <strong className="text-white">"Data not present in local source vaults"</strong> to halt random hallucinations.
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Dynamic Overlap Guard Alert Badge */}
+                          {covStatus !== "IDLE" && (
+                            <div className={`p-3 rounded-lg border transition-all animate-in fade-in duration-300 ${
+                              pass 
+                                ? "bg-emerald-950/15 border-emerald-900/30 text-emerald-450" 
+                                : "bg-amber-950/20 border-amber-900/30 text-amber-500"
+                            }`}>
+                              <div className="flex items-start gap-2 font-mono text-[11px] leading-relaxed">
+                                {pass ? (
+                                  <>
+                                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                    <div>
+                                      <strong className="text-emerald-300 uppercase block font-extrabold tracking-wide">Factual Grounding Ratio Certified Safe</strong>
+                                      All extracted layout keys correspond to active vector PDF blueprints. Output certified to resist logical regression.
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+                                    <div className="space-y-2 flex-1">
+                                      <div>
+                                        <strong className="text-amber-400 uppercase block font-extrabold tracking-wide">Critical Fidelity Breach (Redo Redo)</strong>
+                                        Signal is diluted below threshold. Too many documents are mounted or critical schematics are missing from memory registries.
+                                      </div>
+                                      <button
+                                        type="button"
+                                        disabled={isNarrowingActive}
+                                        onClick={triggerSourceNarrowing}
+                                        className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10.5px] font-extrabold uppercase rounded shadow-md transition-all flex items-center gap-1 cursor-pointer"
+                                      >
+                                        {isNarrowingActive ? (
+                                          <>
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                            Narrowing Sources...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Filter className="w-3.5 h-3.5" />
+                                            Trigger Code-Driven Source Narrowing
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Narrowing Progression Timeline Logs Console */}
+                      {(isNarrowingActive || narrowingLogs.length > 0) && (
+                        <div className="bg-slate-950 p-3 rounded-lg border border-slate-850 text-[10.5px] font-mono text-slate-350 space-y-1 block text-left max-h-[140px] overflow-y-auto mb-4 transition-all duration-300">
+                          <span className="text-[8.5px] text-violet-400 font-extrabold block uppercase tracking-wide border-b border-violet-900 pb-1 mb-1.5 flex justify-between items-center">
+                            <span>Context Precision Orchestrator Logs (CPO)</span>
+                            <span className="text-[8px] bg-violet-950 text-violet-400 border border-violet-900/40 px-1 py-0.2 rounded font-extrabold uppercase animate-pulse">Running Narrowing Sequence</span>
+                          </span>
+                          {narrowingLogs.map((log, id) => (
+                            <div key={id} className="leading-relaxed">
+                              <span className="text-slate-600 select-none">[{id + 1}]</span>{" "}
+                              <span className={log.includes("unmounting") || log.includes("Pruning") ? "text-violet-400" : log.includes("100% precision") ? "text-emerald-450 font-bold" : "text-slate-300"}>
+                                {log}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* LOWER TABS SECTION: Live Grounded Audit Trail (JSON Schemas) */}
+                      {covStatus !== "IDLE" && (
+                        <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl flex flex-col justify-between">
+                          <div className="space-y-3">
+                            <div className="flex justify-between items-center border-b border-slate-850 pb-2 font-mono">
+                              <span className="text-[10px] text-violet-400 font-extrabold uppercase tracking-widest block">3. Grounded Audit Metadata & Payload Synchronizer</span>
+                              <div className="flex bg-slate-900 border border-slate-800 rounded p-0.5 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedCovTab("interactive")}
+                                  className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono transition-all cursor-pointer ${
+                                    selectedCovTab === "interactive" ? "bg-violet-950 text-violet-350 border border-violet-900/40" : "text-slate-500 hover:text-slate-300"
+                                  }`}
+                                >
+                                  Verification Log
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedCovTab("payload")}
+                                  className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono transition-all cursor-pointer ${
+                                    selectedCovTab === "payload" ? "bg-violet-950 text-violet-350 border border-violet-900/40" : "text-slate-500 hover:text-slate-300"
+                                  }`}
+                                >
+                                  CRM Synchronized schema (JSON)
+                                </button>
+                              </div>
+                            </div>
+
+                            {selectedCovTab === "interactive" ? (
+                              <div className="p-3 bg-slate-955 rounded-lg border border-slate-900 text-[10.5px] font-mono text-slate-350 text-left max-h-[195px] overflow-y-auto space-y-1 leading-relaxed">
+                                <div className="text-[11px] text-violet-400 font-bold mb-1">=== CHAIN-OF-VERIFICATION (CoV) LOG STREAM ===</div>
+                                {covLogs.length > 0 ? (
+                                  covLogs.map((log, id) => (
+                                    <div key={id} className="leading-relaxed">
+                                      <span className="text-slate-600">[{id + 1}]</span>{" "}
+                                      <span className={log.includes("BREACH") || log.includes("❌") ? "text-amber-400 font-bold" : log.includes("✔️") || log.includes("certified safe") ? "text-emerald-450 font-bold" : "text-slate-300"}>
+                                        {log}
+                                      </span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-slate-500 text-center">Launch verification to check logs.</div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(JSON.stringify(narrowedAudit || covAuditResult, null, 2))}
+                                  className="absolute top-2 right-2 p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded border border-slate-800 text-xs font-mono font-bold flex items-center gap-1 cursor-pointer transition-all z-10"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                  <span>COPY JSON</span>
+                                </button>
+                                <pre className="p-4 bg-slate-955 rounded-lg border border-slate-900 text-[10.5px] font-mono text-indigo-300 text-left overflow-x-auto max-h-[195px] overflow-y-auto block leading-normal select-text">
+                                  {JSON.stringify(narrowedAudit || covAuditResult, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
 
                     {/* Section 2: Security & NIST-Certified Erasure Compliance Panel */}
                     <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-5 mt-6 block text-left">
@@ -4967,90 +6566,1037 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 // --- SUB-VIEWS ---
 
 function HomeView({ onBookClick, onLabClick }) {
+  const [zipInput, setZipInput] = useState("");
+  const [zipResult, setZipResult] = useState<{ status: "success" | "warning" | "idle"; message: string }>({ status: "idle", message: "" });
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  // New interactive Landing Page Website State
+  const [microscopeStep, setMicroscopeStep] = useState<"shorted" | "thermal" | "resolved">("shorted");
+  const [calcBrand, setCalcBrand] = useState<"Apple" | "Samsung" | "Google">("Apple");
+  const [calcIssue, setCalcIssue] = useState<"screen" | "battery" | "motherboard">("screen");
+  const [calcIsCorporate, setCalcIsCorporate] = useState<boolean>(false);
+
+  const SPOKANE_ZIPS = ["99201", "99202", "99203", "99204", "99205", "99206", "99207", "99208", "99212", "99216", "99217", "99218", "99016", "99037", "99223"];
+
+  const handleZipCheck = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanZip = zipInput.trim();
+    if (!cleanZip) return;
+
+    if (SPOKANE_ZIPS.includes(cleanZip)) {
+      setZipResult({
+        status: "success",
+        message: `✓ Dispatch Zone Confirmed! High-signal Mobile micro-lab is active near ZIP ${cleanZip}. Estimated driveway arrival under 2-3 hours with ZERO travel surcharge!`
+      });
+    } else {
+      setZipResult({
+        status: "warning",
+        message: `✈ Extended Regional Dispatch Active! Zip ${cleanZip} is within our extended service radius. We can dispatch with a minor standard travel-overhead rate, or pre-book for next Tuesday.`
+      });
+    }
+  };
+
+  const FAQS = [
+    {
+      q: "Do I have to prepare my device or back it up prior to repair?",
+      a: "No! Unlike standard retail storefronts or mail-in depots that mandate full factory erasures for liability, our DRIVEWAY repair lab allows you to watch the entire process. Your data never leaves your visual proximity, ensuring 100% database confidentiality."
+    },
+    {
+      q: "How does the mobile laboratory power its high-precision solder stations?",
+      a: "Our diagnostic truck runs on standalone, eco-friendly solar-charged lithium power banks. We do not hook into your home utilities or cause noise pollution—providing silent, self-contained laboratory power."
+    },
+    {
+      q: "Are the boards repaired with genuine components?",
+      a: "Yes! We utilize exclusively premium OEM-sourced parts and Right-to-Repair compliant components, backed by wholesale material disclosure and our lifetime physical solder warranty."
+    },
+    {
+      q: "How long does a logic board filter bypass or PMU rebuild take?",
+      a: "Standard diagnostics take about 15-20 minutes. Core board surgery—micro-soldering components under our microscope magnification—typically takes 30 to 50 minutes total in the van."
+    }
+  ];
+
   return (
     <div className="animate-in fade-in duration-300">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden bg-slate-900 border-b border-slate-850">
+      {/* Premium Hero Section */}
+      <div className="relative overflow-hidden bg-slate-900 border-b border-slate-800">
         <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/90 to-transparent z-10"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-900/90 to-transparent z-10"></div>
           <img 
             src="https://images.unsplash.com/photo-1597740985671-2a8a3b80502e?auto=format&fit=crop&w=1920&q=80" 
             alt="Mobile Repair Tech" 
-            className="w-full h-full object-cover opacity-25"
+            className="w-full h-full object-cover opacity-15"
           />
         </div>
         
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 pt-24 pb-32">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm font-medium mb-6">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-              </span>
-              Mobile Lab Currently Deploying in Spokane
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 pt-20 pb-28">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+            <div className="lg:col-span-7 max-w-2xl text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold mb-6 uppercase tracking-wider font-mono">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                </span>
+                Mobile Micro-Soldering Trucks Actively Stationed in Spokane
+              </div>
+              
+              <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight mb-6 leading-tight">
+                Spokane's Premium <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-400 to-indigo-400">
+                  Driveway Repair Lab
+                </span>
+              </h1>
+              
+              <p className="text-base sm:text-lg text-slate-350 mb-8 leading-relaxed max-w-xl">
+                No waiting rooms. No device separation anxiety. We dispatch military-grade diagnostic equipment and master-level micro-soldering solutions straight to your office or driveway.
+              </p>
+
+              {/* Badges */}
+              <div className="flex flex-wrap gap-x-6 gap-y-3 mb-8 text-xs font-mono text-slate-400">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span>5.0 ★ Google Score</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-blue-400" />
+                  <span>Same-Day Dispatch</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-violet-400" />
+                  <span>NIST Data Sanitation Guarantee</span>
+                </div>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={onBookClick}
+                  className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-base transition-all shadow-lg hover:shadow-blue-500/10 flex items-center justify-center gap-2 cursor-pointer group"
+                >
+                  Get Instant Triage Quote <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+                <button 
+                  onClick={onLabClick}
+                  className="px-8 py-4 bg-slate-800 hover:bg-slate-750 text-white border border-slate-700/80 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  Enter Diagnostic Lab <Cpu size={18} className="text-blue-400" />
+                </button>
+              </div>
             </div>
-            <h1 className="text-5xl sm:text-6xl font-extrabold text-white tracking-tight mb-6 leading-tight">
-              We bring the repair lab <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">to your driveway.</span>
-            </h1>
-            <p className="text-lg sm:text-xl text-slate-300 mb-10 leading-relaxed">
-              Don't waste your day in a waiting room. Display & Cell Pros delivers military-grade, Right-to-Repair compliant technical restorations directly to your home or office.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button 
-                onClick={onBookClick}
-                className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-lg transition-all shadow-lg hover:scale-[1.01] flex items-center justify-center gap-2"
-              >
-                Get an Instant Quote <ChevronRight size={20} />
-              </button>
-              <button 
-                onClick={onLabClick}
-                className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-lg font-bold text-lg transition-all flex items-center justify-center gap-2"
-              >
-                Open Lab Portal <Cpu size={20} className="text-blue-400" />
-              </button>
+
+            {/* ZIP CHECKER CARD HERO WIDGET */}
+            <div className="lg:col-span-5">
+              <div className="bg-slate-950/80 border border-slate-800 p-6 rounded-2xl shadow-2xl relative overflow-hidden backdrop-blur-md text-left">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-bl-full pointer-events-none"></div>
+                <h3 className="text-white font-bold text-lg mb-2 flex items-center gap-1.5 font-mono">
+                  <MapPin className="text-red-400 w-5 h-5 shrink-0" />
+                  SPOKANE COV REGION
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  Enter your neighborhood postal ZIP code below. We'll verify mobile cleanroom laboratory coverage ranges and quote transit latency instantly.
+                </p>
+
+                <form onSubmit={handleZipCheck} className="space-y-4">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      maxLength={5}
+                      value={zipInput}
+                      onChange={(e) => setZipInput(e.target.value.replace(/\D/g, ""))}
+                      placeholder="e.g. 99203"
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono outline-none focus:border-blue-500 transition-all select-text"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all cursor-pointer"
+                    >
+                      Check Zip
+                    </button>
+                  </div>
+
+                  {zipResult.status !== "idle" && (
+                    <div className={`p-4 rounded-xl border text-xs leading-relaxed transition-all animate-in fade-in duration-300 ${
+                      zipResult.status === "success" 
+                        ? "bg-emerald-950/20 border-emerald-900/35 text-emerald-400" 
+                        : "bg-amber-950/20 border-amber-900/35 text-amber-500"
+                    }`}>
+                      {zipResult.message}
+                    </div>
+                  )}
+                </form>
+
+                <div className="mt-5 pt-4 border-t border-slate-900 grid grid-cols-2 gap-3 text-[10px] text-slate-500 font-mono">
+                  <div>
+                    <span className="block text-slate-400 font-bold uppercase">Spokane Valley</span>
+                    <span>Daily Dispatch Zone</span>
+                  </div>
+                  <div>
+                    <span className="block text-slate-400 font-bold uppercase">South Hill / Liberty</span>
+                    <span>Daily Dispatch Zone</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Features */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      {/* Trust Certifications Banner */}
+      <div className="border-b border-slate-800/60 bg-slate-950/40 py-8 select-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 items-center text-center">
+            <div className="space-y-1.5 opacity-80 hover:opacity-100 transition-opacity">
+              <span className="text-[10px] text-slate-500 uppercase font-mono block">Workstations</span>
+              <strong className="text-sm text-slate-300 font-bold uppercase tracking-wider font-mono">ESD-Safe Certified</strong>
+            </div>
+            <div className="space-y-1.5 opacity-80 hover:opacity-100 transition-opacity">
+              <span className="text-[10px] text-slate-500 uppercase font-mono block">Data Security</span>
+              <strong className="text-sm text-slate-300 font-bold uppercase tracking-wider font-mono">NIST SP-800-88</strong>
+            </div>
+            <div className="space-y-1.5 opacity-80 hover:opacity-100 transition-opacity">
+              <span className="text-[10px] text-slate-500 uppercase font-mono block">Solder Integrity</span>
+              <strong className="text-sm text-slate-300 font-bold uppercase tracking-wider font-mono">IPC-A-610 Masters</strong>
+            </div>
+            <div className="space-y-1.5 opacity-80 hover:opacity-100 transition-opacity">
+              <span className="text-[10px] text-slate-500 uppercase font-mono block">Advocacy</span>
+              <strong className="text-sm text-slate-300 font-bold uppercase tracking-wider font-mono">Right-To-Repair Partner</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Features: The Advantage */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-left">
         <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold text-white mb-4">The D&CP Advantage</h2>
-          <p className="text-slate-400 max-w-2xl mx-auto">We combine premium parts with unparalleled convenience, operating entirely out of our mobile diagnostic laboratory.</p>
+          <h2 className="text-3xl font-extrabold text-white mb-4">The Display & Cell Pros Advantage</h2>
+          <p className="text-slate-400 max-w-2xl mx-auto text-sm leading-relaxed">
+            By shifting high-precision board operations into specialized, solar-powered cleanrooms on wheels, we deliver retail-competitive rates with incomparable cybersecurity.
+          </p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <FeatureCard 
-            icon={<MapPin className="text-blue-400 w-10 h-10 mb-4" />}
-            title="Zero Travel Time"
-            desc="You book. We drive. Our technicians perform the surgery securely inside our mobile workshop parked outside your location."
+            icon={<MapPin className="text-blue-500 w-10 h-10 mb-4" />}
+            title="Zero Drive Time"
+            desc="You book. We drive. Our technicians perform motherboard microsurgery inside our silent, clean custom cargo van parked outside your curb."
           />
           <FeatureCard 
-            icon={<ShieldCheck className="text-blue-400 w-10 h-10 mb-4" />}
-            title="Data Security Guarantee"
-            desc="Your device never leaves your sight. Avoid the massive cybersecurity risks associated with mail-in or drop-off retail repairs."
+            icon={<ShieldCheck className="text-emerald-500 w-10 h-10 mb-4" />}
+            title="Sovereign Data Protection"
+            desc="Your device never leaves your physical property. Avoid the severe risk of secondary mail centers, diagnostic depots, or remote breaches."
           />
           <FeatureCard 
-            icon={<Cpu className="text-blue-400 w-10 h-10 mb-4" />}
-            title="Right-to-Repair Compliant"
-            desc="We use only genuine-sourced and premium aftermarket components, backed by strict quality control and a robust warranty."
+            icon={<Cpu className="text-indigo-500 w-10 h-10 mb-4" />}
+            title="Master Soldering Compliant"
+            desc="Equipped with ultra-high resolution thermal scanners, Leica microscopes, and high quality SAC305 solder compounds."
           />
         </div>
       </div>
+
+      {/* NEW SECTION 1: INTERACTIVE BOARD DIAGNOSTIC & MICROSCOPE SIMULATOR */}
+      <div className="bg-slate-950 border-t border-b border-slate-900 py-20 text-left select-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <span className="text-xs text-blue-400 font-extrabold uppercase font-mono tracking-widest block mb-2">
+              LIVE CLINICAL INSTRUMENTATION
+            </span>
+            <h2 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl text-center">
+              The Curb-side Solder Diagnostic Experience
+            </h2>
+            <p className="text-slate-400 text-sm max-w-2xl mx-auto mt-3 text-center">
+              Watch motherboard repairs live on our HD technician microscope display right from your doorstep. See the difference between a damaged logic rail and precision soldering.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+            {/* Interactive Controller & Info */}
+            <div className="lg:col-span-5 flex flex-col justify-between bg-slate-900/60 border border-slate-800 p-6 sm:p-8 rounded-2xl relative overflow-hidden backdrop-blur-sm">
+              <div className="space-y-4">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono block">
+                  Step-by-step Telemetry Simulator
+                </span>
+                
+                <h3 className="text-xl font-extrabold text-white">
+                  {microscopeStep === "shorted" && "1. Locating Shorted Board Capacitors"}
+                  {microscopeStep === "thermal" && "2. FLIR® Thermal Infrared Signature Scan"}
+                  {microscopeStep === "resolved" && "3. Replacing the SMD Component"}
+                </h3>
+
+                <p className="text-xs text-slate-300 leading-relaxed min-h-[72px]">
+                  {microscopeStep === "shorted" && "When a modern smartphone triggers a sudden power failure, it is typically caused by a ceramic SMD capacitor cracking under physical shock. These sub-millimeter components must be identified manually with precision multi-meters."}
+                  {microscopeStep === "thermal" && "We inject safe power into the shorted rail to reveal the exact heat signature of the corrupted component. Our on-board high-resolution thermal cameras display the physical heat plume up to 350°C instantly."}
+                  {microscopeStep === "resolved" && "Using Right-to-Repair compliant components, the cracked capacitor is de-soldered. A fresh replacement is floated onto the micro-solder pad with active hot air at 370°C and premium rosin-core compounds."}
+                </p>
+
+                {/* Telemetry log output */}
+                <div className="bg-slate-950 border border-slate-850 rounded-xl p-4 font-mono text-[10px] space-y-1.5 text-slate-400 text-left">
+                  <div className="text-blue-400 font-bold">&#62; TRUCK_DIAGNOSTICS_CONTR_V4</div>
+                  {microscopeStep === "shorted" && (
+                    <>
+                      <div>[ONLINE] Multimeter set to beep/continuity mode.</div>
+                      <div className="text-rose-500 font-semibold">[WARNING] Shorted VDD_MAIN rail detected. Continuity 0.02 Ohms to ground.</div>
+                      <div className="text-amber-400 font-bold">&#62; NEXT STEPS: Boot Thermal Imaging camera overlay.</div>
+                    </>
+                  )}
+                  {microscopeStep === "thermal" && (
+                    <>
+                      <div>[THERMAL CAMERA ACTIVATED] Resolution: 320x240 pixel arrays.</div>
+                      <div>[POWER FEED] Injecting 1.8V to 2.5V into VDD_MAIN line.</div>
+                      <div className="text-amber-400 font-extrabold animate-pulse">[PLUME DETECTED] High temperature spot near PMIC core: 147°C. [C2204_X5 short detected]</div>
+                    </>
+                  )}
+                  {microscopeStep === "resolved" && (
+                    <>
+                      <div>[REPAIR MODULE ACTIVE] Air station preheated to 370°C / Air flow level 6.</div>
+                      <div>[WORKFLOW] Lifted C2204 capacitor, cleaned pads with braid. Custom reflow done.</div>
+                      <div className="text-emerald-400 font-extrabold">&#62; SUCCESS: Boot loop solved. VDD_MAIN resistance restored to 45k Ohms.</div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Tabs */}
+              <div className="grid grid-cols-3 gap-2 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setMicroscopeStep("shorted")}
+                  className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all border font-mono select-none cursor-pointer ${
+                    microscopeStep === "shorted"
+                      ? "bg-rose-950/40 text-rose-400 border-rose-800"
+                      : "bg-slate-950 text-slate-500 border-slate-900 hover:text-white hover:bg-slate-800/20"
+                  }`}
+                >
+                  Continuity
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMicroscopeStep("thermal")}
+                  className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all border font-mono select-none cursor-pointer ${
+                    microscopeStep === "thermal"
+                      ? "bg-amber-950/40 text-amber-400 border-amber-800"
+                      : "bg-slate-950 text-slate-500 border-slate-900 hover:text-white hover:bg-slate-800/20"
+                  }`}
+                >
+                  Thermal Scan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMicroscopeStep("resolved")}
+                  className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all border font-mono select-none cursor-pointer ${
+                    microscopeStep === "resolved"
+                      ? "bg-emerald-950/40 text-emerald-400 border-emerald-800"
+                      : "bg-slate-950 text-slate-500 border-slate-900 hover:text-white hover:bg-slate-800/20"
+                  }`}
+                >
+                  Reflow Done
+                </button>
+              </div>
+            </div>
+
+            {/* Simulated Live Microscope Screen View */}
+            <div className="lg:col-span-7 flex flex-col justify-between bg-slate-950 rounded-2xl border border-slate-800 p-4 relative overflow-hidden">
+              <div className="text-xs font-mono font-bold text-slate-400 mb-2.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-blue-400">
+                  <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
+                  LIVE MICROSCOPE FEEDS [FEED 01 - SPOKANE TRUCK]
+                </span>
+                <span>MAGNIFICATION [32X]</span>
+              </div>
+
+              {/* Feed screen container aspect-video */}
+              <div className="relative aspect-video rounded-xl border border-slate-900 bg-slate-950 overflow-hidden flex items-center justify-center select-none shadow-inner">
+                {/* Visual grid overlay for tech look */}
+                <div className="absolute inset-0 pointer-events-none opacity-5 bg-[linear-gradient(rgba(18,24,38,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(18,24,38,0.2)_1px,transparent_1px)] bg-[size:16px_16px]"></div>
+                
+                {/* Microscope Crosshair lines */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className="w-16 h-[1px] bg-slate-500/20 absolute"></div>
+                  <div className="h-16 w-[1px] bg-slate-500/20 absolute"></div>
+                </div>
+
+                {microscopeStep === "shorted" && (
+                  <div className="absolute inset-0 animate-in fade-in duration-300">
+                    <img 
+                      src="https://images.unsplash.com/photo-1517059224940-d4af9eec41b7?auto=format&fit=crop&w=800&q=80" 
+                      alt="Damaged Logic Board" 
+                      className="w-full h-full object-cover opacity-45 grayscale"
+                    />
+                    <div className="absolute inset-0 bg-slate-900/60 mix-blend-multiply"></div>
+                    <div className="absolute top-1/2 left-1/3 -translate-y-1/2 rounded-full border-2 border-dashed border-rose-500 h-16 w-16 animate-pulse flex items-center justify-center">
+                      <span className="text-[10px] text-rose-500 font-mono font-bold bg-slate-950/80 px-1 py-0.5 rounded leading-none">BAD SEC</span>
+                    </div>
+                  </div>
+                )}
+
+                {microscopeStep === "thermal" && (
+                  <div className="absolute inset-0 animate-in fade-in duration-300">
+                    <img 
+                      src="https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&w=800&q=80" 
+                      alt="Thermal heat view" 
+                      className="w-full h-full object-cover opacity-35 hue-rotate-180"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-tr from-blue-900/40 via-purple-900/40 to-yellow-500/50 mix-blend-color"></div>
+                    <div className="absolute top-1/2 left-1/3 -translate-y-1/2 rounded-full h-12 w-12 bg-red-600 blur-md animate-pulse"></div>
+                    <div className="absolute top-1/2 left-1/3 -translate-y-1/2 rounded-full border-2 border-red-500 h-16 w-16 flex items-center justify-center">
+                      <span className="text-[9px] text-white font-mono font-bold bg-slate-950/90 px-1.5 py-0.5 rounded shadow-lg leading-none">147.2°C</span>
+                    </div>
+                  </div>
+                )}
+
+                {microscopeStep === "resolved" && (
+                  <div className="absolute inset-0 animate-in fade-in duration-300">
+                    <img 
+                      src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80" 
+                      alt="Restored board component" 
+                      className="w-full h-full object-cover opacity-50"
+                    />
+                    <div className="absolute inset-0 bg-emerald-950/30 mix-blend-color"></div>
+                    <div className="absolute top-1/2 left-1/3 -translate-y-1/2 rounded-full border-2 border-emerald-500 h-16 w-16 flex items-center justify-center bg-emerald-500/10">
+                      <span className="text-[9px] text-emerald-400 font-mono font-bold bg-slate-950/90 px-1.5 py-0.5 rounded shadow-lg leading-none">✓ OK 45kΩ</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Left technical HUD details */}
+                <div className="absolute bottom-3 left-3 bg-slate-950/85 backdrop-blur-md rounded-lg p-2.5 border border-slate-900 font-mono text-[8px] text-slate-400 space-y-1 text-left hidden sm:block">
+                  <span className="block font-bold text-slate-350">SPECTRO_ANALYSIS:</span>
+                  <span>SOLDER COMPOUND: SAC305 Lead-Free</span> <br />
+                  <span>PREHEAT: 150°C | DURATION: 180s</span>
+                </div>
+              </div>
+
+              {/* Simple status badge bar below aspect container */}
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px] font-mono text-slate-500 border-t border-slate-950 pt-3 text-left">
+                <div>
+                  <span className="text-slate-450 uppercase block text-[8px]">Hot Air Station</span>
+                  <span className="text-slate-300 font-medium">Quick 861DW (ESD)</span>
+                </div>
+                <div>
+                  <span className="text-slate-450 uppercase block text-[8px]">Rosin Core wire</span>
+                  <span className="text-slate-300 font-medium font-mono">0.02" High-Fluidity</span>
+                </div>
+                <div>
+                  <span className="text-slate-450 uppercase block text-[8px]">Microscope Model</span>
+                  <span className="text-slate-300 font-medium font-sans">Amscope Stereo</span>
+                </div>
+                <div>
+                  <span className="text-slate-450 uppercase block text-[8px]">Signal Sweep</span>
+                  <span className="text-emerald-400 font-bold">MATCHED / STATIC</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NEW SECTION 2: INSTANT DRIVEWAY REPAIR PRICE ESTIMATOR WIDGET */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-left">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          
+          <div className="lg:col-span-5 max-w-lg space-y-6">
+            <span className="text-xs text-blue-400 font-extrabold uppercase font-mono tracking-widest block bg-blue-500/5 border border-blue-500/10 px-3 py-1 rounded-full w-max">
+              WEBSITE SELF-SERVE PORTAL
+            </span>
+            <h2 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl text-left">
+              Calculate Your Doorstep Rate Instantly
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Why call for quotes? We publish our components wholesale index and simple flat-rate labor transparently. Toggle options on the right to simulate our driveway logic system algorithm.
+            </p>
+
+            <div className="space-y-4">
+              <div className="flex gap-3 items-start">
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-blue-400 shrink-0">
+                  <Check className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <strong className="text-white text-xs block font-bold mb-0.5">Wholesale Index Components</strong>
+                  <span className="text-slate-400 text-[11px] leading-snug block">We secure raw parts directly to maintain volume B2B-grade pricing thresholds for retail customers.</span>
+                </div>
+              </div>
+              <div className="flex gap-3 items-start">
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-blue-400 shrink-0">
+                  <Check className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <strong className="text-white text-xs block font-bold mb-0.5">Flat Labor Tiers</strong>
+                  <span className="text-slate-400 text-[11px] leading-snug block">No hidden mileage rates, trip charges, or emergency dispatch overhead within the Spokane boundary.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Pricing Calculator Core Container */}
+          <div className="lg:col-span-7 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-sm shadow-xl space-y-6 text-left">
+            <h3 className="text-white font-extrabold text-lg flex items-center gap-2">
+              <SlidersHorizontal className="text-blue-500 w-5 h-5" />
+              15-Second Driveway Rate Calculator
+            </h3>
+
+            {/* Select brand */}
+            <div className="space-y-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono block">Select Brand:</span>
+              <div className="grid grid-cols-3 gap-2">
+                {(["Apple", "Samsung", "Google"] as const).map((brandName) => (
+                  <button
+                    key={brandName}
+                    type="button"
+                    onClick={() => setCalcBrand(brandName)}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer border ${
+                      calcBrand === brandName
+                        ? "bg-blue-600 text-white border-blue-500"
+                        : "bg-slate-950 text-slate-400 border-slate-850 hover:bg-slate-850/50 hover:text-white"
+                    }`}
+                  >
+                    {brandName}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Select Issue Type */}
+            <div className="space-y-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono block">Select Issue Type:</span>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCalcIssue("screen")}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer border text-center flex flex-col items-center gap-1 ${
+                    calcIssue === "screen"
+                      ? "bg-blue-600 text-white border-blue-500"
+                      : "bg-slate-950 text-slate-400 border-slate-850 hover:bg-slate-850/50 hover:text-white"
+                  }`}
+                >
+                  <Smartphone className="w-4 h-4 shrink-0" />
+                  <span>OLED Screen</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalcIssue("battery")}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer border text-center flex flex-col items-center gap-1 ${
+                    calcIssue === "battery"
+                      ? "bg-blue-600 text-white border-blue-500"
+                      : "bg-slate-950 text-slate-400 border-slate-850 hover:bg-slate-850/50 hover:text-white"
+                  }`}
+                >
+                  <Battery className="w-4 h-4 shrink-0" />
+                  <span>Power Battery</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalcIssue("motherboard")}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer border text-center flex flex-col items-center gap-1 ${
+                    calcIssue === "motherboard"
+                      ? "bg-blue-600 text-white border-blue-500"
+                      : "bg-slate-950 text-slate-400 border-slate-850 hover:bg-slate-850/50 hover:text-white"
+                  }`}
+                >
+                  <Cpu className="w-4 h-4 shrink-0" />
+                  <span>Microsoldering</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Business benefit toggle */}
+            <div className="flex items-center justify-between bg-slate-950 p-4 border border-slate-850 rounded-xl">
+              <div className="text-left space-y-0.5">
+                <span className="text-xs font-bold text-white block">Corporate/SLA Benefit?</span>
+                <span className="text-[10px] text-slate-450 font-mono">Applies 15% wholesale fleet discount dynamically</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCalcIsCorporate(!calcIsCorporate)}
+                className={`w-12 h-6 rounded-full p-1 transition-all ${
+                  calcIsCorporate ? "bg-emerald-500" : "bg-slate-800"
+                } relative flex items-center cursor-pointer`}
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${
+                    calcIsCorporate ? "translate-x-6" : "translate-x-0"
+                  }`}
+                ></div>
+              </button>
+            </div>
+
+            {/* Generated Bill Breakdown */}
+            {(() => {
+              // Calculate live pricing estimate based on state
+              let partValue = 110;
+              if (calcBrand === "Samsung") partValue = 130;
+              if (calcBrand === "Google") partValue = 90;
+
+              let issueLabor = 75;
+              if (calcIssue === "battery") issueLabor = 50;
+              if (calcIssue === "motherboard") issueLabor = 125;
+
+              const rawSbt = partValue + issueLabor;
+              const dsct = calcIsCorporate ? rawSbt * 0.15 : 0;
+              const sbt = rawSbt - dsct;
+              const waTaxVal = sbt * 0.089; // 8.9% WA local tax
+              const estimatedTotal = sbt + waTaxVal;
+
+              return (
+                <div className="bg-slate-950 border border-slate-850 rounded-2xl p-5 space-y-4 font-mono text-xs text-left animate-in fade-in duration-300">
+                  <span className="text-[9px] font-black text-amber-400 block tracking-widest uppercase">
+                    ESTIMATED SPOKANE DOORSTEP SLIP
+                  </span>
+
+                  <div className="space-y-2 border-b border-slate-900 pb-3">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Component: {calcBrand} OEM part index</span>
+                      <span className="text-slate-300 font-bold">${partValue.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Driveway Solder Svc & Cleanroom labor</span>
+                      <span className="text-slate-300 font-bold">${issueLabor.toFixed(2)}</span>
+                    </div>
+                    {calcIsCorporate && (
+                      <div className="flex justify-between text-emerald-400">
+                        <span>Corporate Volume discount (-15%)</span>
+                        <span>-${dsct.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Spokane Dispatch / Transit Fee</span>
+                      <span className="text-emerald-400 font-bold">FREE ($0.00)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Local WA Sales Tax (8.9%)</span>
+                      <span className="text-slate-300 font-bold">${waTaxVal.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center text-sm font-black pt-1">
+                    <span className="text-white text-xs uppercase font-extrabold font-sans">
+                      Estimated Curb Return Total:
+                    </span>
+                    <span className="text-blue-400 font-mono text-base font-black">
+                      ${estimatedTotal.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                    <button
+                      type="button"
+                      onClick={onBookClick}
+                      className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-sans font-black uppercase text-[10px] tracking-wider rounded-xl transition-all cursor-pointer shadow-lg shadow-blue-500/10 text-center"
+                    >
+                      Lock In This Rate / Pre-Book
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onLabClick}
+                      className="py-3 px-4 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800/80 rounded-xl text-[10.5px] font-sans font-bold uppercase transition-all tracking-wide text-center cursor-pointer"
+                    >
+                      Run Lab Diagnoses
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+
+      {/* NEW SECTION 3: MOBILE DISPATCH TRUCK & FLEET LIVE STATUS (ACTIVE TELEMETRY MAP) */}
+      <div className="border-t border-b border-slate-900 bg-slate-950/70 py-20 text-left select-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <span className="text-xs text-emerald-400 font-extrabold uppercase font-mono tracking-widest block mb-2 text-center">
+              REAL-TIME DISPATCH INTEL
+            </span>
+            <h2 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl text-center">
+              Live Mobile Repair Fleet Status
+            </h2>
+            <p className="text-slate-400 text-sm max-w-2xl mx-auto mt-3 text-center">
+              We monitor truck location buffers and active solar capacity continuously to maintain our standard 2-hour driveway arrival service agreement thresholds.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* TRUCK 1 */}
+            <div className="border border-slate-800 bg-slate-900/40 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-blue-500/10 rounded-xl text-blue-400 shrink-0">
+                    <MapPin className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-white block uppercase tracking-wide">
+                      MicroSolder Truck Alpha
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono">Lic. PLATE: SPK-4409</span>
+                  </div>
+                </div>
+                <span className="text-[9px] bg-sky-950 border border-sky-900 text-sky-400 font-mono px-2 py-0.5 rounded uppercase font-bold tracking-wider animate-pulse shrink-0">
+                  Repairing
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed min-h-[36px]">
+                Currently replacing backlight filter and LCD array on consumer logic board in South Hill.
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-[10px] font-mono border-t border-slate-850 pt-3 text-slate-400">
+                <div>
+                  <span className="text-slate-500 block">Battery Reserve</span>
+                  <span className="text-emerald-400 font-bold">84% DC Solar Charge</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Est. Next Open Slot</span>
+                  <span className="text-white font-bold">11:15 AM PST</span>
+                </div>
+              </div>
+            </div>
+
+            {/* TRUCK 2 */}
+            <div className="border border-slate-800 bg-slate-900/40 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400 shrink-0">
+                    <MapPin className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-white block uppercase tracking-wide">
+                      MicroSolder Truck Beta
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono">Lic. PLATE: SPK-1811</span>
+                  </div>
+                </div>
+                <span className="text-[9px] bg-emerald-950 border border-emerald-900 text-emerald-400 font-mono px-2 py-0.5 rounded uppercase font-bold tracking-wider shrink-0">
+                  En Route
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed min-h-[36px]">
+                Dispatched to corporate business corridor in Liberty Lake. ETA 18 minutes. Surcharge: $0.
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-[10px] font-mono border-t border-slate-850 pt-3 text-slate-400">
+                <div>
+                  <span className="text-slate-500 block">Battery Reserve</span>
+                  <span className="text-emerald-400 font-bold">96% DC Solar Charge</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Est. Arrival</span>
+                  <span className="text-amber-400 font-bold">10:45 AM PST</span>
+                </div>
+              </div>
+            </div>
+
+            {/* TRUCK 3 */}
+            <div className="border border-slate-800 bg-slate-900/40 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-400 shrink-0">
+                    <MapPin className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-white block uppercase tracking-wide">
+                      Solder Truck Gamma
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono">Lic. PLATE: SPK-3922</span>
+                  </div>
+                </div>
+                <span className="text-[9px] bg-violet-950 border border-violet-900 text-violet-400 font-mono px-2 py-0.5 rounded uppercase font-bold tracking-wider shrink-0">
+                  Standby
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed min-h-[36px]">
+                Fully stocked carbon-neutral mobile lab parked in Spokane Valley hub. Immediately available for dispatch.
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-[10px] font-mono border-t border-slate-850 pt-3 text-slate-400">
+                <div>
+                  <span className="text-slate-500 block">Battery Reserve</span>
+                  <span className="text-emerald-400 font-bold">100% DC Full Base</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Dispatch Limit</span>
+                  <span className="text-emerald-400 font-bold">Immediate</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NEW SECTION 4: HARDWARE INSTRUMENT SPEC SHEETS */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-left select-none">
+        <div className="text-center mb-12">
+          <span className="text-xs text-blue-400 font-extrabold uppercase font-mono tracking-widest block mb-2 text-center">
+            CLINICAL CERTIFIED INSTRUMENTS
+          </span>
+          <h2 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl text-center">
+            On-Board Solder Cleanroom Instruments
+          </h2>
+          <p className="text-slate-400 text-sm max-w-2xl mx-auto mt-3 text-center">
+            Motherboards are highly sensitive, layered copper logic networks. Standard handheld solder pencils will destroy your phone permanently. Here are the calibrated scientific instruments we park outside.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-slate-900 border border-slate-850 p-6 rounded-2xl transition hover:border-slate-700">
+            <span className="font-mono text-3xl font-black text-blue-500/40 block mb-2">01</span>
+            <strong className="text-white text-sm font-bold block mb-1">Leica Microsurgery Optics</strong>
+            <span className="text-slate-400 text-xs leading-relaxed block">
+              Dual-path stereo magnification zooms up to 45x. Provides stereoscopic focus on sub-millimeter copper trace bypass runs.
+            </span>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-850 p-6 rounded-2xl transition hover:border-slate-700">
+            <span className="font-mono text-3xl font-black text-emerald-500/40 block mb-2">02</span>
+            <strong className="text-white text-sm font-bold block mb-1">ESD-Safe Air Preheaters</strong>
+            <span className="text-slate-400 text-xs leading-relaxed block">
+              Regulated temperature delivery up to 450°C. Permits component removal without applying mechanical stress or tearing pads.
+            </span>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-850 p-6 rounded-2xl transition hover:border-slate-700">
+            <span className="font-mono text-3xl font-black text-indigo-500/40 block mb-2">03</span>
+            <strong className="text-white text-sm font-bold block mb-1">EcoFlow Clean Solar Power</strong>
+            <span className="text-slate-400 text-xs leading-relaxed block">
+              Pure Sine-Wave clean power drawn from integrated overhead van panels. Zero carbon noise footprint, 100% hum-free diagnostics.
+            </span>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-850 p-6 rounded-2xl transition hover:border-slate-700">
+            <span className="font-mono text-3xl font-black text-rose-500/40 block mb-2">04</span>
+            <strong className="text-white text-sm font-bold block mb-1">ANSI/ESD S20.20 Compliant</strong>
+            <span className="text-slate-400 text-xs leading-relaxed block">
+              Continuous dissipating safety pathways lock down high voltage spikes, shielding delicate CPU and storage processors.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* TIMELINE / HOW IT WORKS */}
+      <div className="bg-slate-950/50 border-t border-b border-slate-850/80 py-20 text-left">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <span className="text-xs text-blue-400 font-extrabold uppercase font-mono tracking-widest block mb-2">3 SIMPLE STEPS</span>
+            <h2 className="text-3xl font-extrabold text-white">How On-Site Board Repair Works</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative group hover:border-slate-700 transition-all">
+              <div className="absolute top-4 right-4 text-4xl font-extrabold text-slate-800 font-mono">01</div>
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400 w-12 h-12 flex items-center justify-center font-bold font-mono mb-6">
+                1
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">Configure & Generate Quote</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Describe your symptom brand (e.g. Broken Glass, No Backlight, Dead Charger) in our booking assistant to get transparent, pre-wholesale quotes instantly.
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative group hover:border-slate-700 transition-all">
+              <div className="absolute top-4 right-4 text-4xl font-extrabold text-slate-800 font-mono">02</div>
+              <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400 w-12 h-12 flex items-center justify-center font-bold font-mono mb-6">
+                2
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">Mobile Lab Dispatch</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Our self-powered cargo cleanroom dispatches immediately to your curb/driveway in Spokane. Watch or relax inside while the technician works.
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative group hover:border-slate-700 transition-all">
+              <div className="absolute top-4 right-4 text-4xl font-extrabold text-slate-800 font-mono">03</div>
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 w-12 h-12 flex items-center justify-center font-bold font-mono mb-6">
+                3
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">Watch and Certify</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Technician resolves visual backlight lines or shorted rails on camera. Test and sanitize the device via NIST compliance checks right in your driveway!
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* REVIEWS SECTION */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-left">
+        <div className="text-center mb-16">
+          <span className="text-xs text-emerald-400 font-extrabold uppercase font-mono tracking-widest block mb-2">LOCAL COMMUNITY VALUE</span>
+          <h2 className="text-3xl font-extrabold text-white">Trust of Spokane Neighborhoods</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
+            <div className="flex text-amber-400">
+              {"★".repeat(5)}
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed italic">
+              "The iPad motherboard was totally dead, no backlight after visual display damage. Display & Cell Pros came straight to South Hill. They swapped FL1728 filter fuse in thirty minutes inside their van. Absolute wizards!"
+            </p>
+            <div className="flex items-center gap-2 border-t border-slate-850 pt-3">
+              <div className="w-8 h-8 rounded-full bg-violet-600/35 flex items-center justify-center text-xs text-white font-bold font-mono">JM</div>
+              <div>
+                <span className="text-xs font-bold text-white block leading-none">Jane Miller</span>
+                <span className="text-[9px] text-slate-500">Spokane South Hill, WA</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
+            <div className="flex text-amber-400">
+              {"★".repeat(5)}
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed italic">
+              "Fantastic IT support for business fleet upkeep! Instead of giving up employee work devices for days to a mall kiosk, Display & Cell Pros does everything on-site. Truly safe and professional."
+            </p>
+            <div className="flex items-center gap-2 border-t border-slate-850 pt-3">
+              <div className="w-8 h-8 rounded-full bg-blue-650/35 flex items-center justify-center text-xs text-white font-bold font-mono">TR</div>
+              <div>
+                <span className="text-xs font-bold text-white block leading-none">Timothy Reynolds</span>
+                <span className="text-[9px] text-slate-500">Corporate Administrator, Liberty Lake</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
+            <div className="flex text-amber-400">
+              {"★".repeat(5)}
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed italic">
+              "The Tristar microchip on my school iPad shorted. They came to Spokane Valley parking lot, changed the power management controller, and left it working perfectly. Transparent pricing, excellent."
+            </p>
+            <div className="flex items-center gap-2 border-t border-slate-850 pt-3">
+              <div className="w-8 h-8 rounded-full bg-emerald-650/35 flex items-center justify-center text-xs text-white font-bold font-mono">AH</div>
+              <div>
+                <span className="text-xs font-bold text-white block leading-none">Aria Hayes</span>
+                <span className="text-[9px] text-slate-500">Spokane Valley, WA</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* WEBPAGE FAQ ACCORDION SECTION */}
+      <div className="bg-slate-950/40 border-t border-slate-850/85 py-20 text-left select-none">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl font-extrabold text-white">Frequently Asked Inquiries</h2>
+            <p className="text-xs text-slate-450 mt-2 font-mono uppercase tracking-wider">Got technical questions? We have transparent answers.</p>
+          </div>
+
+          <div className="space-y-3">
+            {FAQS.map((item, index) => (
+              <div 
+                key={index} 
+                className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden transition-all duration-200"
+              >
+                <button
+                  type="button"
+                  onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
+                  className="w-full text-left p-5 flex justify-between items-center bg-slate-900/60 hover:bg-slate-850/40 cursor-pointer"
+                >
+                  <span className="text-sm font-semibold text-white tracking-tight">{item.q}</span>
+                  {expandedFaq === index ? (
+                    <ChevronUp className="w-4 h-4 text-blue-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+                  )}
+                </button>
+                {expandedFaq === index && (
+                  <div className="px-5 pb-5 pt-1 text-xs text-slate-400 leading-relaxed border-t border-slate-850/40 transition-all font-sans select-text">
+                    {item.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* WEB PAGE PREVIEW FOOTER ACCORDION */}
+      <footer className="bg-slate-950 border-t border-slate-850 text-slate-500 text-xs py-10 mt-auto select-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8">
+          <div className="space-y-3">
+            <strong className="text-white uppercase tracking-widest font-mono text-sm">DISPLAY & CELL PROS</strong>
+            <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+              State-certified master solderers bringing the cleanliness of cleanrooms and high-grade diagnostics directly to our customers.
+            </p>
+          </div>
+          <div>
+            <strong className="text-white uppercase tracking-widest font-mono text-xs block mb-3">SERVICES AREA</strong>
+            <ul className="space-y-1.5 text-[11px] font-sans">
+              <li>Spokane Valley, WA</li>
+              <li>Spokane South Hill</li>
+              <li>Liberty Lake, WA</li>
+              <li>Post Falls / Spokane North</li>
+            </ul>
+          </div>
+          <div>
+            <strong className="text-white uppercase tracking-widest font-mono text-xs block mb-3">COMPLIANCE</strong>
+            <ul className="space-y-1.5 text-[11px] font-mono">
+              <li>NIST SP-800-88 R1</li>
+              <li>ESD-Safe ANSI/ESD S20.20</li>
+              <li>Repair.org Active Member</li>
+              <li>SLA Service Guarantees</li>
+            </ul>
+          </div>
+          <div className="space-y-2">
+            <strong className="text-white uppercase tracking-widest font-mono text-xs block">FREE DISPATCH ASSESSMENT</strong>
+            <p className="text-[10px] text-slate-400 leading-normal font-sans">Ready to pre-book curside diagnostic lab dispatch?</p>
+            <button
+              onClick={onBookClick}
+              className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase text-[10px] tracking-wide rounded transition-all cursor-pointer"
+            >
+              Request Mobile Dispatch Quote
+            </button>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-[10px] text-slate-600 pt-8 mt-8 border-t border-slate-900 font-mono">
+          &copy; {new Date().getFullYear()} Display & Cell Pros LLC. All Rights Reserved. General on-site diagnostic services Spokane and Seattle boundaries.
+        </div>
+      </footer>
     </div>
   );
 }
 
 function ServicesView({ onBookClick }) {
+  const [selectedBrand, setSelectedBrand] = useState<"Apple" | "Samsung" | "Google">("Apple");
+  const [selectedModel, setSelectedModel] = useState<string>("iPhone 13 / 14 Series");
+  const [selectedIssue, setSelectedIssue] = useState<"screen" | "charging" | "board">("screen");
+  const [isSpokaneLocal, setIsSpokaneLocal] = useState<boolean>(true);
+
+  const MODELS_BY_BRAND = {
+    Apple: [
+      { name: "iPhone 13 / 14 Series", partCost: 110 },
+      { name: "iPhone 11 / 12 Series", partCost: 75 },
+      { name: "iPad Pro / Air Series", partCost: 130 }
+    ],
+    Samsung: [
+      { name: "Galaxy S22 / S23 Series", partCost: 145 },
+      { name: "Galaxy S20 / S21 Series", partCost: 95 },
+      { name: "Galaxy Note Series", partCost: 115 }
+    ],
+    Google: [
+      { name: "Pixel 7 / 8 Series", partCost: 125 },
+      { name: "Pixel 5 / 6 Series", partCost: 85 },
+      { name: "Pixel Pro Series", partCost: 140 }
+    ]
+  };
+
+  const ISSUE_DETAILS = {
+    screen: { name: "OLED Glass / Screen Restoration", labor: 75, icon: <Smartphone className="w-5 h-5 text-blue-400" /> },
+    charging: { name: "Power Port / USB Multiplexer Repair", labor: 95, icon: <Battery className="w-5 h-5 text-indigo-400" /> },
+    board: { name: "Solder Board / Blown Micro Fuse surgery", labor: 145, icon: <Cpu className="w-5 h-5 text-violet-400" /> }
+  };
+
+  const activeModels = MODELS_BY_BRAND[selectedBrand];
+  const matchedModel = activeModels.find(m => m.name === selectedModel) || activeModels[0];
+  const activeIssue = ISSUE_DETAILS[selectedIssue];
+
+  const partCost = matchedModel.partCost;
+  const laborCost = activeIssue.labor;
+  const dispatchFee = isSpokaneLocal ? 0 : 35;
+  const estimateTotal = partCost + laborCost + dispatchFee;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 animate-in fade-in duration-300">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 animate-in fade-in duration-300 text-left">
       <div className="text-center mb-16">
-        <h1 className="text-4xl font-extrabold text-white mb-4">Our Service Architecture</h1>
-        <p className="text-lg text-slate-400 max-w-3xl mx-auto">Transparent, formula-based pricing. No hidden fees. We calculate costs based on wholesale part prices plus professional mobile labor overhead.</p>
+        <h1 className="text-4xl font-extrabold text-white mb-4">Service Offerings & Pricing Calculator</h1>
+        <p className="text-lg text-slate-400 max-w-3xl mx-auto">Transparent, formula-based rate systems. No hidden overheads. We calculate rates based on active wholesale material index plus expert custom workbench labor.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      {/* THREE HOVER CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
         {SERVICES.map((srv, idx) => (
           <div key={idx} className="bg-slate-800/80 rounded-2xl border border-slate-705 p-8 hover:border-blue-500/50 transition-all flex flex-col h-full relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
@@ -5070,12 +7616,168 @@ function ServicesView({ onBookClick }) {
 
             <button 
               onClick={onBookClick}
-              className="w-full py-3 bg-slate-700 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+              className="w-full py-3 bg-slate-705 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors cursor-pointer"
             >
               Start Diagnostic Triage
             </button>
           </div>
         ))}
+      </div>
+
+      {/* CALCULATOR PORTLET */}
+      <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-6 sm:p-10">
+        <div className="flex flex-col lg:flex-row gap-10">
+          
+          <div className="flex-1 space-y-6">
+            <div>
+              <span className="text-xs bg-blue-950 text-blue-400 border border-blue-900 px-3 py-1 rounded-full uppercase font-bold tracking-widest font-mono">Interactive Cost estimator</span>
+              <h2 className="text-2xl font-extrabold text-white mt-3">Calculate Estimated Rate Before Dispatch</h2>
+              <p className="text-xs text-slate-400 leading-relaxed mt-2">
+                Empower your repair scheduling, with our zero-surprise estimate matrices. Make adjustments below to see immediate parts + driveway workbench values.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Select Brand */}
+              <div>
+                <label className="text-xs text-slate-400 font-bold uppercase block mb-2 font-mono">1. Select Device Brand</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["Apple", "Samsung", "Google"] as const).map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBrand(b);
+                        const defaultModel = MODELS_BY_BRAND[b][0].name;
+                        setSelectedModel(defaultModel);
+                      }}
+                      className={`text-xs py-3 rounded-lg font-bold uppercase font-mono transition-all border cursor-pointer ${
+                        selectedBrand === b 
+                          ? "bg-blue-600/10 border-blue-500 text-blue-400" 
+                          : "bg-slate-900 border-slate-850 text-slate-400 hover:bg-slate-850"
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Select Model */}
+              <div>
+                <label className="text-xs text-slate-400 font-bold uppercase block mb-2 font-mono">2. Select Device Series</label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-850 rounded-lg px-3.5 py-3 text-xs text-white outline-none focus:border-blue-500 font-mono"
+                >
+                  {activeModels.map((m) => (
+                    <option key={m.name} value={m.name}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Select Symptom Category */}
+              <div>
+                <label className="text-xs text-slate-400 font-bold uppercase block mb-2 font-mono">3. Select Issue Classification</label>
+                <div className="space-y-2">
+                  {(["screen", "charging", "board"] as const).map((issueKey) => {
+                    const item = ISSUE_DETAILS[issueKey];
+                    return (
+                      <button
+                        key={issueKey}
+                        type="button"
+                        onClick={() => setSelectedIssue(issueKey)}
+                        className={`w-full p-3.5 rounded-lg border flex items-center justify-between text-left transition-all cursor-pointer ${
+                          selectedIssue === issueKey 
+                            ? "bg-slate-900 border-blue-500/80 shadow-inner" 
+                            : "bg-slate-900/35 border-slate-900 hover:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {item.icon}
+                          <div>
+                            <span className="text-white text-xs font-semibold block">{item.name}</span>
+                            <span className="text-[10px] text-slate-500">{issueKey === "board" ? "Microscope work required" : "Standard mobile modules"}</span>
+                          </div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-slate-350">+${item.labor} Labor</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Spokane neighborhood dispatch fee toggle */}
+              <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-900 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-white block">Spokane Service Coverage Waiver</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">Waive travel fee if parked inside the corporate Spokane Valley zone.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSpokaneLocal(!isSpokaneLocal)}
+                  className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider font-mono border cursor-pointer transition-all ${
+                    isSpokaneLocal 
+                      ? "bg-emerald-950 text-emerald-400 border-emerald-900/40" 
+                      : "bg-slate-900 text-slate-500 border-slate-800"
+                  }`}
+                >
+                  {isSpokaneLocal ? "✓ Spokane Area Active" : "extended surcharge"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* TOTAL / BREAKDOWN PANEL */}
+          <div className="w-full lg:w-[360px] bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
+            <div className="space-y-6">
+              <span className="text-[9px] uppercase font-bold tracking-widest text-slate-500 font-mono block border-b border-slate-800 pb-2">Diagnostic Rate Breakdown</span>
+
+              <div className="space-y-3.5 text-xs font-mono">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Device Platform:</span>
+                  <strong className="text-white font-medium">{selectedBrand}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Model Line:</span>
+                  <strong className="text-white font-medium truncate max-w-[150px]">{selectedModel}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Wholesale Part:</span>
+                  <strong className="text-indigo-400 font-bold">${partCost}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Expert Workbench Labor:</span>
+                  <strong className="text-violet-400 font-bold">${laborCost}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Mobile Lab Dispatch:</span>
+                  <strong className={isSpokaneLocal ? "text-emerald-400 font-bold" : "text-amber-500 font-bold"}>
+                    {isSpokaneLocal ? "Free (Waived)" : `$${dispatchFee}`}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-800 pt-4 mt-4 space-y-1">
+                <span className="text-[10px] text-slate-500 uppercase font-mono block">Estimated Total Price</span>
+                <div className="flex items-baseline justify-between">
+                  <strong className="text-3xl text-emerald-400 font-mono font-extrabold tracking-tight">${estimateTotal}</strong>
+                  <span className="text-[9px] text-slate-500 font-mono">USD before tax</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onBookClick}
+              className="w-full mt-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs uppercase tracking-widest font-mono shadow-md shadow-blue-900/10 transition-all cursor-pointer text-center"
+            >
+              Reserve Driveway Appointment
+            </button>
+          </div>
+
+        </div>
       </div>
     </div>
   );
@@ -6033,41 +8735,588 @@ function CustomerHubView({
   );
 }
 
-function StoreView() {
+function StoreView({ 
+  storeCart, 
+  setStoreCart, 
+  addToast,
+  storeStock,
+  setStoreStock,
+  stockThreshold,
+  setStockThreshold
+}) {
+  const [checkoutName, setCheckoutName] = useState("");
+  const [checkoutEmail, setCheckoutEmail] = useState("");
+  const [checkoutPhone, setCheckoutPhone] = useState("");
+  const [isReserved, setIsReserved] = useState(false);
+  const [reservationInvoice, setReservationInvoice] = useState<any>(null);
+
+  const hasLowStockHighTurnover = Object.entries(storeStock).some(([idStr, stock]) => {
+    const id = parseInt(idStr);
+    const isHighTurnover = id === 1 || id === 2; // Tempered Glass and Fast Chargers
+    return isHighTurnover && (stock as number) < (stockThreshold as number);
+  });
+
+  const handleSaleSimulation = (productId: number, productName: string) => {
+    const currentStock = storeStock[productId] ?? 0;
+    if (currentStock <= 0) {
+      addToast("Stock Depleted!", `${productName} is completely out of stock in the Spokane mobile lab!`, "warning");
+      return;
+    }
+    
+    const newStock = currentStock - 1;
+    setStoreStock((prev: any) => ({
+      ...prev,
+      [productId]: newStock
+    }));
+
+    addToast("Simulated Sale Done", `Sold 1 item of ${productName}. Remaining stock: ${newStock}`, "info");
+
+    const isHighTurnover = productId === 1 || productId === 2;
+    if (isHighTurnover && newStock < stockThreshold) {
+      addToast(
+        "⚠️ CRITICAL STOCK!",
+        `High-turnover item "${productName}" has dropped to ${newStock} units (predefined threshold is ${stockThreshold}). Visual alert badge is now active!`,
+        "warning",
+        6000
+      );
+    }
+  };
+
+  const handleRestockSimulation = (productId: number, productName: string, amt = 10) => {
+    const currentStock = storeStock[productId] ?? 0;
+    const newStock = currentStock + amt;
+    setStoreStock((prev: any) => ({
+      ...prev,
+      [productId]: newStock
+    }));
+    addToast("Restocked Item", `Replenished ${productName} by +${amt} units. Current stock: ${newStock}`, "success");
+  };
+
+  const handleRestockAllLowItems = () => {
+    setStoreStock((prev: any) => {
+      const copy = { ...prev };
+      let count = 0;
+      Object.keys(copy).forEach((keyStr) => {
+        const id = parseInt(keyStr);
+        if (copy[id] < stockThreshold) {
+          copy[id] += 12; // Reorder standard supply pack
+          count++;
+        }
+      });
+      if (count > 0) {
+        addToast("Supply-Chain Dispatch", `Automated delivery courier dispatched! Replenished ${count} low-stock lines with +12 bulk packs.`, "success");
+      } else {
+        addToast("Inventory Secured", `All item stock levels are currently above threshold ${stockThreshold}. No reorder needed.`, "info");
+      }
+      return copy;
+    });
+  };
+
+  const cartItemCount = Object.values(storeCart).reduce((acc: number, qty) => acc + (qty as number), 0) as number;
+
+  const handleAddToCart = (id: number, name: string) => {
+    setStoreCart((prev: any) => ({
+      ...prev,
+      [id]: (prev[id] || 0) + 1
+    }));
+    addToast("Added to Cart", `${name} added to your on-site reservation bag!`, "success");
+  };
+
+  const handleUpdateQty = (id: number, delta: number) => {
+    setStoreCart((prev: any) => {
+      const copy = { ...prev };
+      const newQty = (copy[id] || 0) + delta;
+      if (newQty <= 0) {
+        delete copy[id];
+      } else {
+        copy[id] = newQty;
+      }
+      return copy;
+    });
+  };
+
+  const handleRemoveItem = (id: number, name: string) => {
+    setStoreCart((prev: any) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+    addToast("Removed Item", `${name} removed from your bag.`, "info");
+  };
+
+  // Calculate prices
+  const cartItemsLists = Object.entries(storeCart).map(([idStr, qty]) => {
+    const pId = parseInt(idStr);
+    const prod = STORE_PRODUCTS.find(p => p.id === pId);
+    return {
+      prod,
+      qty,
+      subtotal: prod ? prod.price * (qty as number) : 0
+    };
+  }).filter(item => item.prod !== undefined);
+
+  const subtotalSum = cartItemsLists.reduce((acc, item) => acc + item.subtotal, 0);
+  const estTax = subtotalSum * 0.089; // 8.9% WA state tax
+  const grandTotal = subtotalSum + estTax;
+
+  const handleConfirmCheckout = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkoutName.trim() || !checkoutPhone.trim()) {
+      addToast("Validation Failed", "Please provide a valid client name and contact telephone.", "warning");
+      return;
+    }
+
+    const orderRef = "DCP-" + Math.floor(100000 + Math.random() * 900000);
+    const invoice = {
+      orderId: orderRef,
+      customer: checkoutName.trim(),
+      phone: checkoutPhone.trim(),
+      email: checkoutEmail.trim() || "walkin-client@spokane.lab",
+      date: new Date().toLocaleDateString(),
+      items: cartItemsLists.map(it => ({ name: it.prod?.name, qty: it.qty, price: it.prod?.price })),
+      subtotal: subtotalSum,
+      tax: estTax,
+      total: grandTotal
+    };
+
+    setReservationInvoice(invoice);
+    setIsReserved(true);
+    setStoreCart({}); // Clear active cart
+    addToast("Reservation Confirmed!", `Supply Pre-order ${orderRef} has been assigned to Spokane mobile lab truck. Pay on-site at handover.`, "success");
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 animate-in fade-in duration-300">
-      <div className="flex items-center justify-between mb-12 border-b border-slate-800 pb-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 animate-in fade-in duration-300 text-left">
+      
+      {/* HEADER SECTION */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 border-b border-slate-800 pb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Logistics & Supply</h1>
-          <p className="text-slate-400 mt-2">Premium Gear & Certified Pre-Owned Devices</p>
+          <span className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-900 px-2.5 py-1 rounded font-mono uppercase font-bold tracking-widest">Supply & Hardware catalog</span>
+          <h1 className="text-3xl font-extrabold text-white mt-2">Mobile Shop & Premium Gear</h1>
+          <p className="text-xs text-slate-400 mt-1">Pre-order high-durability protection gear or Certified Pre-Owned cell phones for driveway delivery or handover.</p>
         </div>
-        <div className="hidden sm:flex items-center text-slate-400 bg-slate-800/50 px-4 py-2 rounded-lg border border-slate-700">
-          <ShoppingCart size={18} className="mr-2 text-blue-400" />
-          <span className="text-sm font-semibold">Cart (0)</span>
+        
+        <div className="flex items-center text-slate-350 bg-slate-900 px-4 py-2.5 rounded-lg border border-slate-800">
+          <ShoppingCart size={16} className="mr-2 text-blue-400 animate-pulse" />
+          <span className="text-xs font-mono">Invoice Bag Status: <strong className="text-white font-extrabold">{cartItemCount} Items</strong></span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {STORE_PRODUCTS.map(product => (
-          <div key={product.id} className="bg-slate-800 rounded-xl border border-slate-705 overflow-hidden group flex flex-col">
-            <div className="h-48 overflow-hidden relative">
-              <img src={product.img} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-              <div className="absolute top-2 right-2 bg-slate-900/80 backdrop-blur text-xs font-bold px-2 py-1 rounded text-slate-300">
-                {product.category}
+      {/* INVENTORY CONTROL & ALERT TELEMETRY PANEL */}
+      {!isReserved && (
+        <div className="mb-8 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 select-none">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            
+            <div className="space-y-1">
+              <span className="text-[10px] font-extrabold text-blue-400 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                Durable Supply-Chain Operations
+              </span>
+              <h2 className="text-sm font-extrabold text-white tracking-wide">
+                Spokane Mobile Inventory Logistics
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                Continuous telemetry tracking for high-turnover accessories. Current predefined threshold is{" "}
+                <strong className="text-amber-400 font-bold font-mono">{stockThreshold} units</strong>.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Threshold Controller */}
+              <div className="flex items-center gap-2 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+                <span className="text-[10px] font-bold text-slate-400 font-mono uppercase">Alert Threshold:</span>
+                <input
+                  type="range"
+                  min="2"
+                  max="12"
+                  value={stockThreshold}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setStockThreshold(val);
+                    addToast("Threshold Changed", `Predefined stock warning limit set to < ${val} units.`, "info");
+                  }}
+                  className="w-20 accent-blue-500 cursor-pointer h-1"
+                />
+                <span className="text-xs font-black text-amber-400 font-mono w-4 text-center">{stockThreshold}</span>
+              </div>
+
+              {/* Express restocking flow */}
+              <button
+                type="button"
+                onClick={handleRestockAllLowItems}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 hover:text-white border border-blue-500/30 text-white rounded-lg text-xs font-bold uppercase tracking-wider font-mono cursor-pointer transition-all active:scale-97 flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-white animate-spin-slow" />
+                Courier Restock All Low
+              </button>
+            </div>
+
+          </div>
+
+          {/* Conditional Low Stock Alert Jumbotron */}
+          {hasLowStockHighTurnover ? (
+            <div className="mt-4 bg-rose-950/30 border border-rose-900/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4 animate-in fade-in duration-300">
+              <div className="p-2.5 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-6 h-6 animate-bounce" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <h3 className="text-xs font-extrabold text-rose-400 uppercase tracking-wide font-mono">
+                  🚨 CRITICAL LOW INVENTORY WARNING [HIGH TURNOVER PRODUCTS]
+                </h3>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Tempered glass protection shields or power fast chargers have critical counts falling below your predefined threshold of{" "}
+                  <b className="text-rose-400 font-black">{stockThreshold}</b>. Customer mobile reservations may fail if dispatch lists are not replenished.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1 font-mono text-[9px]">
+                  {STORE_PRODUCTS.map((p) => {
+                    const isHighTurnover = p.id === 1 || p.id === 2;
+                    const stock = storeStock[p.id] ?? 0;
+                    if (isHighTurnover && stock < stockThreshold) {
+                      return (
+                        <span key={p.id} className="bg-rose-950 border border-rose-800 text-rose-300 px-2.5 py-0.5 rounded font-bold uppercase">
+                          {p.name}: Only {stock} Left!
+                        </span>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
               </div>
             </div>
-            <div className="p-5 flex flex-col flex-grow">
-              <h3 className="text-lg font-semibold text-white mb-2 leading-tight">{product.name}</h3>
-              <div className="mt-auto pt-4 flex items-center justify-between">
-                <span className="text-xl font-bold text-blue-400">${product.price.toFixed(2)}</span>
-                <button className="bg-slate-700 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors">
-                  <ShoppingCart size={18} />
-                </button>
+          ) : (
+            <div className="mt-4 bg-emerald-950/25 border border-emerald-900/30 rounded-xl p-3.5 flex items-center gap-3 animate-in fade-in duration-300">
+              <div className="p-1.5 rounded-full bg-emerald-500/10 text-emerald-400 shrink-0">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               </div>
+              <p className="text-[11px] text-emerald-300 leading-none">
+                All high-turnover item stock lines are fully secure and verified above the predefined threshold. Spokane mobile lab is fully operational.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isReserved && reservationInvoice ? (
+        /* SUCCESS INVOICE STATE */
+        <div className="bg-slate-950 border border-emerald-900/40 rounded-2xl p-6 sm:p-10 max-w-2xl mx-auto animate-in zoom-in-95 duration-200">
+          <div className="text-center space-y-3 mb-8">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto text-xl">
+              ✓
+            </div>
+            <h2 className="text-xl font-bold text-white uppercase tracking-tight font-mono">On-Site Pre-Order Assigned</h2>
+            <p className="text-xs text-slate-405 leading-relaxed max-w-md mx-auto">
+              Your item pre-order has been registered in the Spokane mobile service log. Payment is completed only at handover once the truck dispatches.
+            </p>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-850 p-5 rounded-xl font-mono text-xs space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-slate-500 block text-[9px] uppercase">Reserve ID</span>
+                <strong className="text-blue-400 font-bold">{reservationInvoice.orderId}</strong>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-500 block text-[9px] uppercase">Date Registered</span>
+                <span className="text-white font-semibold">{reservationInvoice.date}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 border-b border-slate-800 pb-3">
+              <span className="text-[9px] text-slate-500 uppercase block font-bold border-b border-slate-900 pb-1">Items Checked Out</span>
+              {reservationInvoice.items.map((it: any, index: number) => (
+                <div key={index} className="flex justify-between text-[11px]">
+                  <span className="text-slate-300">{it.name} <strong className="text-slate-500">x{it.qty}</strong></span>
+                  <span className="text-white font-semibold text-right">${(it.price * it.qty).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-1 text-right text-[11px] pt-1">
+              <div className="flex justify-between text-slate-400">
+                <span>Subtotal:</span>
+                <span>${reservationInvoice.subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-450">
+                <span>WA Local Sales Tax (8.9%):</span>
+                <span>${reservationInvoice.tax.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-white font-black text-sm pt-2 border-t border-slate-800/80">
+                <span className="uppercase text-[10px] text-slate-400">Total Invoice Valuation:</span>
+                <span className="text-emerald-400">${reservationInvoice.total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/60 flex items-start gap-1.5 text-slate-400 text-[10px] leading-relaxed">
+              <span className="text-emerald-400 font-extrabold shrink-0">[VAN DIRECT]</span>
+              <span>Our driver will match this invoice with your physical ticket details. All pre-ordered items remain reserved for 72 hours.</span>
             </div>
           </div>
-        ))}
-      </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsReserved(false);
+              setReservationInvoice(null);
+            }}
+            className="w-full mt-6 py-3 bg-slate-800 hover:bg-slate-750 text-white rounded-lg font-bold text-xs uppercase tracking-widest font-mono cursor-pointer transition-all"
+          >
+            Return to Store Catalogue
+          </button>
+        </div>
+      ) : (
+        /* CORE TWO COLUMN LAYOUT */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* PRODUCT LAYOUT CONTAINER */}
+          <div className="lg:col-span-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {STORE_PRODUCTS.map(product => {
+                const isSelected = (storeCart[product.id] || 0) > 0;
+                const isHighTurnover = product.id === 1 || product.id === 2;
+                const stock = storeStock[product.id] ?? 0;
+                const isLow = isHighTurnover && stock < stockThreshold;
+                const isOutOfStock = stock <= 0;
+
+                return (
+                  <div 
+                    key={product.id} 
+                    className={`bg-slate-850 rounded-xl border overflow-hidden group flex flex-col relative transition-all duration-305 shadow-md ${
+                      isLow 
+                        ? "border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/30" 
+                        : "border-slate-705 hover:border-slate-600"
+                    }`}
+                  >
+                    <div className="h-44 overflow-hidden relative select-none">
+                      <img src={product.img} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                      
+                      {/* Product Category badge top-left */}
+                      <div className="absolute top-3 left-3 bg-slate-950/90 backdrop-blur-md border border-slate-800 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded text-slate-300">
+                        {product.category}
+                      </div>
+
+                      {/* Visual stock badges top-right */}
+                      {isLow ? (
+                        <div className="absolute top-3 right-3 bg-amber-500 text-slate-950 border border-amber-400 text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-md animate-pulse font-mono shadow-md flex items-center gap-1">
+                          ⚠️ UNDER THRESHOLD ({stock} left)
+                        </div>
+                      ) : isOutOfStock ? (
+                        <div className="absolute top-3 right-3 bg-rose-600 text-white border border-rose-500 text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded font-mono shadow-md flex items-center gap-1">
+                          🚨 OUT OF STOCK
+                        </div>
+                      ) : (
+                        <div className="absolute top-3 right-3 bg-slate-950/85 text-emerald-400 border border-emerald-900/60 text-[9px] font-mono px-2 py-1 rounded flex items-center gap-1 shadow-md">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                          {stock} in stock
+                        </div>
+                      )}
+
+                      {/* High turnover label bottom-left */}
+                      {isHighTurnover && (
+                        <div className="absolute bottom-3 left-3 bg-blue-600 text-white text-[8px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-md shadow-md font-mono flex items-center gap-1.5">
+                          <Zap className="w-2.5 h-2.5 text-amber-300 fill-amber-300 animate-pulse" />
+                          High Turnover Item
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-5 flex flex-col flex-grow text-left justify-between space-y-4">
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-start gap-1">
+                          <h3 className="text-white font-bold text-sm tracking-tight leading-snug">{product.name}</h3>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-mono">Part Reference ID: DCP-{product.id}0{product.id}</p>
+                        
+                        {/* Live telemetry stock line */}
+                        <div className="bg-slate-900/40 border border-slate-800/80 rounded-lg p-2 flex items-center justify-between text-[11px] font-mono">
+                          <span className="text-slate-400">Current Truck Stock:</span>
+                          <span className={`font-bold transition-colors ${isLow ? "text-amber-400 animate-pulse" : isOutOfStock ? "text-rose-500" : "text-emerald-400"}`}>
+                            {stock} {stock === 1 ? "unit" : "units"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Interactive Simulation Controls directly on each product */}
+                      <div className="pt-2.5 border-t border-slate-900 flex flex-col gap-2">
+                        <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-mono tracking-wider">
+                          <span>Simulation Tools</span>
+                          <span className="text-slate-600">Lab Only</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSaleSimulation(product.id, product.name)}
+                            className="bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-900/40 text-[10px] font-bold font-mono py-1 rounded transition-colors uppercase outline-none"
+                            title="Decline inventory stock by -1 to test threshold triggers"
+                          >
+                            Sale (-1)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRestockSimulation(product.id, product.name, 12)}
+                            className="bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-emerald-400 border border-slate-800 hover:border-emerald-900/40 text-[10px] font-bold font-mono py-1 rounded transition-colors uppercase outline-none"
+                            title="Restock this item by +12 units instantly"
+                          >
+                            Restock (+12)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-900/80 flex items-center justify-between">
+                        <span className="text-lg font-extrabold text-blue-400 font-mono">${product.price.toFixed(2)}</span>
+                        
+                        <button 
+                          onClick={() => handleAddToCart(product.id, product.name)}
+                          disabled={isOutOfStock}
+                          className={`px-3 py-2 text-xs font-bold font-mono uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                            isOutOfStock 
+                              ? "bg-slate-805 text-slate-550 border border-slate-800 cursor-not-allowed opacity-60" 
+                              : isSelected 
+                                ? "bg-emerald-600 hover:bg-emerald-500 text-white" 
+                                : "bg-slate-705 hover:bg-blue-600 text-slate-300 hover:text-white"
+                          }`}
+                        >
+                          <ShoppingCart size={13} />
+                          {isOutOfStock ? "Out of Stock" : isSelected ? `Add More (${storeCart[product.id]})` : "Add to Cart"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* SHOPPING BAG DRAWER CONTAINER */}
+          <div className="lg:col-span-4">
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 shadow-lg select-none">
+              <h2 className="text-xs uppercase font-extrabold tracking-widest text-slate-400 font-mono border-b border-slate-900 pb-3 mb-4 flex items-center justify-between">
+                <span>PRE-ORDER LIST</span>
+                <span className="bg-slate-900 px-2 py-0.5 rounded text-blue-400 text-[10px] font-extrabold">{cartItemCount}</span>
+              </h2>
+
+              {cartItemsLists.length === 0 ? (
+                /* EMPTY REEL STATE */
+                <div className="text-center py-12 px-4 space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-slate-900/60 border border-slate-800 text-slate-500 flex items-center justify-center mx-auto text-sm font-mono font-bold">
+                    [0]
+                  </div>
+                  <strong className="text-xs font-mono text-slate-400 block uppercase">Cart Bag is Empty</strong>
+                  <p className="text-[10px] text-slate-504 leading-relaxed max-w-xs mx-auto">
+                    Add Casper safety glass shields, direct fast chargers, or other certified accessories from active stock layers above.
+                  </p>
+                </div>
+              ) : (
+                /* ACTIVE BAG FLOW */
+                <div className="space-y-6">
+                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                    {cartItemsLists.map((item) => (
+                      <div key={item.prod?.id} className="p-3 bg-slate-900 rounded-lg border border-slate-850/60 flex items-center justify-between text-left gap-2 animate-in slide-in-from-right-2 duration-100">
+                        <div className="min-w-0">
+                          <span className="text-white text-xs font-bold block truncate max-w-[130px]">{item.prod?.name}</span>
+                          <span className="text-[10px] text-blue-400 font-mono block mt-0.5">${item.prod?.price.toFixed(2)} each</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="bg-slate-950 p-1 rounded-md border border-slate-850/80 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(item?.prod?.id!, -1)}
+                              className="w-4 h-4 text-[10px] font-black font-mono text-slate-400 hover:text-white flex items-center justify-center bg-slate-900 rounded cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span className="text-[10px] font-black font-mono text-white w-4 text-center">{item.qty}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(item?.prod?.id!, 1)}
+                              className="w-4 h-4 text-[10px] font-black font-mono text-slate-400 hover:text-white flex items-center justify-center bg-slate-900 rounded cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item?.prod?.id!, item?.prod?.name!)}
+                            className="text-slate-500 hover:text-red-400 p-1 cursor-pointer transition-colors"
+                            title="Delete item"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Calculations breakdown */}
+                  <div className="border-t border-slate-900 pt-4 space-y-2 text-xs font-mono">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Bag Subtotal:</span>
+                      <span className="text-white font-bold">${subtotalSum.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Estimate Sales Tax:</span>
+                      <span className="text-white font-bold">${estTax.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-white font-black text-sm pt-3 mt-1 border-t border-slate-900">
+                      <span className="uppercase text-[9px] text-slate-400 tracking-wider">Estimated Total:</span>
+                      <span className="text-emerald-400">${grandTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* RESERVATION FORM */}
+                  <form onSubmit={handleConfirmCheckout} className="border-t border-slate-900 pt-5 space-y-3.5 text-left">
+                    <span className="text-[9px] uppercase font-bold tracking-widest text-slate-550 block font-mono">On-Site hand over Details</span>
+
+                    <div>
+                      <label className="text-[9px] uppercase tracking-widest text-slate-500 font-mono block mb-1">Customer Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={checkoutName}
+                        onChange={(e) => setCheckoutName(e.target.value)}
+                        placeholder="John Doe"
+                        className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500 select-text"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] uppercase tracking-widest text-slate-500 font-mono block mb-1">Phone Number</label>
+                      <input
+                        type="tel"
+                        required
+                        value={checkoutPhone}
+                        onChange={(e) => setCheckoutPhone(e.target.value)}
+                        placeholder="(509) 555-0100"
+                        className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500 select-text"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] uppercase tracking-widest text-slate-500 font-mono block mb-1">Email (Optional)</label>
+                      <input
+                        type="email"
+                        value={checkoutEmail}
+                        onChange={(e) => setCheckoutEmail(e.target.value)}
+                        placeholder="johndoe@gmail.com"
+                        className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500 select-text"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 mt-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-[10px] uppercase tracking-widest font-mono shadow-md transition-all cursor-pointer text-center"
+                    >
+                      Confirm Pre-Order Reservation
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }

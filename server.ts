@@ -50,6 +50,7 @@ interface RepairTicket {
   discount: number;
   total: number;
   createdAt: string;
+  completedAt?: string;
 }
 
 const mockTickets: RepairTicket[] = [
@@ -90,6 +91,7 @@ const mockTickets: RepairTicket[] = [
     discount: 36.0, // 20% B2B discount
     total: 162.63,
     createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    completedAt: new Date(Date.now() - 3 * 86400000 + 4500000).toISOString(),
   },
 ];
 

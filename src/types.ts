@@ -12,6 +12,7 @@ export interface RepairTicket {
   createdAt: string;
   userId?: string;
   internalNotes?: string;
+  completedAt?: string;
 }
 
 export interface POSLog {
@@ -63,3 +64,16 @@ export interface HighPriorityLead {
   createdAt: string;
   userId: string;
 }
+
+export interface S2CFeedback {
+  id: string;
+  userId: string;
+  pathway: "backlight" | "charging" | "short_rail" | string;
+  rating: "up" | "down";
+  deviceModel: string;
+  notes?: string;
+  ammeterReading: number;
+  batteryTemp: number;
+  createdAt: string;
+}
+
