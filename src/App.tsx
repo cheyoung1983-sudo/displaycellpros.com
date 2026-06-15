@@ -62,6 +62,8 @@ import { Toast, ToastContainer, ToastType } from "./components/ToastNotification
 import { HardwareScanChart } from "./components/HardwareScanChart";
 import { ForensicsView } from "./components/ForensicsView";
 import { TechnicianDashboard } from "./components/TechnicianDashboard";
+import { CspManualView } from "./components/CspManualView";
+import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
 import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
@@ -2565,6 +2567,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                   <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")}>Home</NavButton>
                   <NavButton active={activeTab === "services"} onClick={() => setActiveTab("services")}>Services</NavButton>
                   <NavButton active={activeTab === "b2b"} onClick={() => setActiveTab("b2b")}>B2B Fleet</NavButton>
+                  <NavButton active={activeTab === "csp"} onClick={() => setActiveTab("csp")}>CSP Manual</NavButton>
                   
                   {/* Shopping Cart button */}
                   <button
@@ -2683,6 +2686,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                   <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}>Services</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("b2b"); setMobileMenuOpen(false); }}>B2B Fleet</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("csp"); setMobileMenuOpen(false); }}>CSP Manual</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>
                     Store {hasLowStockHighTurnover && "⚠️ (LOW STOCK Alert!)"}
                   </MobileNavButton>
@@ -2744,6 +2748,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} />}
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
+        {activeTab === "csp" && <CspManualView addToast={addToast} />}
         {activeTab === "store" && (
           <StoreView 
             storeCart={storeCart} 
@@ -2997,19 +3002,27 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                           </div>
                           
                           {/* Collapsible report Content with animation */}
-                          {isReportExpanded && (
-                            <div className="p-3 bg-slate-950/40 animate-in fade-in slide-in-from-top-1 duration-150">
-                              <HardwareScanChart 
-                                deviceBrand={deviceBrand}
-                                deviceModel={deviceModel}
-                                issueType={issueType}
-                              />
-                              
-                              {/* QR Code Synchronization Card */}
-                              <div id="diagnostic-qr-sync-panel" className="mt-3 bg-slate-900 border border-slate-800/80 rounded-lg p-3 flex flex-col sm:flex-row items-center gap-3.5 shadow-inner">
-                                <div className="relative shrink-0 p-1.5 bg-white rounded-lg border border-slate-700 shadow-md flex items-center justify-center">
-                                  <img 
-                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(
+                          <AnimatePresence initial={false}>
+                            {isReportExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.35, ease: "easeInOut" }}
+                                style={{ overflow: "hidden" }}
+                              >
+                                <div className="p-3 bg-slate-950/40">
+                                  <HardwareScanChart 
+                                    deviceBrand={deviceBrand}
+                                    deviceModel={deviceModel}
+                                    issueType={issueType}
+                                  />
+                                  
+                                  {/* QR Code Synchronization Card */}
+                                  <div id="diagnostic-qr-sync-panel" className="mt-3 bg-slate-900 border border-slate-800/80 rounded-lg p-3 flex flex-col sm:flex-row items-center gap-3.5 shadow-inner">
+                                    <div className="relative shrink-0 p-1.5 bg-white rounded-lg border border-slate-700 shadow-md flex items-center justify-center">
+                                      <img 
+                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(
 `--- TELEMETRY TRACE ---
 ID: COM-CORE-USB-01
 Timestamp: ${new Date().toLocaleString()}
@@ -3019,43 +3032,43 @@ Tier: ${deviceTier}
 Fault: ${issueType.toUpperCase()}
 Battery Health: ${issueType === "battery" ? "76%" : "94%"}
 Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`
-                                    )}&color=0f172a`}
-                                    alt="Diagnostic Handshake QR Code"
-                                    id="diagnostic-qr-code-img"
-                                    className="w-24 h-24 select-none rounded"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-[6.5px] text-white font-black font-mono px-1 rounded shadow-md animate-pulse">
-                                    LIVE
-                                  </div>
-                                </div>
+                                        )}&color=0f172a`}
+                                        alt="Diagnostic Handshake QR Code"
+                                        id="diagnostic-qr-code-img"
+                                        className="w-24 h-24 select-none rounded"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                      <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-[6.5px] text-white font-black font-mono px-1 rounded shadow-md animate-pulse">
+                                        LIVE
+                                      </div>
+                                    </div>
 
-                                <div className="flex-1 text-center sm:text-left space-y-1.5 min-w-0">
-                                  <div className="flex items-center justify-center sm:justify-start gap-1.5">
-                                    <QrCode className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span className="text-[9.5px] font-extrabold text-slate-300 uppercase tracking-wider font-mono">
-                                      Terminal Sync QR Code
-                                    </span>
-                                  </div>
-                                  <p className="text-[9px] text-slate-400 font-mono leading-relaxed">
-                                    Scan with any workbench terminal or secondary mobile reader to instantly transfer active calibrator state parameters.
-                                  </p>
-                                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-1 text-[8px] font-bold text-slate-500 font-mono">
-                                    <span>CODE:</span>
-                                    <span className="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-400 border border-slate-800">
-                                      {deviceBrand.toUpperCase()}-{deviceModel.slice(0, 8).replace(/\s+/g, "").toUpperCase()}-{issueType.toUpperCase()}
-                                    </span>
-                                    <span className="text-slate-700">|</span>
-                                    <span className="text-emerald-400/95 uppercase tracking-widest animate-pulse flex items-center gap-1 font-extrabold mr-1">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block"></span>
-                                      TELEMETRY READY
-                                    </span>
-                                    <span className="text-slate-700 hidden sm:inline">|</span>
-                                    <button
-                                      type="button"
-                                      id="btn-copy-telemetry-trace"
-                                      onClick={() => {
-                                        const traceText = `--- TELEMETRY TRACE ---
+                                    <div className="flex-1 text-center sm:text-left space-y-1.5 min-w-0">
+                                      <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                                        <QrCode className="w-3.5 h-3.5 text-emerald-400" />
+                                        <span className="text-[9.5px] font-extrabold text-slate-300 uppercase tracking-wider font-mono">
+                                          Terminal Sync QR Code
+                                        </span>
+                                      </div>
+                                      <p className="text-[9px] text-slate-400 font-mono leading-relaxed">
+                                        Scan with any workbench terminal or secondary mobile reader to instantly transfer active calibrator state parameters.
+                                      </p>
+                                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-1 text-[8px] font-bold text-slate-500 font-mono">
+                                        <span>CODE:</span>
+                                        <span className="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-400 border border-slate-800">
+                                          {deviceBrand.toUpperCase()}-{deviceModel.slice(0, 8).replace(/\s+/g, "").toUpperCase()}-{issueType.toUpperCase()}
+                                        </span>
+                                        <span className="text-slate-700">|</span>
+                                        <span className="text-emerald-400/95 uppercase tracking-widest animate-pulse flex items-center gap-1 font-extrabold mr-1">
+                                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block"></span>
+                                          TELEMETRY READY
+                                        </span>
+                                        <span className="text-slate-700 hidden sm:inline">|</span>
+                                        <button
+                                          type="button"
+                                          id="btn-copy-telemetry-trace"
+                                          onClick={() => {
+                                            const traceText = `--- TELEMETRY TRACE ---
 ID: COM-CORE-USB-01
 Timestamp: ${new Date().toLocaleString()}
 Manufacturer: ${deviceBrand}
@@ -3064,50 +3077,52 @@ Tier: ${deviceTier}
 Fault: ${issueType.toUpperCase()}
 Battery Health: ${issueType === "battery" ? "76%" : "94%"}
 Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
-                                        navigator.clipboard.writeText(traceText);
-                                        setCopiedTelemetry(true);
-                                        addToast(
-                                          "Telemetry Copied",
-                                          "Raw diagnostic telemetry trace parameters have been copied to clipboard.",
-                                          "success",
-                                          3000
-                                        );
-                                        setTimeout(() => setCopiedTelemetry(false), 3000);
-                                      }}
-                                      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[8px] font-extrabold text-blue-400 hover:text-blue-300 rounded transition-all font-mono shadow-sm cursor-pointer select-none"
+                                            navigator.clipboard.writeText(traceText);
+                                            setCopiedTelemetry(true);
+                                            addToast(
+                                              "Telemetry Copied",
+                                              "Raw diagnostic telemetry trace parameters have been copied to clipboard.",
+                                              "success",
+                                              3000
+                                            );
+                                            setTimeout(() => setCopiedTelemetry(false), 3000);
+                                          }}
+                                          className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[8px] font-extrabold text-blue-400 hover:text-blue-300 rounded transition-all font-mono shadow-sm cursor-pointer select-none"
+                                        >
+                                          {copiedTelemetry ? (
+                                            <>
+                                              <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                              <span className="text-emerald-400 uppercase tracking-wider">COPIED</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Copy className="w-2.5 h-2.5 text-blue-400" />
+                                              <span>COPY DATA</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="mt-3.5 pt-3 border-t border-slate-800/60 flex items-center justify-between gap-2.5">
+                                    <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">
+                                      ID: COM-CORE-USB-01
+                                    </span>
+                                    <button
+                                      type="button"
+                                      id="btn-download-pdf-report"
+                                      onClick={downloadPdfReport}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-mono text-[9px] font-extrabold uppercase tracking-wider rounded transition-all shadow border border-blue-500/20"
                                     >
-                                      {copiedTelemetry ? (
-                                        <>
-                                          <Check className="w-2.5 h-2.5 text-emerald-400" />
-                                          <span className="text-emerald-400 uppercase tracking-wider">COPIED</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Copy className="w-2.5 h-2.5 text-blue-400" />
-                                          <span>COPY DATA</span>
-                                        </>
-                                      )}
+                                      <FileText className="w-3.5 h-3.5 text-blue-200" />
+                                      <span>Download PDF Report</span>
                                     </button>
                                   </div>
                                 </div>
-                              </div>
-                              
-                              <div className="mt-3.5 pt-3 border-t border-slate-800/60 flex items-center justify-between gap-2.5">
-                                <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">
-                                  ID: COM-CORE-USB-01
-                                </span>
-                                <button
-                                  type="button"
-                                  id="btn-download-pdf-report"
-                                  onClick={downloadPdfReport}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-mono text-[9px] font-extrabold uppercase tracking-wider rounded transition-all shadow border border-blue-500/20"
-                                >
-                                  <FileText className="w-3.5 h-3.5 text-blue-200" />
-                                  <span>Download PDF Report</span>
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       )}
                     </div>

@@ -468,12 +468,15 @@ GLOBAL ASSISTANT LAWS:
 
       // Call Gemini API using modern @google/genai syntax with Google Search grounding and JSON Schema output enabled
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.1-pro-preview",
         contents: [
           { role: "user", parts: [{ text: `CONTEXT:\n${deviceContextPrompt}\n\nStrict System Guidelines:\n${systemInstruction}` }] },
           ...contents
         ],
         config: {
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.HIGH
+          },
           temperature: 0.7,
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
