@@ -1,6 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
+import { getMessaging, isSupported as isMessagingSupported } from "firebase/messaging"; // Import Messaging
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -28,4 +29,13 @@ isSupported().then((supported) => {
   }
 });
 
-export { app, analytics };
+// Initialize Cloud Messaging safely
+// This check prevents errors when running in Node.js environments.
+let messaging;
+isMessagingSupported().then((supported) => {
+  if (supported) {
+    messaging = getMessaging(app);
+  }
+});
+
+export { app, analytics, messaging };

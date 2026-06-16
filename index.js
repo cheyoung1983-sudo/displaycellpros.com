@@ -1,7 +1,15 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import admin from 'firebase-admin';
 import { app as firebaseApp } from './firebase-config.js';
+
+// Initialize Firebase Admin SDK
+// IMPORTANT: Never commit your serviceAccountKey.json to GitHub.
+// Add it to your .gitignore file immediately.
+admin.initializeApp({
+  credential: admin.credential.cert('./serviceAccountKey.json')
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
