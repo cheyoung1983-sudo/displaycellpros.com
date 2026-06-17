@@ -1,0 +1,32 @@
+steps:
+  # Step 1: Build the container image using BuildKit
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Build'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/app/displaycellpros:$SHORT_SHA'
+      - '.'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+
+  # Step 2: Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Push'
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/app/displaycellpros:$SHORT_SHA']
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'Deploy'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'displaycellpros-com-git'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/app/displaycellpros:$SHORT_SHA'
+      - '--region'
+      - 'us-central1'
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/app/displaycellpros:$SHORT_SHA'

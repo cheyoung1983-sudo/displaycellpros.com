@@ -1,0 +1,60 @@
+type User @table {
+  username: String!
+  email: String!
+  createdAt: Timestamp!
+  location: String! # Assuming Spokane is a string
+  displayName: String
+  sobrietyDate: Date
+  profilePictureUrl: String
+  bio: String
+}
+
+type Resource @table {
+  name: String!
+  type: String!
+  address: String!
+  contactNumber: String!
+  createdAt: Timestamp!
+  websiteUrl: String
+  description: String
+  operatingHours: String
+}
+
+type Meeting @table {
+  name: String!
+  dayOfWeek: String!
+  time: String!
+  locationDetails: String!
+  createdAt: Timestamp!
+  type: String
+  notes: String
+  resource: Resource # Belongs To: Resource
+}
+
+type Post @table {
+  content: String!
+  createdAt: Timestamp!
+  isPublic: Boolean!
+  imageUrl: String
+  author: User # Belongs To: User
+}
+
+type ProgressLog @table {
+  logDate: Date!
+  createdAt: Timestamp!
+  cravingsDescription: String
+  triggerDescription: String
+  positiveActivity: String
+  notes: String
+  user: User # Belongs To: User
+}
+
+type FavoriteResource @table(key: ["user", "resource"]) {
+  user: User!
+  resource: Resource!
+}
+
+type FavoritePost @table(key: ["user", "post"]) {
+  user: User!
+  post: Post!
+}
