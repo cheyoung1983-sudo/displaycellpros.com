@@ -63,6 +63,8 @@ import { HardwareScanChart } from "./components/HardwareScanChart";
 import { ForensicsView } from "./components/ForensicsView";
 import { TechnicianDashboard } from "./components/TechnicianDashboard";
 import { CspManualView } from "./components/CspManualView";
+import { LegalView } from "./components/LegalView";
+import { SignaturePad } from "./components/SignaturePad";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
 import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
@@ -109,7 +111,13 @@ const STORE_PRODUCTS = [
 // --- MAIN MASTER APP COMPONENT ---
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>("home");
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("tab") || "home";
+    }
+    return "home";
+  });
   const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [storeCart, setStoreCart] = useState<Record<number, number>>({});
@@ -526,7 +534,7 @@ export default function App() {
     const sandboxUser = {
       uid: "sandbox-tech-101",
       displayName: "Spokane Tech Sandbox",
-      email: "spokane.van.test@displaycellpros.local",
+      email: "spokane.van.test@displaycellpros.com",
       photoURL: "",
     };
     setAuthUser(sandboxUser as any);
@@ -842,6 +850,56 @@ export default function App() {
     }
   };
 
+  // SEO Metadata Manager
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      home: "Mobile iPhone Repair & Tech Fixes | Display & Cell Pros Spokane",
+      services: "Repair Services & Rates in Spokane, WA | Display & Cell Pros",
+      b2b: "Enterprise & Fleet Device Repair | Display & Cell Pros",
+      csp: "Certified Service Provider Status | Display & Cell Pros",
+      legal: "Compliance Guidelines & Data Privacy Policy | Spokane WA | Display & Cell Pros",
+      store: "Shop Replacement Parts & Accessories | Display & Cell Pros",
+      "customer-hub": "Customer Portal & Booking System | Display & Cell Pros",
+      lab: "Technical Analytics Lab & Forensics | Display & Cell Pros",
+    };
+
+    const descriptions: Record<string, string> = {
+      home: "Expert mobile device repairs in Spokane, WA. From cracked screens to complex microsoldering, we bring the lab to your driveway.",
+      services: "View our comprehensive device repair solutions, OEM-quality parts, and upfront pricing models. Lifetime physical solder warranty included.",
+      b2b: "Priority dispatch queue and Net-30 bulk billing for enterprise and corporate device fleets across Washington state.",
+      csp: "Verify our official certifications, NIST SP-800-88 R1 data compliance standards, and ANSI/ESD protocols.",
+      legal: "Review our strict logical isolation protocols, physical compliance procedures, and 120-Day Limited Hardware Warranty terms specifically indexed for our Spokane WA clients.",
+      store: "Original quality components and highly vetted aftermarket accessories available for on-demand dispatch or direct purchase.",
+      "customer-hub": "Manage your open repair tickets, message technicians directly, and approve service quotes securely via our client portal.",
+      lab: "Advanced logic board triage insights, Symptom-to-Circuit mapping, and real-time electronic footprint analysis.",
+    };
+
+    const newTitle = titles[activeTab] || "Display & Cell Pros | Premium Device Solutions";
+    const newDescription = descriptions[activeTab] || "Professional cell phone logic board repair and mobile forensics servicing Spokane, Washington.";
+
+    document.title = newTitle;
+    
+    // Sync URL for SEO purposes (allows direct linking to specific tabs)
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (activeTab === "home") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", activeTab);
+      }
+      window.history.replaceState({}, "", url.toString());
+    }
+    
+    // Update or create the meta description tag dynamically
+    let metaDescription = document.querySelector('meta[name="description"]');
+    if (!metaDescription) {
+      metaDescription = document.createElement('meta');
+      metaDescription.setAttribute('name', 'description');
+      document.head.appendChild(metaDescription);
+    }
+    metaDescription.setAttribute('content', newDescription);
+  }, [activeTab]);
+
   // Firebase Auth Observer subscription
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -894,6 +952,7 @@ export default function App() {
   const [posLogs, setPosLogs] = useState<POSLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
   const [ticketCreationSuccess, setTicketCreationSuccess] = useState<boolean>(false);
+  const [showSignatureModal, setShowSignatureModal] = useState<boolean>(false);
 
   // Automated workday POS log reminders and export configurations
   const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => {
@@ -2745,10 +2804,11 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
 
       {/* CORE CONTENT ROUTING AREA */}
       <main className="flex-1 pb-16">
-        {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} />}
+        {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} onLegalClick={() => setActiveTab("legal")} />}
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "csp" && <CspManualView addToast={addToast} />}
+        {activeTab === "legal" && <LegalView />}
         {activeTab === "store" && (
           <StoreView 
             storeCart={storeCart} 
@@ -3786,7 +3846,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           </span>
                         </h3>
                         <button
-                          onClick={createOfficialTicket}
+                          onClick={() => setShowSignatureModal(true)}
                           disabled={ticketCreationSuccess}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-1 text-[11px] font-bold uppercase transition-all flex items-center gap-1 shadow-sm active:scale-98"
                         >
@@ -6397,7 +6457,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                   <div className="mt-5 space-y-2">
                     <button 
-                      onClick={createOfficialTicket}
+                      onClick={() => setShowSignatureModal(true)}
                       disabled={ticketCreationSuccess}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors shadow-md active:scale-98 flex items-center justify-center gap-2"
                     >
@@ -6509,8 +6569,9 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
               <ul className="space-y-2 text-sm text-slate-400">
                 <li>WA UBI: 605 985 265</li>
                 <li>NAICS: 811210</li>
-                <li><a href="#" className="hover:text-blue-400 transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-blue-400 transition-colors">Liability Waiver</a></li>
+                <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); setActiveTab("legal"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Privacy Policy</a></li>
+                <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); setActiveTab("legal"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Liability Waiver</a></li>
+                <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); setActiveTab("legal"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Compliance & Legal Guidelines</a></li>
               </ul>
             </div>
           </div>
@@ -6572,6 +6633,24 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
         </button>
       )}
 
+      {/* Ticket Creation Signature Modal */}
+      {showSignatureModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl w-full max-w-lg overflow-hidden transform transition-all">
+            <div className="p-6">
+              <SignaturePad 
+                onSign={(signatureDataUrl) => {
+                  createOfficialTicket();
+                  setShowSignatureModal(false);
+                }} 
+                onCancel={() => setShowSignatureModal(false)}
+                title={`Sign for ${customerName ? customerName + "'s" : "Official"} Repair Approval`}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
@@ -6580,10 +6659,11 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
 // --- SUB-VIEWS ---
 
-function HomeView({ onBookClick, onLabClick }) {
+function HomeView({ onBookClick, onLabClick, onLegalClick }) {
   const [zipInput, setZipInput] = useState("");
   const [zipResult, setZipResult] = useState<{ status: "success" | "warning" | "idle"; message: string }>({ status: "idle", message: "" });
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [faqCategory, setFaqCategory] = useState<string>("All");
 
   // New interactive Landing Page Website State
   const [microscopeStep, setMicroscopeStep] = useState<"shorted" | "thermal" | "resolved">("shorted");
@@ -6614,21 +6694,38 @@ function HomeView({ onBookClick, onLabClick }) {
   const FAQS = [
     {
       q: "Do I have to prepare my device or back it up prior to repair?",
-      a: "No! Unlike standard retail storefronts or mail-in depots that mandate full factory erasures for liability, our DRIVEWAY repair lab allows you to watch the entire process. Your data never leaves your visual proximity, ensuring 100% database confidentiality."
+      a: "No! Unlike standard retail storefronts or mail-in depots that mandate full factory erasures for liability, our DRIVEWAY repair lab allows you to watch the entire process. Your data never leaves your visual proximity, ensuring 100% database confidentiality.",
+      category: "Repairs"
     },
     {
       q: "How does the mobile laboratory power its high-precision solder stations?",
-      a: "Our diagnostic truck runs on standalone, eco-friendly solar-charged lithium power banks. We do not hook into your home utilities or cause noise pollution—providing silent, self-contained laboratory power."
+      a: "Our diagnostic truck runs on standalone, eco-friendly solar-charged lithium power banks. We do not hook into your home utilities or cause noise pollution—providing silent, self-contained laboratory power.",
+      category: "Repairs"
     },
     {
       q: "Are the boards repaired with genuine components?",
-      a: "Yes! We utilize exclusively premium OEM-sourced parts and Right-to-Repair compliant components, backed by wholesale material disclosure and our lifetime physical solder warranty."
+      a: "Yes! We utilize exclusively premium OEM-sourced parts and Right-to-Repair compliant components, backed by wholesale material disclosure and our lifetime physical solder warranty.",
+      category: "Repairs"
     },
     {
       q: "How long does a logic board filter bypass or PMU rebuild take?",
-      a: "Standard diagnostics take about 15-20 minutes. Core board surgery—micro-soldering components under our microscope magnification—typically takes 30 to 50 minutes total in the van."
+      a: "Standard diagnostics take about 15-20 minutes. Core board surgery—micro-soldering components under our microscope magnification—typically takes 30 to 50 minutes total in the van.",
+      category: "Repairs"
+    },
+    {
+      q: "Do you offer bulk billing for corporate device fleets?",
+      a: "Yes, we support Net-30 bulk invoicing for enterprise clients. B2B requests get priority dispatch queue routing across Washington state.",
+      category: "B2B"
+    },
+    {
+      q: "What is your pricing model for destination services?",
+      a: "All online quotes are preliminary. Final pricing is computed after physical hardware diagnostics on-route. In-zone dispatch covers basic regional travel without extra fees.",
+      category: "Pricing"
     }
   ];
+
+  const filteredFAQS = FAQS.filter(faq => faqCategory === "All" || faq.category === faqCategory);
+
 
   return (
     <div className="animate-in fade-in duration-300">
@@ -7489,8 +7586,24 @@ function HomeView({ onBookClick, onLabClick }) {
             <p className="text-xs text-slate-450 mt-2 font-mono uppercase tracking-wider">Got technical questions? We have transparent answers.</p>
           </div>
 
+          <div className="flex justify-center gap-2 mb-8 flex-wrap">
+            {["All", "Repairs", "B2B", "Pricing"].map(category => (
+              <button
+                key={category}
+                onClick={() => { setFaqCategory(category); setExpandedFaq(null); }}
+                className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors ${
+                  faqCategory === category
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-3">
-            {FAQS.map((item, index) => (
+            {filteredFAQS.map((item, index) => (
               <div 
                 key={index} 
                 className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden transition-all duration-200"
@@ -7537,12 +7650,12 @@ function HomeView({ onBookClick, onLabClick }) {
             </ul>
           </div>
           <div>
-            <strong className="text-white uppercase tracking-widest font-mono text-xs block mb-3">COMPLIANCE</strong>
+            <strong className="text-white uppercase tracking-widest font-mono text-xs block mb-3">COMPLIANCE & LEGAL</strong>
             <ul className="space-y-1.5 text-[11px] font-mono">
-              <li>NIST SP-800-88 R1</li>
-              <li>ESD-Safe ANSI/ESD S20.20</li>
-              <li>Repair.org Active Member</li>
-              <li>SLA Service Guarantees</li>
+              <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Compliance Guidelines</a></li>
+              <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Service Terms & Liability</a></li>
+              <li><a href="https://www.displaycellpros.com/warranty" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Hardware Warranty</a></li>
+              <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Data Privacy Policy</a></li>
             </ul>
           </div>
           <div className="space-y-2">
@@ -7919,6 +8032,20 @@ function CustomerHubView({
 }: CustomerHubViewProps) {
   const [activeHubTab, setActiveHubTab] = useState<"profile" | "usb" | "quotes" | "booking" | "chat">("profile");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [signingTicketId, setSigningTicketId] = useState<string | null>(null);
+  
+  // Local WebUSB state
+  const [usbConnected, setUsbConnected] = useState(false);
+  const [usbStep, setUsbStep] = useState("Disconnected");
+  const [usbLog, setUsbLog] = useState<string[]>([
+    `[${new Date().toLocaleTimeString()}] Cable interface initialized.`
+  ]);
+  const [usbDetails, setUsbDetails] = useState<any>(null);
+  
+  // Appointment date/time slots state
+  const [bookDate, setBookDate] = useState("");
+  const [bookTime, setBookTime] = useState("10:00 AM - 12:00 PM");
+  const [bookRemarks, setBookRemarks] = useState("");
 
   // Requirement: block customer from accessing diagnostic features until they sign up
   if (!authUser) {
@@ -7990,20 +8117,6 @@ function CustomerHubView({
       </div>
     );
   }
-  
-  // Local WebUSB state
-  const [usbConnected, setUsbConnected] = useState(false);
-  const [usbStep, setUsbStep] = useState("Disconnected");
-  const [usbLog, setUsbLog] = useState<string[]>([
-    `[${new Date().toLocaleTimeString()}] Cable interface initialized.`
-  ]);
-  const [usbDetails, setUsbDetails] = useState<any>(null);
-  
-  // Appointment date/time slots state
-  const [bookDate, setBookDate] = useState("");
-  const [bookTime, setBookTime] = useState("10:00 AM - 12:00 PM");
-  const [bookRemarks, setBookRemarks] = useState("");
-
   // Filter quotes belonging to this customer
   const clientTickets = tickets.filter(t => 
     t.userId === authUser?.uid || 
@@ -8038,7 +8151,7 @@ function CustomerHubView({
         await setDoc(userRef, {
           uid: authUser.uid,
           displayName: customerName,
-          email: authUser.email || "guest@displaycellpros.local",
+          email: authUser.email || "guest@displaycellpros.com",
           phone: profilePhone,
           preferredDevice: profilePreferredDevice,
           photoURL: authUser.photoURL || "",
@@ -8371,7 +8484,7 @@ function CustomerHubView({
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Primary Email Address</label>
                     <input
                       type="text"
-                      value={authUser ? authUser.email : "guest@displaycellpros.local"}
+                      value={authUser ? authUser.email : "guest@displaycellpros.com"}
                       disabled
                       className="w-full bg-slate-950/70 border border-slate-800 rounded-lg p-3 text-sm text-slate-400 cursor-not-allowed"
                     />
@@ -8550,20 +8663,34 @@ function CustomerHubView({
                         </div>
 
                         {!isReviewed ? (
-                          <div className="flex items-center gap-2 w-full sm:w-auto mt-1">
-                            <button
-                              onClick={() => handleQuoteDecision(ticket.id, false)}
-                              className="px-4 py-2 border border-red-500/30 hover:border-red-500 hover:bg-red-500/10 text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 uppercase tracking-wider"
-                            >
-                              Decline
-                            </button>
-                            <button
-                              onClick={() => handleQuoteDecision(ticket.id, true)}
-                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-lg transition-colors flex items-center gap-1 shadow-lg shadow-emerald-600/15 uppercase tracking-wider"
-                            >
-                              Approve Repair
-                            </button>
-                          </div>
+                          signingTicketId === ticket.id ? (
+                            <div className="w-full mt-4 sm:min-w-[400px]">
+                              <SignaturePad 
+                                onSign={(signatureDataUrl) => {
+                                  // Include signature logic here if needed (e.g. attaching to ticket)
+                                  handleQuoteDecision(ticket.id, true);
+                                  setSigningTicketId(null);
+                                }} 
+                                onCancel={() => setSigningTicketId(null)}
+                                title={`Sign to approve $${ticket.total.toFixed(2)} repair charge`}
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 w-full sm:w-auto mt-1">
+                              <button
+                                onClick={() => handleQuoteDecision(ticket.id, false)}
+                                className="px-4 py-2 border border-red-500/30 hover:border-red-500 hover:bg-red-500/10 text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 uppercase tracking-wider"
+                              >
+                                Decline
+                              </button>
+                              <button
+                                onClick={() => setSigningTicketId(ticket.id)}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-lg transition-colors flex items-center gap-1 shadow-lg shadow-emerald-600/15 uppercase tracking-wider"
+                              >
+                                Approve Repair
+                              </button>
+                            </div>
+                          )
                         ) : (
                           <span className="text-xs bg-slate-950 border border-slate-800 text-emerald-400 px-3 py-1 rounded-lg uppercase tracking-wider font-extrabold flex items-center gap-1.5">
                             <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />

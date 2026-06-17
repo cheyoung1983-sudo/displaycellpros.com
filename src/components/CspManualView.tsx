@@ -17,13 +17,14 @@ import {
   ChevronRight,
   Info
 } from "lucide-react";
+import { GoogleVerificationWizard } from "./GoogleVerificationWizard";
 
 interface CspManualProps {
   addToast: (title: string, message: string, type: "success" | "warning" | "info") => void;
 }
 
 export function CspManualView({ addToast }: CspManualProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"overview" | "directives" | "inline-eval" | "reporting" | "playground">("overview");
+  const [activeSubTab, setActiveSubTab] = useState<"overview" | "directives" | "inline-eval" | "reporting" | "playground" | "verification">("overview");
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
   // Playground state
@@ -246,6 +247,19 @@ export function CspManualView({ addToast }: CspManualProps) {
           >
             <Terminal className="w-4 h-4" />
             <span>04. Report Policy Violations</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("verification")}
+            className={`w-full text-left px-4 py-3.5 rounded-xl border text-xs font-bold transition-all uppercase tracking-wider font-sans flex items-center gap-3 cursor-pointer ${
+              activeSubTab === "verification"
+                ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-600/15"
+                : "bg-slate-900 text-slate-400 border-slate-850 hover:bg-slate-850 hover:text-white"
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>05. Google Verification Hub</span>
           </button>
 
           <div className="pt-4 border-t border-slate-850/80">
@@ -721,6 +735,10 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
 
             </div>
+          )}
+
+          {activeSubTab === "verification" && (
+            <GoogleVerificationWizard addToast={addToast} />
           )}
 
         </div>
