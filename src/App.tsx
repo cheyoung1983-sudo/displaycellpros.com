@@ -55,7 +55,9 @@ import {
   SlidersHorizontal,
   Brain,
   ShieldAlert,
-  Filter
+  Filter,
+  FileSpreadsheet,
+  Mail
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
@@ -65,9 +67,12 @@ import { TechnicianDashboard } from "./components/TechnicianDashboard";
 import { CspManualView } from "./components/CspManualView";
 import { LegalView } from "./components/LegalView";
 import { SignaturePad } from "./components/SignaturePad";
+import { FormsIntegrationView } from "./components/FormsIntegrationView";
+import { GmailIntegrationView } from "./components/GmailIntegrationView";
+import { FirebaseAiWorkbenchView } from "./components/FirebaseAiWorkbenchView";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
-import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
+import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { auth, db, googleProvider } from "./lib/firebase";
 import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
@@ -138,7 +143,8 @@ export default function App() {
   });
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics">("triage");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai">("triage");
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [leads, setLeads] = useState<HighPriorityLead[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState<boolean>(false);
 
@@ -753,6 +759,10 @@ export default function App() {
     try {
       setFirestoreError(null);
       const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+      }
       const user = result.user;
       const userRef = doc(db, "users", user.uid);
       await setDoc(userRef, {
@@ -1098,6 +1108,66 @@ export default function App() {
       console.error("Error fetching POS data:", err);
     } finally {
       setIsLoadingLogs(false);
+    }
+  };
+
+  const handleAddNewLeadFromForms = async (newLeadData: { customerName: string; phone: string; deviceModel: string }) => {
+    try {
+      const newLead: HighPriorityLead = {
+        id: "LEAD-" + Math.floor(100000 + Math.random() * 900000),
+        customerName: newLeadData.customerName,
+        phone: newLeadData.phone,
+        deviceModel: newLeadData.deviceModel,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        userId: authUser?.uid || "sandbox-tech-101"
+      };
+
+      if (authUser?.uid && authUser.uid !== "sandbox-tech-101") {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const leadRef = doc(db, "high-priority-leads", newLead.id);
+        await setDoc(leadRef, newLead);
+      } else {
+        const savedLeads = localStorage.getItem("dcp_sandbox_leads");
+        const list = savedLeads ? JSON.parse(savedLeads) : [];
+        list.unshift(newLead);
+        localStorage.setItem("dcp_sandbox_leads", JSON.stringify(list));
+      }
+      
+      setLeads(prev => [newLead, ...prev]);
+      return newLead;
+    } catch (err: any) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleAddNewTicketFromForms = async (newTicketData: Omit<RepairTicket, "id" | "createdAt" | "userId">) => {
+    try {
+      const newTicket: RepairTicket = {
+        ...newTicketData,
+        id: `DCP-${Math.floor(1000 + Math.random() * 9000)}`,
+        createdAt: new Date().toISOString(),
+        userId: authUser?.uid || "sandbox-tech-101"
+      };
+
+      if (authUser?.uid && authUser.uid !== "sandbox-tech-101") {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const docRef = doc(db, "tickets", newTicket.id);
+        await setDoc(docRef, newTicket);
+      } else {
+        // Mock session ticket lists
+        const savedTickets = localStorage.getItem("dcp_sandbox_tickets");
+        const list = savedTickets ? JSON.parse(savedTickets) : [];
+        list.unshift(newTicket);
+        localStorage.setItem("dcp_sandbox_tickets", JSON.stringify(list));
+      }
+
+      setTickets(prev => [newTicket, ...prev]);
+      return newTicket;
+    } catch (err: any) {
+      console.error(err);
+      throw err;
     }
   };
 
@@ -3396,6 +3466,51 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-violet-900/50 text-violet-300">RAG</span>
                     </button>
+
+                    <button
+                      onClick={() => setLabTab("forms")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "forms" 
+                          ? "bg-blue-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                        <span>Google Forms Intake</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-emerald-950 text-emerald-300 border border-emerald-850/40">GWS</span>
+                    </button>
+
+                    <button
+                      onClick={() => setLabTab("gmail")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "gmail" 
+                          ? "bg-blue-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-red-400" />
+                        <span>Gmail Communications</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-red-950 text-red-300 border border-red-850/40 font-bold">GWS</span>
+                    </button>
+
+                    <button
+                      onClick={() => setLabTab("firebase_ai")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "firebase_ai" 
+                          ? "bg-blue-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Brain className="w-4 h-4 text-purple-400" />
+                        <span>Firebase AI Workbench</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-purple-950 text-purple-300 border border-purple-850/40 font-bold">SDK</span>
+                    </button>
                   </nav>
                 </div>
 
@@ -5015,6 +5130,34 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     calculatedFidelity={calculatedFidelity}
                     noisePenalty={noisePenalty}
                     pass={pass}
+                  />
+                )}
+
+                {labTab === "forms" && (
+                  <FormsIntegrationView
+                    accessToken={googleAccessToken}
+                    authUser={authUser}
+                    onLinkGoogleAuth={handleGoogleSignIn}
+                    addToast={addToast}
+                    onAddNewTicket={handleAddNewTicketFromForms}
+                    onAddNewLead={handleAddNewLeadFromForms}
+                  />
+                )}
+
+                {labTab === "gmail" && (
+                  <GmailIntegrationView
+                    accessToken={googleAccessToken}
+                    authUser={authUser}
+                    onLinkGoogleAuth={handleGoogleSignIn}
+                    addToast={addToast}
+                    tickets={tickets}
+                    leads={leads}
+                  />
+                )}
+
+                {labTab === "firebase_ai" && (
+                  <FirebaseAiWorkbenchView
+                    addToast={addToast}
                   />
                 )}
 
