@@ -11,10 +11,12 @@ export const googleProvider = new GoogleAuthProvider();
 // Add Google Workspace Scopes
 googleProvider.addScope("https://www.googleapis.com/auth/forms.body");
 googleProvider.addScope("https://www.googleapis.com/auth/forms.responses.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/forms");
 googleProvider.addScope("https://www.googleapis.com/auth/drive.readonly");
 googleProvider.addScope("https://www.googleapis.com/auth/gmail.send");
 googleProvider.addScope("https://www.googleapis.com/auth/gmail.readonly");
 googleProvider.addScope("https://www.googleapis.com/auth/gmail.compose");
+googleProvider.addScope("https://www.googleapis.com/auth/gmail.modify");
 
 // Standardized Google Sign-In with popup
 googleProvider.setCustomParameters({ prompt: "select_account" });

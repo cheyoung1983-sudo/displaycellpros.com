@@ -51,11 +51,37 @@ export const s2cFeedback = pgTable("s2c_feedback", {
   createdAt: text("created_at").notNull(),
 });
 
+// Define the 'encrypted_oauth_credentials' table for offline Google API token management.
+export const encryptedOauthCredentials = pgTable("encrypted_oauth_credentials", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").references(() => users.uid).notNull(),
+  accessTokenEncrypted: text("access_token_encrypted").notNull(),
+  refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),
+  scope: text("scope").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Define the 's2c_diagnostic_database' table for offline Symptom-to-Circuit mapping.
+export const s2cDiagnosticDatabase = pgTable("s2c_diagnostic_database", {
+  id: serial("id").primaryKey(),
+  modelName: text("model_name").notNull(), // e.g., "iPhone 11", "Galaxy S21"
+  symptomCode: text("symptom_code").notNull(), // e.g., "STATIC_DRAW_100MA", "SHORT_VDD_MAIN"
+  circuitLine: text("circuit_line").notNull(), // e.g., "PP_VDD_MAIN", "VBUS_OVP"
+  diodeResistanceValue: real("diode_resistance_value"), // Diode mode drop value, e.g., 0.342
+  expectedAmmeterDrawRange: text("expected_ammeter_draw_range").notNull(), // e.g., "0.08A-0.12A"
+  associatedComponent: text("associated_component").notNull(), // Target chip/filter e.g., "Tristar 1610A3", "FL1728"
+  reworkTemperatureProfile: text("rework_temperature_profile").notNull(), // e.g., "SAC305 @ 380°C"
+  repairProcedureSteps: text("repair_procedure_steps").notNull(), // Detailed markdown or instruction steps
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Define relationships for standard querying.
 export const usersRelations = relations(users, ({ many }) => ({
   repairTickets: many(repairTickets),
   highPriorityLeads: many(highPriorityLeads),
   s2cFeedback: many(s2cFeedback),
+  encryptedOauthCredentials: many(encryptedOauthCredentials),
 }));
 
 export const repairTicketsRelations = relations(repairTickets, ({ one }) => ({
