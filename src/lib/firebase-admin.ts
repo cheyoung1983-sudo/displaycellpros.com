@@ -5,6 +5,7 @@ import firebaseConfig from "../../firebase-applet-config.json";
 if (!getApps().length) {
   initializeApp({
     projectId: firebaseConfig.projectId,
+    databaseURL: (firebaseConfig as any).databaseURL || `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`,
   });
 }
 

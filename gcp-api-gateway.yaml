@@ -1,0 +1,132 @@
+# GCP API Gateway OpenAPI 2.0 Specification
+# Module Name: secure-triage-api-gateway
+# Description: Production configuration to manage, secure, throttle, and log client traffic to the AI Triage Assistant and Quote Generation routes.
+# GCP Service Mapping: Google Cloud API Gateway -> Cloud Run Backend Target with Auth and Key Restrictions
+
+swagger: "2.0"
+info:
+  title: "Triage-AI Secure API Gateway"
+  description: "Secure, rate-limited entrance for Triage-AI mobile hardware Diagnostics, S2C tracing and Quote engines."
+  version: "1.0.0"
+
+host: "triage-gateway-dcp-101.nw.gateway.dev"
+schemes:
+  - "https"
+
+# Establish GCP custom extension configurations
+x-google-endpoints:
+  - name: "triage-gateway-dcp-101.nw.gateway.dev"
+    allowCors: true
+
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "key"
+    in: "query"
+  
+  firebase_auth:
+    type: "oauth2"
+    authorizationUrl: ""
+    flow: "implicit"
+    x-google-issuer: "https://securetoken.google.com/c2e2eafb-3cb1-4649-b652-71711906b516"
+    x-google-jwks_uri: "https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com"
+    x-google-audiences: "c2e2eafb-3cb1-4649-b652-71711906b516"
+
+paths:
+  /api/triage:
+    post:
+      summary: "AI Triage Assistant"
+      description: "Throttled endpoint routing core logic board and diagnostic chat inputs safely to Cloud Run."
+      operationId: "routeAiTriage"
+      produces:
+        - "application/json"
+      parameters:
+        - name: "body"
+          in: "body"
+          required: true
+          schema:
+            type: "object"
+            properties:
+              messages:
+                type: "array"
+                items:
+                  type: "object"
+                  properties:
+                    role:
+                      type: "string"
+                      enum: ["user", "assistant"]
+                    text:
+                      type: "string"
+              diagnosticMode:
+                type: "string"
+                enum: ["standard", "thinking", "vision"]
+            required:
+              - "messages"
+      security:
+        - api_key: []
+        - firebase_auth: []
+      # GCP Backend Routing targeting our Cloud Run instance
+      x-google-backend:
+        address: "https://ais-dev-qaarbg7eivxlz2dpis24f5-367327296310.us-west2.run.app"
+        path_translation: "APPEND_PATH_TO_ADDRESS"
+      responses:
+        200:
+          description: "Successful diagnostic and analytical reply"
+          schema:
+            type: "object"
+            properties:
+              text:
+                type: "string"
+        401:
+          description: "Invalid Firebase JWT or unassigned API key"
+        429:
+          description: "Rate limit exceeded (Quota threshold reached)"
+
+  /api/generate-quote:
+    post:
+      summary: "Dynamic Repair Quote Optimizer"
+      description: "Secure quote pipeline executing S2C price mapping matrices, verifying regional sales taxes, and cataloging fleet inventories."
+      operationId: "routeGenerateQuote"
+      produces:
+        - "application/json"
+      parameters:
+        - name: "body"
+          in: "body"
+          required: true
+          schema:
+            type: "object"
+            properties:
+              issueType:
+                type: "string"
+              deviceTier:
+                type: "string"
+              zipCode:
+                type: "string"
+              isCorporate:
+                type: "boolean"
+              companyName:
+                type: "string"
+            required:
+              - "issueType"
+              - "deviceTier"
+      security:
+        - api_key: []
+      x-google-backend:
+        address: "https://ais-dev-qaarbg7eivxlz2dpis24f5-367327296310.us-west2.run.app"
+        path_translation: "APPEND_PATH_TO_ADDRESS"
+      responses:
+        200:
+          description: "Dynamic repair estimation model"
+          schema:
+            type: "object"
+            properties:
+              baseCost:
+                type: "number"
+              taxAmount:
+                type: "number"
+              finalQuote:
+                type: "number"
+        403:
+          description: "Quota block or validation mismatch"
+        429:
+          description: "Rate limit exceeded"

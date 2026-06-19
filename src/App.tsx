@@ -71,10 +71,12 @@ import { FormsIntegrationView } from "./components/FormsIntegrationView";
 import { GmailIntegrationView } from "./components/GmailIntegrationView";
 import { FirebaseAiWorkbenchView } from "./components/FirebaseAiWorkbenchView";
 import { GoogleWorkspaceHubView } from "./components/GoogleWorkspaceHubView";
+import { ApiGatewayDashboard } from "./components/ApiGatewayDashboard";
 import { motion, AnimatePresence } from "motion/react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, BarChart, Bar } from "recharts";
 import { jsPDF } from "jspdf";
 import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, deleteDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "./lib/firebase";
 import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
 
@@ -144,7 +146,7 @@ export default function App() {
   });
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub">("triage");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub" | "gateway">("triage");
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [leads, setLeads] = useState<HighPriorityLead[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState<boolean>(false);
@@ -958,6 +960,159 @@ export default function App() {
     localStorage.setItem("dcp_unsent_diagnostic_input", chatInput);
   }, [chatInput]);
 
+  // Firestore Diagnostic Session Draft Sync State
+  const [draftSessionId, setDraftSessionId] = useState<string>(() => {
+    return localStorage.getItem("dcp_draft_session_id") || `DCP-SES-${Math.floor(10000 + Math.random() * 90000)}`;
+  });
+  const [draftSessionLabel, setDraftSessionLabel] = useState<string>(() => {
+    return localStorage.getItem("dcp_draft_session_label") || "Triage Diagnostic Workspace";
+  });
+  const [draftAutoSyncStatus, setDraftAutoSyncStatus] = useState<"synced" | "syncing" | "error" | "requires_auth">("requires_auth");
+  const [draftSessionsList, setDraftSessionsList] = useState<any[]>([]);
+  const [inputSessionIdToResume, setInputSessionIdToResume] = useState<string>("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState<boolean>(false);
+
+  // Persistence of identifiers
+  useEffect(() => {
+    localStorage.setItem("dcp_draft_session_id", draftSessionId);
+  }, [draftSessionId]);
+
+  useEffect(() => {
+    localStorage.setItem("dcp_draft_session_label", draftSessionLabel);
+  }, [draftSessionLabel]);
+
+  const fetchMyDraftsList = async () => {
+    if (!authUser || authUser.uid === "sandbox-tech-101") {
+      setDraftSessionsList([]);
+      return;
+    }
+    try {
+      const q = query(
+        collection(db, "drafts"),
+        where("userId", "==", authUser.uid)
+      );
+      const snapshot = await getDocs(q);
+      const list: any[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      list.sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime());
+      setDraftSessionsList(list);
+    } catch (err) {
+      console.warn("Error fetching drafts list:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchMyDraftsList();
+  }, [authUser]);
+
+  // debounced autosync effector
+  useEffect(() => {
+    if (!authUser || authUser.uid === "sandbox-tech-101") {
+      setDraftAutoSyncStatus("requires_auth");
+      return;
+    }
+
+    if (messages.length <= 1 && forensicLogs.length === 0) {
+      setDraftAutoSyncStatus("synced");
+      return;
+    }
+
+    setDraftAutoSyncStatus("syncing");
+
+    const timer = setTimeout(async () => {
+      try {
+        const draftRef = doc(db, "drafts", draftSessionId);
+        const payload = {
+          id: draftSessionId,
+          userId: authUser.uid,
+          messages: messages.map(m => ({ role: m.role, text: m.text })),
+          forensicLogs: forensicLogs || [],
+          forensicDevice: forensicDevice || "iPhone XR",
+          sessionLabel: draftSessionLabel || "Untitled Session",
+          lastUpdated: new Date().toISOString()
+        };
+        await setDoc(draftRef, payload);
+        setDraftAutoSyncStatus("synced");
+        fetchMyDraftsList();
+      } catch (err: any) {
+        console.error("Autosave draft failed:", err);
+        setDraftAutoSyncStatus("error");
+        handleFirestoreError(err, OperationType.UPDATE, `drafts/${draftSessionId}`);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [messages, forensicLogs, forensicDevice, draftSessionLabel, draftSessionId, authUser]);
+
+  const resumeDraftSession = async (targetSessionId: string) => {
+    if (!authUser || authUser.uid === "sandbox-tech-101") {
+      addToast("Authentication Required", "Please log in first to load Cloud Drafts.", "info");
+      return;
+    }
+    const cleanId = targetSessionId.trim();
+    if (!cleanId) return;
+
+    setIsLoadingDraft(true);
+    try {
+      const draftRef = doc(db, "drafts", cleanId);
+      const snap = await getDoc(draftRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.userId !== authUser.uid) {
+          addToast("Access Denied", "This session draft belongs to another user diagnostic lock.", "error");
+          setIsLoadingDraft(false);
+          return;
+        }
+
+        setDraftSessionId(data.id);
+        if (data.sessionLabel) setDraftSessionLabel(data.sessionLabel);
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages);
+        }
+        if (data.forensicLogs) {
+          setForensicLogs(data.forensicLogs);
+        }
+        if (data.forensicDevice) {
+          setForensicDevice(data.forensicDevice);
+        }
+
+        addToast("Session Restored", `Successfully pulled work Session "${data.sessionLabel}" directly from Firestore!`, "success");
+        setInputSessionIdToResume("");
+      } else {
+        addToast("Session Not Found", "No synchronized workspace matches this ID code.", "error");
+      }
+    } catch (err: any) {
+      console.error("Failed to load draft:", err);
+      handleFirestoreError(err, OperationType.GET, `drafts/${cleanId}`);
+    } finally {
+      setIsLoadingDraft(false);
+    }
+  };
+
+  const deleteDraftSession = async (targetSessionId: string) => {
+    if (!authUser || authUser.uid === "sandbox-tech-101") return;
+    try {
+      await deleteDoc(doc(db, "drafts", targetSessionId));
+      addToast("Session Removed", "Diagnostic workspace deleted from Cloud Registry.", "info");
+      fetchMyDraftsList();
+      if (targetSessionId === draftSessionId) {
+        setDraftSessionId(`DCP-SES-${Math.floor(10000 + Math.random() * 90000)}`);
+        setDraftSessionLabel("Triage Diagnostic Workspace");
+        setMessages([
+          { 
+            role: "assistant", 
+            text: "Display & Cell Pros Diagnostic Cloud activated. Secure GCP Cloud Run instance online. Please describe your hardware issue. I am constrained strictly to screen, battery, and button diagnostics." 
+          }
+        ]);
+        setForensicLogs([]);
+      }
+    } catch (err) {
+      console.error("Failed to delete draft:", err);
+    }
+  };
+
   // POS Tickets and Live Synchronization Logs
   const [tickets, setTickets] = useState<RepairTicket[]>([]);
   const [posLogs, setPosLogs] = useState<POSLog[]>([]);
@@ -1096,14 +1251,100 @@ export default function App() {
     fetchDynamicQuote();
   }, [issueType, deviceTier, zipInput, isCorporate, companyName]);
 
+  const syncPOSLogsToFirestore = async (newTicket: RepairTicket) => {
+    const logId = `LOG-${Math.floor(100000 + Math.random() * 900000)}`;
+    const newLogItem = {
+      id: logId,
+      timestamp: new Date().toISOString(),
+      level: "SUCCESS",
+      message: `Registered direct repair ticket ${newTicket.id} for ${newTicket.customerName} ($${newTicket.total.toFixed(2)}) synced automatically with CellSmart POS`,
+      source: "WebHook-Receiver" as const,
+      userId: authUser?.uid || "sandbox-tech-101"
+    };
+
+    setPosLogs(prev => [newLogItem, ...prev]);
+
+    if (authUser?.uid && authUser.uid !== "sandbox-tech-101") {
+      try {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const logRef = doc(db, "pos-logs", logId);
+        await setDoc(logRef, newLogItem);
+        console.log(`[FIREBASE] POS Sync Log saved to 'pos-logs' Firestore:`, logId);
+      } catch (err: any) {
+        console.error("Failed to push POS log to Firestore:", err);
+        handleFirestoreError(err, OperationType.UPDATE, `pos-logs/${logId}`);
+      }
+    } else {
+      const existing = localStorage.getItem("dcp_sandbox_pos_logs");
+      const list = existing ? JSON.parse(existing) : [];
+      list.unshift(newLogItem);
+      localStorage.setItem("dcp_sandbox_pos_logs", JSON.stringify(list));
+    }
+  };
+
   const fetchPOSLogs = async () => {
     setIsLoadingLogs(true);
+    setFirestoreError(null);
+
+    // 1. If we have a logged-in production user session, fetch logs from Firestore 'pos-logs' and 'tickets'
+    if (authUser?.uid && authUser.uid !== "sandbox-tech-101") {
+      try {
+        const ticketsRef = collection(db, "tickets");
+        const qTickets = query(ticketsRef, where("userId", "==", authUser.uid));
+        const ticketSnapshot = await getDocs(qTickets);
+        const fbTickets: RepairTicket[] = [];
+        ticketSnapshot.forEach((docSnap) => {
+          fbTickets.push(docSnap.data() as RepairTicket);
+        });
+
+        const logsRef = collection(db, "pos-logs");
+        const qLogs = query(logsRef, where("userId", "==", authUser.uid));
+        const logSnapshot = await getDocs(qLogs);
+        const fbLogs: any[] = [];
+        logSnapshot.forEach((docSnap) => {
+          fbLogs.push(docSnap.data());
+        });
+
+        fbLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        // Sort tickets by reverse chronological index
+        fbTickets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        setTickets(fbTickets);
+        setPosLogs(fbLogs);
+        setIsLoadingLogs(false);
+        return;
+      } catch (err: any) {
+        console.error("Failed to load POS/Tickets from Firestore, falling back to mock endpoint.", err);
+        try {
+          handleFirestoreError(err, OperationType.LIST, "pos-logs");
+        } catch (formatted: any) {
+          setFirestoreError(formatted.message);
+        }
+      }
+    }
+
+    // 2. Fetch from default mock endpoint and merge with sandbox local storage if sandbox or error occurred
     try {
       const res = await fetch("/api/pos-sync-logs");
       if (res.ok) {
         const data = await res.json();
-        setTickets(data.tickets || []);
-        setPosLogs(data.logs || []);
+        const serverTickets = data.tickets || [];
+        const serverLogs = data.logs || [];
+
+        const savedTickets = localStorage.getItem("dcp_sandbox_tickets");
+        const localTickets = savedTickets ? JSON.parse(savedTickets) : [];
+        const savedLogs = localStorage.getItem("dcp_sandbox_pos_logs");
+        const localLogs = savedLogs ? JSON.parse(savedLogs) : [];
+
+        const combinedTickets = [...localTickets, ...serverTickets.filter((st: any) => !localTickets.some((lt: any) => lt.id === st.id))];
+        const combinedLogs = [...localLogs, ...serverLogs.filter((sl: any) => !localLogs.some((ll: any) => ll.timestamp === sl.timestamp))];
+
+        combinedTickets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        combinedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        setTickets(combinedTickets);
+        setPosLogs(combinedLogs);
       }
     } catch (err) {
       console.error("Error fetching POS data:", err);
@@ -1165,6 +1406,7 @@ export default function App() {
       }
 
       setTickets(prev => [newTicket, ...prev]);
+      await syncPOSLogsToFirestore(newTicket);
       return newTicket;
     } catch (err: any) {
       console.error(err);
@@ -1966,6 +2208,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
           zipCode: zipInput,
           isCorporate,
           companyName: isCorporate ? companyName : undefined,
+          modelName: deviceModel || "",
         })
       });
       if (res.ok) {
@@ -2142,6 +2385,27 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         })
       });
       if (res.ok) {
+        const data = await res.json();
+        const createdTicket = data.ticket;
+
+        if (createdTicket) {
+          // Sync with Firestore tickets collection if authenticated
+          if (authUser?.uid && authUser.uid !== "sandbox-tech-101") {
+            const ticketWithUserId = { ...createdTicket, userId: authUser.uid };
+            try {
+              const { doc, setDoc } = await import("firebase/firestore");
+              const docRef = doc(db, "tickets", createdTicket.id);
+              await setDoc(docRef, ticketWithUserId);
+              console.log("[FIREBASE] Created official ticket backed up to 'tickets' collection:", createdTicket.id);
+            } catch (err) {
+              console.error("Failed to sync created official ticket to Firestore 'tickets' collection:", err);
+            }
+            await syncPOSLogsToFirestore(ticketWithUserId);
+          } else {
+            await syncPOSLogsToFirestore(createdTicket);
+          }
+        }
+
         setTicketCreationSuccess(true);
         setTimeout(() => setTicketCreationSuccess(false), 3000);
         fetchPOSLogs();
@@ -3523,10 +3787,25 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-sky-450" />
+                        <Layers className="w-4 h-4 text-sky-455" />
                         <span>Google Workspace Hub</span>
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-sky-950 text-sky-305 border border-sky-850/45 font-bold">GWS</span>
+                    </button>
+
+                    <button
+                      onClick={() => setLabTab("gateway")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "gateway" 
+                          ? "bg-blue-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        <span>Secure API Gateway</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-emerald-950 text-emerald-300 border border-emerald-850/40 font-bold">GW</span>
                     </button>
                   </nav>
                 </div>
@@ -3681,6 +3960,152 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       >
                         📸 Photo Vision Analyst
                       </button>
+                    </div>
+
+                    {/* FIRESTORE CROSS-DEVICE SYNC ENGINE COCKPIT */}
+                    <div className="bg-slate-900 border-b border-slate-700/80 p-4 space-y-3 font-sans">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] uppercase font-mono font-black text-blue-400 tracking-wider flex items-center gap-1.5 leading-none">
+                            <Database className="w-3.5 h-3.5 text-blue-400" />
+                            Multi-Device Firestore Sync Engine
+                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <label htmlFor="session-label-input" className="sr-only">Session Label</label>
+                            <input
+                              id="session-label-input"
+                              type="text"
+                              value={draftSessionLabel}
+                              onChange={(e) => setDraftSessionLabel(e.target.value)}
+                              className="text-xs font-bold text-white bg-transparent border-b border-dashed border-slate-750 focus:border-blue-500 focus:outline-none py-0.5 max-w-[150px] sm:max-w-[200px]"
+                              placeholder="Session Label"
+                            />
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              ({draftSessionId})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(draftSessionId);
+                                addToast("Copied", "Session ID copied to clipboard. Share with another device to resume session!", "success");
+                              }}
+                              className="text-slate-500 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="Copy Session ID"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Status indicators */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {draftAutoSyncStatus === "synced" && (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-900/40 text-[10px] font-mono font-semibold">
+                              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                              Synced to Cloud
+                            </span>
+                          )}
+                          {draftAutoSyncStatus === "syncing" && (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-blue-955/80 text-blue-400 border border-blue-900/40 text-[10px] font-mono font-semibold">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Syncing Draft...
+                            </span>
+                          )}
+                          {draftAutoSyncStatus === "error" && (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-rose-950/80 text-rose-400 border border-rose-900/40 text-[10px] font-mono font-semibold">
+                              <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-bounce" />
+                              Sync Failed
+                            </span>
+                          )}
+                          {draftAutoSyncStatus === "requires_auth" && (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-amber-950/80 text-amber-400 border border-amber-900/40 text-[10px] font-mono font-semibold">
+                              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                              Local-Only (Login to sync)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Manual load and resume actions */}
+                      <div className="pt-2 border-t border-slate-800 flex flex-col md:flex-row gap-3">
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            resumeDraftSession(inputSessionIdToResume);
+                          }}
+                          className="flex-1 flex gap-1.5 animate-in fade-in duration-300"
+                        >
+                          <label htmlFor="resume-session-id" className="sr-only">Resume Session ID</label>
+                          <input
+                            id="resume-session-id"
+                            type="text"
+                            placeholder="Enter Session ID to Resume (e.g. DCP-SES-98241)"
+                            value={inputSessionIdToResume}
+                            onChange={(e) => setInputSessionIdToResume(e.target.value)}
+                            className="bg-slate-950 border border-slate-800 focus:border-blue-500 focus:outline-none px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 w-full placeholder-slate-600"
+                          />
+                          <button
+                            type="submit"
+                            disabled={isLoadingDraft || !inputSessionIdToResume.trim()}
+                            className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800/50 hover:disabled:bg-slate-800/50 disabled:text-slate-500 text-white font-mono font-bold text-xs uppercase px-3 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            {isLoadingDraft ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                            Resume
+                          </button>
+                        </form>
+
+                        {/* Authentication warning or Draft selector dropdown */}
+                        {!authUser || authUser.uid === "sandbox-tech-101" ? (
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 select-none">
+                            <span>To sync and load diagnostic runs on other tech tablets:</span>
+                            <button
+                              type="button"
+                              onClick={handleGoogleSignIn}
+                              className="text-blue-400 hover:text-blue-300 font-extrabold uppercase font-mono cursor-pointer"
+                            >
+                              Connect Google Auth
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 self-start md:self-auto bg-slate-950 border border-slate-800 rounded-lg p-1 max-w-full">
+                            <span className="text-[9px] text-slate-500 font-mono pl-1 select-none">Registry:</span>
+                            {draftSessionsList.length === 0 ? (
+                              <span className="text-[10px] text-slate-500 font-mono px-2 select-none">No cloud drafts</span>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <label htmlFor="draft-select" className="sr-only">Select Cloud Draft</label>
+                                <select
+                                  id="draft-select"
+                                  className="bg-slate-950 border-0 focus:outline-none focus:ring-0 font-mono text-[10px] text-slate-300 py-0.5 px-1 cursor-pointer max-w-[130px] sm:max-w-[180px]"
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      resumeDraftSession(e.target.value);
+                                      e.target.value = "";
+                                    }
+                                  }}
+                                  defaultValue=""
+                                >
+                                  <option value="" disabled>Load Cloud Draft ({draftSessionsList.length})</option>
+                                  {draftSessionsList.map((d) => (
+                                    <option key={d.id} value={d.id}>
+                                      {d.sessionLabel || d.id} ({new Date(d.lastUpdated).toLocaleDateString()})
+                                    </option>
+                                  ))}
+                                </select>
+                                
+                                <button
+                                  type="button"
+                                  onClick={() => fetchMyDraftsList()}
+                                  className="text-slate-500 hover:text-white p-1 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                                  title="Refresh cloud list"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* CHANNEL CONTENT CONDITIONALS */}
@@ -5190,6 +5615,12 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                   />
                 )}
 
+                {labTab === "gateway" && (
+                  <ApiGatewayDashboard 
+                    tickets={tickets}
+                  />
+                )}
+
                 {labTab === "forensics_deprecated" && (
                   <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300 font-sans text-left">
                     <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-slate-700 pb-4 mb-5 gap-3">
@@ -6578,18 +7009,47 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       </div>
                     ) : (
                       <div className="space-y-2.5 text-[11px]">
-                        <div className="flex justify-between items-center text-slate-400">
-                          <span>Parts Base Cost</span>
-                          <span className="text-white">${quote.baseQuote.partsCost.toFixed(2)}</span>
+                        <div>
+                          <div className="flex justify-between items-center text-slate-400">
+                            <span>Parts Base Cost</span>
+                            <span className="text-white">${quote.baseQuote.partsCost.toFixed(2)}</span>
+                          </div>
+                          {quote.baseQuote.partName && (
+                            <div className="text-[10px] text-slate-500 pl-2 leading-normal select-none">
+                              ↳ {quote.baseQuote.partName}
+                            </div>
+                          )}
+                          {quote.baseQuote.stockStatus && (
+                            <div className="text-[9px] pl-2 flex items-center gap-1.5 mt-0.5 select-none">
+                              <span className={`w-1.5 h-1.5 rounded-full ${quote.baseQuote.itemInStock ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
+                              <span className={quote.baseQuote.itemInStock ? 'text-emerald-500' : 'text-rose-400 font-bold'}>
+                                {quote.baseQuote.stockStatus === "OUT_OF_STOCK_BACKORDERED" ? "BACKORDERED (Dynamic Surcharge Required)" : `IN STOCK (${quote.baseQuote.stockLocation})`}
+                              </span>
+                            </div>
+                          )}
                         </div>
+
+                        {quote.baseQuote.supplyChainPremium && quote.baseQuote.supplyChainPremium > 0 ? (
+                          <div className="flex justify-between items-center text-[10px] text-rose-450 pl-2 bg-rose-500/5 py-0.5 rounded border border-rose-500/10">
+                            <span className="flex items-center gap-1 text-rose-300">⚠️ Backorder Premium</span>
+                            <span className="text-rose-300 font-bold">+${quote.baseQuote.supplyChainPremium.toFixed(2)}</span>
+                          </div>
+                        ) : null}
                         
-                        <div className="flex justify-between items-center text-slate-400">
-                          <span>L3 Mobile Labor Rate</span>
-                          <span className="text-white">${quote.baseQuote.laborCost.toFixed(2)}</span>
+                        <div>
+                          <div className="flex justify-between items-center text-slate-400">
+                            <span>Diagnostic Labor (S2C)</span>
+                            <span className="text-white">${quote.baseQuote.laborCost.toFixed(2)}</span>
+                          </div>
+                          {quote.baseQuote.laborHours && quote.baseQuote.hourlyLaborRate && (
+                            <div className="text-[10px] text-slate-500 pl-2 leading-normal select-none">
+                              ↳ {quote.baseQuote.laborHours} hrs @ ${quote.baseQuote.hourlyLaborRate}/hr complexity
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex justify-between items-center text-slate-550 text-[10px]">
-                          <span>Lab Overlay margin (15%)</span>
+                          <span>Lab Overlay Margin (15%)</span>
                           <span>${quote.baseQuote.overhead.toFixed(2)}</span>
                         </div>
 
@@ -6597,7 +7057,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                         <div className="flex justify-between items-center font-semibold text-slate-300">
                           <span>Wholesale Baseline</span>
-                          <span className="text-white">${(quote.baseQuote.partsCost + quote.baseQuote.laborCost + quote.baseQuote.overhead).toFixed(2)}</span>
+                          <span className="text-white">${(quote.baseQuote.partsCost + (quote.baseQuote.supplyChainPremium || 0) + quote.baseQuote.laborCost + quote.baseQuote.overhead).toFixed(2)}</span>
                         </div>
 
                         {quote.discountInfo.applied && (
@@ -9295,6 +9755,40 @@ function StoreView({
   const [checkoutPhone, setCheckoutPhone] = useState("");
   const [isReserved, setIsReserved] = useState(false);
   const [reservationInvoice, setReservationInvoice] = useState<any>(null);
+  const [selectedTrendItem, setSelectedTrendItem] = useState<"glass" | "charger">("glass");
+
+  const trendData = React.useMemo(() => {
+    const data = [];
+    let glassStock = 38;
+    let chargerStock = 27;
+    for (let i = 30; i >= 0; i--) {
+      const date = new Date(Date.now() - i * 24 * 3600 * 1000);
+      const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      
+      const glassLoss = Math.floor(Math.sin((30 - i) / 2) * 1) + 2; 
+      const chargerLoss = Math.floor(Math.cos((30 - i) / 3) * 1) + 1.5; 
+      
+      glassStock = glassStock - glassLoss;
+      chargerStock = chargerStock - chargerLoss;
+      
+      if (i === 20) glassStock += 32;
+      if (i === 10) chargerStock += 25;
+      
+      if (i === 0) {
+        glassStock = storeStock[1] ?? 3;
+        chargerStock = storeStock[2] ?? 2;
+      }
+      
+      data.push({
+        day: label,
+        "Casper Tempered Glass Stock": Math.max(0, Math.round(glassStock)),
+        "AmpSentrix Fast Charger Stock": Math.max(0, Math.round(chargerStock)),
+        "Glass Depletion Rate": Math.max(0, Math.round(glassLoss * 10) / 10),
+        "Charger Depletion Rate": Math.max(0, Math.round(chargerLoss * 10) / 10),
+      });
+    }
+    return data;
+  }, [storeStock]);
 
   const hasLowStockHighTurnover = Object.entries(storeStock).some(([idStr, stock]) => {
     const id = parseInt(idStr);
@@ -9539,6 +10033,195 @@ function StoreView({
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* INVENTORY DEPLETION TREND & DEMAND FORECAST COCKPIT */}
+      {!isReserved && (
+        <div className="mb-8 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 select-none animate-in fade-in duration-300">
+          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 mb-5 gap-3">
+            <div>
+              <span className="text-[10px] font-extrabold text-indigo-400 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+                S2C Telemetry Predictive Analytics
+              </span>
+              <h2 className="text-sm font-extrabold text-white tracking-wide mt-1">
+                30-Day High-Turnover Runways & Depletion Curves
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                AI-informed run-rate tracking of accessories across active mobile service vans to automate dispatch.
+              </p>
+            </div>
+            
+            {/* Toggle buttons */}
+            <div className="flex gap-1.5 p-1 bg-slate-950 rounded-lg border border-slate-800/80 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedTrendItem("glass")}
+                className={`px-3 py-1.5 rounded-md text-[10.5px] font-mono font-bold transition-all ${
+                  selectedTrendItem === "glass"
+                    ? "bg-indigo-600 text-white"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900"
+                }`}
+              >
+                Casper Glass
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTrendItem("charger")}
+                className={`px-3 py-1.5 rounded-md text-[10.5px] font-mono font-bold transition-all ${
+                  selectedTrendItem === "charger"
+                    ? "bg-indigo-600 text-white"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900"
+                }`}
+              >
+                AmpSentrix Charger
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Stats Breakdown Column */}
+            <div className="lg:col-span-4 space-y-4 text-left">
+              <div className="bg-slate-950/80 border border-slate-850 p-4 rounded-xl space-y-3">
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider font-mono block">
+                  Line telemetry: {selectedTrendItem === "glass" ? "Casper Tempered Glass" : "AmpSentrix Fast Charger (20W)"}
+                </span>
+                
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <span className="text-[9.5px] text-slate-400 block font-mono">On-Hand Stock</span>
+                    <strong className={`text-2xl font-black font-mono ${
+                      (selectedTrendItem === "glass" ? (storeStock[1] ?? 0) : (storeStock[2] ?? 0)) < stockThreshold 
+                        ? "text-rose-400" 
+                        : "text-emerald-400"
+                    }`}>
+                      {selectedTrendItem === "glass" ? (storeStock[1] ?? 0) : (storeStock[2] ?? 0)} units
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[9.5px] text-slate-400 block font-mono">Run-rate (Daily)</span>
+                    <strong className="text-2xl font-black font-mono text-white">
+                      {selectedTrendItem === "glass" ? "2.1" : "1.4"} <span className="text-xs text-slate-400">/day</span>
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-905 pt-3">
+                  <span className="text-[9px] text-slate-500 uppercase block font-mono mb-1">Forecast Runway</span>
+                  <div className="flex items-center gap-1.5">
+                    {(() => {
+                      const stockVal = selectedTrendItem === "glass" ? (storeStock[1] ?? 0) : (storeStock[2] ?? 0);
+                      const dailyRate = selectedTrendItem === "glass" ? 2.1 : 1.4;
+                      const dRemaining = Math.max(0, Math.round(stockVal / dailyRate));
+                      if (stockVal === 0) {
+                        return (
+                          <span className="text-xs text-rose-400 font-black font-mono tracking-wide leading-tight bg-rose-500/10 px-2 py-1 rounded">
+                            🚨 SUPPLY CRITICAL: REORDER REQUIRED IMMEDIATELY
+                          </span>
+                        );
+                      }
+                      if (dRemaining < 3) {
+                        return (
+                          <span className="text-xs text-amber-400 font-extrabold font-mono tracking-wide leading-tight bg-amber-500/10 px-2 py-1 rounded">
+                            ⚠️ REORDER REQ. IN ~{dRemaining} DAYS (URGENT REPLENISH)
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="text-xs text-emerald-400 font-bold font-mono tracking-wide leading-tight bg-emerald-500/10 px-2 py-1 rounded">
+                          ✓ SECURE FOR ~{dRemaining} DAYS (NORMAL RUNWAY)
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-indigo-950/20 border border-indigo-900/30 p-3.5 rounded-xl space-y-1.5">
+                <h4 className="text-[10.5px] font-bold text-indigo-300 font-mono uppercase tracking-wide">
+                  📦 Automated Reorder Intelligence
+                </h4>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Based on historical 30-day mobile repair telemetry, dispatch orders are dynamically scheduled before stock level drops below warning thresholds to protect fleet SLA criteria.
+                </p>
+              </div>
+            </div>
+
+            {/* Recharts Chart Column */}
+            <div className="lg:col-span-8 bg-slate-950/40 border border-slate-850 p-4 rounded-xl">
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={trendData}
+                    margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorStock" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={selectedTrendItem === "glass" ? "#6366f1" : "#3b82f6"} stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor={selectedTrendItem === "glass" ? "#6366f1" : "#3b82f6"} stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorDepletion" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.15}/>
+                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis 
+                      dataKey="day" 
+                      stroke="#475569" 
+                      fontSize={8} 
+                      tickLine={false} 
+                      axisLine={false}
+                      dy={5}
+                    />
+                    <YAxis 
+                      stroke="#475569" 
+                      fontSize={8} 
+                      tickLine={false} 
+                      axisLine={false}
+                      domain={[0, 'auto']}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#020617', 
+                        borderColor: '#1e293b',
+                        borderRadius: '0.5rem',
+                        fontSize: '10px',
+                        fontFamily: 'JetBrains Mono, monospace',
+                        color: '#f8fafc'
+                      }}
+                    />
+                    <Legend 
+                      verticalAlign="top" 
+                      height={20}
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: '9px', fontFamily: 'JetBrains Mono, monospace', color: '#94a3b8', transform: 'translateY(-5px)' }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey={selectedTrendItem === "glass" ? "Casper Tempered Glass Stock" : "AmpSentrix Fast Charger Stock"} 
+                      name="Units On-Hand"
+                      stroke={selectedTrendItem === "glass" ? "#818cf8" : "#60a5fa"} 
+                      strokeWidth={2}
+                      fillOpacity={1} 
+                      fill="url(#colorStock)" 
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey={selectedTrendItem === "glass" ? "Glass Depletion Rate" : "Charger Depletion Rate"} 
+                      name="Daily Depletion"
+                      stroke="#f43f5e" 
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                      fillOpacity={1} 
+                      fill="url(#colorDepletion)" 
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

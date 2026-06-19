@@ -80,6 +80,29 @@ service cloud.firestore {
         && (!data.keys().hasAny(['batteryTemp']) || data.batteryTemp is number);
     }
 
+    function isValidDraft(data) {
+      return data.keys().hasAll(['id', 'userId', 'messages', 'forensicLogs', 'lastUpdated'])
+        && data.keys().size() <= 7
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.messages is list
+        && data.forensicLogs is list
+        && data.lastUpdated is string
+        && (!data.keys().hasAny(['forensicDevice']) || (data.forensicDevice is string && data.forensicDevice.size() <= 128))
+        && (!data.keys().hasAny(['sessionLabel']) || (data.sessionLabel is string && data.sessionLabel.size() <= 256));
+    }
+
+    function isValidPOSLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'level', 'message', 'source', 'userId'])
+        && data.keys().size() == 6
+        && data.id is string && data.id.size() <= 128
+        && data.timestamp is string
+        && data.level is string && data.level.size() <= 32
+        && data.message is string && data.message.size() <= 2048
+        && data.source is string && (data.source == 'Square' || data.source == 'CellSmart' || data.source == 'WebHook-Receiver')
+        && data.userId is string && data.userId.size() <= 128;
+    }
+
     // --- COLLECTION RULES MATCHES ---
     match /users/{userId} {
       allow get: if isSignedIn() && userId == request.auth.uid;
@@ -145,6 +168,30 @@ service cloud.firestore {
         && isValidId(feedbackId)
         && isValidS2CFeedback(incoming())
         && incoming().userId == request.auth.uid;
+    }
+
+    match /drafts/{draftId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create, update: if isSignedIn()
+        && isValidId(draftId)
+        && isValidDraft(incoming())
+        && incoming().userId == request.auth.uid;
+
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    match /pos-logs/{logId} {
+      allow get, list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && isValidPOSLog(incoming())
+        && incoming().userId == request.auth.uid;
+
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
   }
 }

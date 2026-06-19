@@ -50,6 +50,208 @@ app.use((req, res, next) => {
   next();
 });
 
+// ==========================================
+// SECURE GCP API GATEWAY SIMULATION COMPLEX
+// ==========================================
+
+export interface GatewayKey {
+  name: string;
+  key: string;
+  status: "ACTIVE" | "REVOKED";
+  requestsCount: number;
+}
+
+export interface GatewayLog {
+  id: string;
+  timestamp: string;
+  method: string;
+  path: string;
+  apiKeyUsed: string;
+  tokenValidated: boolean;
+  status: number;
+  error: string;
+  clientIp: string;
+}
+
+let enforceGateway = true;
+let rateLimitLimit = 10; // Requests per minute threshold
+let activeKeys: GatewayKey[] = [
+  { name: "Field Tech Tablet A", key: "DCP_GATEWAY_MOBILE_APP_KEY_2026", status: "ACTIVE", requestsCount: 0 },
+  { name: "Spokane HQ Dispatch Hub", key: "DCP_GATEWAY_TABLET_DISPATCH_KEY_XYZ", status: "ACTIVE", requestsCount: 0 },
+  { name: "B2B Partner Webhook", key: "DCP_GATEWAY_HQ_INTEGRATION_KEY_99", status: "ACTIVE", requestsCount: 0 }
+];
+let gatewayLogs: GatewayLog[] = [];
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+export function apiGatewayMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!enforceGateway) {
+    return next();
+  }
+
+  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+  const path = req.path;
+  const method = req.method;
+
+  let apiKeyUsed = "";
+  let tokenValidated = false;
+
+  // Extract key from standard channels documented in gcp-api-gateway.yaml
+  if (req.query.key) {
+    apiKeyUsed = String(req.query.key);
+  } else if (req.headers["x-api-key"]) {
+    apiKeyUsed = String(req.headers["x-api-key"]);
+  }
+
+  const authHeader = (req.headers["authorization"] as string) || "";
+  let isBearerToken = false;
+  if (authHeader.startsWith("Bearer ")) {
+    isBearerToken = true;
+    const token = authHeader.substring(7);
+    if (token && token.length > 10) {
+      tokenValidated = true; // Simulating valid Firebase JWT validation
+    }
+  }
+
+  const matchKeyObj = activeKeys.find(k => k.key === apiKeyUsed);
+  const isValidApiKey = matchKeyObj && matchKeyObj.status === "ACTIVE";
+
+  // Enforce precise API Gateway Security Policies
+  let accessAuthorized = false;
+  let authErrorMsg = "";
+
+  if (path === "/api/triage") {
+    // Triage accepts valid API keys OR valid Firebase Bearer tokens
+    if (isValidApiKey || tokenValidated) {
+      accessAuthorized = true;
+      if (matchKeyObj) {
+        matchKeyObj.requestsCount++;
+      }
+    } else {
+      authErrorMsg = "Unauthorized: A valid API Key or Firebase Bearer Token is required for AI Triage access.";
+    }
+  } else if (path === "/api/generate-quote") {
+    // Quote generator strictly requires valid API keys
+    if (isValidApiKey) {
+      accessAuthorized = true;
+      if (matchKeyObj) {
+        matchKeyObj.requestsCount++;
+      }
+    } else {
+      authErrorMsg = "Forbidden: A valid active API Key is required for Quote Generation access.";
+    }
+  } else {
+    return next();
+  }
+
+  const logEvent = (status: number, error = "") => {
+    const log: GatewayLog = {
+      id: `GWL-${Math.floor(100000 + Math.random() * 900000)}`,
+      timestamp: new Date().toISOString(),
+      method,
+      path,
+      apiKeyUsed: apiKeyUsed ? `${apiKeyUsed.substring(0, 15)}...` : "(none)",
+      tokenValidated,
+      status,
+      error,
+      clientIp
+    };
+    gatewayLogs.unshift(log);
+    if (gatewayLogs.length > 80) {
+      gatewayLogs.pop();
+    }
+  };
+
+  if (!accessAuthorized) {
+    logEvent(isBearerToken ? 401 : 403, authErrorMsg);
+    return res.status(isBearerToken ? 401 : 403).json({
+      error: authErrorMsg,
+      gatewayMessage: "Blocked by Triage-AI Secure GCP API Gateway architecture.",
+      documentationUrl: "/gcp-api-gateway.yaml"
+    });
+  }
+
+  // Enforce Rate Limiting Policy
+  const now = Date.now();
+  const limitWindowMs = 60000;
+  const clientLimitKey = `${clientIp}:${apiKeyUsed || "anonymous"}`;
+  
+  let rateData = rateLimitMap.get(clientLimitKey);
+  if (!rateData || now > rateData.resetTime) {
+    rateData = { count: 0, resetTime: now + limitWindowMs };
+  }
+
+  rateData.count++;
+  rateLimitMap.set(clientLimitKey, rateData);
+
+  const remaining = Math.max(0, rateLimitLimit - rateData.count);
+  const resetSeconds = Math.ceil((rateData.resetTime - now) / 1000);
+
+  res.setHeader("X-RateLimit-Limit", String(rateLimitLimit));
+  res.setHeader("X-RateLimit-Remaining", String(remaining));
+  res.setHeader("X-RateLimit-Reset-After", `${resetSeconds}s`);
+
+  if (rateData.count > rateLimitLimit) {
+    const errorMsg = `Too many requests. Limit: ${rateLimitLimit}/min. Please retry in ${resetSeconds} seconds.`;
+    logEvent(429, errorMsg);
+    return res.status(429).json({
+      error: errorMsg,
+      retryAfter: `${resetSeconds}s`,
+      gatewayCode: "RESOURCE_EXHAUSTED",
+      remediation: "Apply official GCP Cloud Armor IP throttling policies or upgrade API plan tier."
+    });
+  }
+
+  logEvent(200);
+  next();
+}
+
+// REST Control routes and metrics endpoints for visual Developer API Dashboard
+app.get("/api/gateway/settings", (req, res) => {
+  res.json({
+    enforceGateway,
+    rateLimitLimit,
+    activeKeys,
+    totalLogsCount: gatewayLogs.length,
+    activeKeysCount: activeKeys.filter(k => k.status === "ACTIVE").length
+  });
+});
+
+app.post("/api/gateway/settings", (req, res) => {
+  const { action, name, key, status, enforce, newLimit } = req.body;
+
+  if (enforce !== undefined) {
+    enforceGateway = !!enforce;
+  }
+  if (newLimit !== undefined && typeof newLimit === "number") {
+    rateLimitLimit = Math.max(1, newLimit);
+  }
+
+  if (action === "create-key" && name && key) {
+    if (activeKeys.some(k => k.key === key)) {
+      return res.status(400).json({ error: "API Key already registered in gateway cache." });
+    }
+    activeKeys.push({ name, key, status: "ACTIVE", requestsCount: 0 });
+  } else if (action === "update-key-status" && key && status) {
+    const target = activeKeys.find(k => k.key === key);
+    if (target) {
+      target.status = status;
+    }
+  } else if (action === "delete-key" && key) {
+    activeKeys = activeKeys.filter(k => k.key !== key);
+  }
+
+  res.json({ success: true, enforceGateway, rateLimitLimit, activeKeys });
+});
+
+app.get("/api/gateway/logs", (req, res) => {
+  res.json({ logs: gatewayLogs });
+});
+
+app.post("/api/gateway/logs/clear", (req, res) => {
+  gatewayLogs = [];
+  res.json({ success: true });
+});
+
 // Dynamic Google Site Verification Router for automatic Search Console ownership check
 app.get("/google:hash.html", (req, res) => {
   const hash = req.params.hash;
@@ -251,35 +453,126 @@ const B2B_CORPORATE_DOMAINS = [
   "paccar.com"
 ];
 
+// Define parts inventory schema and seed some items representatively
+interface InventoryItem {
+  id: string;
+  partName: string;
+  category: "screen" | "battery" | "button" | "motherboard" | "custom";
+  deviceTier: "flagship" | "midrange" | "budget";
+  compatibleModelWildcard: string;
+  wholesaleCost: number;
+  stockCount: number;
+  location: "Spokane Main Warehouse" | "Mobile Van A" | "Mobile Van B";
+}
+
+const PARTS_INVENTORY: InventoryItem[] = [
+  // Flagship Screens
+  { id: "scr-flag-01", partName: "Ultra-Premium Super Retina XDR OLED Screen", category: "screen", deviceTier: "flagship", compatibleModelWildcard: "iPhone 15", wholesaleCost: 165.00, stockCount: 14, location: "Mobile Van A" },
+  { id: "scr-flag-02", partName: "Dynamic AMOLED 2X Infinity-O Screen Assembly", category: "screen", deviceTier: "flagship", compatibleModelWildcard: "Galaxy S24", wholesaleCost: 155.00, stockCount: 8, location: "Mobile Van B" },
+  
+  // Midrange Screens
+  { id: "scr-mid-01", partName: "Premium OLED Screen Replacement Unit", category: "screen", deviceTier: "midrange", compatibleModelWildcard: "iPhone 13", wholesaleCost: 85.00, stockCount: 22, location: "Spokane Main Warehouse" },
+  { id: "scr-mid-02", partName: "Super AMOLED high refresh rate panel", category: "screen", deviceTier: "midrange", compatibleModelWildcard: "Galaxy A54", wholesaleCost: 75.00, stockCount: 0, location: "Spokane Main Warehouse" }, // Out of stock to trigger supply chain callback!
+  
+  // Budget Screens
+  { id: "scr-bud-01", partName: "Standard Multi-Touch LCD Screen digitizer", category: "screen", deviceTier: "budget", compatibleModelWildcard: "iPhone SE", wholesaleCost: 45.00, stockCount: 35, location: "Mobile Van A" },
+  { id: "scr-bud-02", partName: "IPS LCD Display assembly", category: "screen", deviceTier: "budget", compatibleModelWildcard: "Galaxy A14", wholesaleCost: 38.00, stockCount: 19, location: "Mobile Van B" },
+
+  // Flagship Batteries
+  { id: "bat-flag-01", partName: "High-Density smart Lithium-Ion Battery (M-Grade)", category: "battery", deviceTier: "flagship", compatibleModelWildcard: "iPhone 15", wholesaleCost: 38.00, stockCount: 12, location: "Mobile Van A" },
+  { id: "bat-flag-02", partName: "High-Capacity Li-Polymer Smart cell", category: "battery", deviceTier: "flagship", compatibleModelWildcard: "Galaxy S24", wholesaleCost: 35.00, stockCount: 4, location: "Mobile Van B" },
+
+  // Mid/Budget Batteries
+  { id: "bat-mid-01", partName: "Standard OEM-Grade Battery Replacement Pack", category: "battery", deviceTier: "midrange", compatibleModelWildcard: "iPhone 13", wholesaleCost: 28.00, stockCount: 40, location: "Spokane Main Warehouse" },
+  { id: "bat-bud-01", partName: "Base Lithium-Ion chemistry cells", category: "battery", deviceTier: "budget", compatibleModelWildcard: "iPhone SE", wholesaleCost: 20.00, stockCount: 50, location: "Mobile Van A" },
+
+  // Buttons / Tactile Components
+  { id: "btn-flag-01", partName: "Taptic Engine and Haptic Volume button ribbon", category: "button", deviceTier: "flagship", compatibleModelWildcard: "iPhone 15", wholesaleCost: 28.00, stockCount: 5, location: "Mobile Van A" },
+  { id: "btn-mid-01", partName: "Tactile side-key flex copper cable", category: "button", deviceTier: "midrange", compatibleModelWildcard: "iPhone 13", wholesaleCost: 15.00, stockCount: 18, location: "Spokane Main Warehouse" },
+  { id: "btn-bud-01", partName: "Mechanical home/side key flex", category: "button", deviceTier: "budget", compatibleModelWildcard: "iPhone SE", wholesaleCost: 0, stockCount: 0, location: "Spokane Main Warehouse" } // Out of stock!
+];
+
 // Helper to calculate quotes based on secure business logic
-export function calculateQuoteInternal(issueType: string, deviceTier: "flagship" | "midrange" | "budget") {
+export function calculateQuoteInternal(
+  issueType: string,
+  deviceTier: "flagship" | "midrange" | "budget",
+  modelName: string = ""
+) {
   // Base parts cost (highly confidential - kept secure on the backend server)
   let partsCost = 45;
   let laborHours = 1.5;
-  const hourlyLaborRate = 85; // Standard wholesale labor rate
+  const hourlyLaborRate = 95; // Standard wholesale labor rate
   const overheadMultiplier = 1.15; // 15% operation overlay margin
+  let partInventoryId = "custom-generic";
+  let partName = "OEM-Compatible Grade-A Replacement Part";
+  let itemInStock = true;
+  let stockLocation = "Spokane Main Warehouse";
+  let stockStatus = "IN_STOCK";
+  let supplyChainPremium = 0; // Backorder surcharge if stock is depleted
 
+  // Try to find the exact matching part in stock
+  const categoryEnum = ["screen", "battery", "button"].includes(issueType) ? issueType : "custom";
+  const matchedItem = PARTS_INVENTORY.find(item => 
+    item.category === categoryEnum && 
+    item.deviceTier === deviceTier &&
+    (modelName ? modelName.toLowerCase().includes(item.compatibleModelWildcard.toLowerCase()) : true)
+  ) || PARTS_INVENTORY.find(item => 
+    item.category === categoryEnum && 
+    item.deviceTier === deviceTier
+  );
+
+  if (matchedItem) {
+    partsCost = matchedItem.wholesaleCost;
+    partInventoryId = matchedItem.id;
+    partName = matchedItem.partName;
+    stockLocation = matchedItem.location;
+    if (matchedItem.stockCount <= 0) {
+      itemInStock = false;
+      stockStatus = "OUT_OF_STOCK_BACKORDERED";
+      supplyChainPremium = 24.50; // Dynamic out-of-stock premium
+    } else {
+      stockStatus = "AVAILABLE_IMMEDIATE_DISPATCH";
+    }
+  } else {
+    // Fallbacks if no inventory exact match is present
+    if (issueType === "screen") {
+      partsCost = deviceTier === "flagship" ? 180 : deviceTier === "midrange" ? 95 : 55;
+    } else if (issueType === "battery") {
+      partsCost = deviceTier === "flagship" ? 45 : deviceTier === "midrange" ? 35 : 25;
+    } else if (issueType === "button") {
+      partsCost = deviceTier === "flagship" ? 30 : deviceTier === "midrange" ? 20 : 12;
+    }
+  }
+
+  // Labor hours calculation depending on repair hardware risk level (S2C logic)
   if (issueType === "screen") {
-    partsCost = deviceTier === "flagship" ? 180 : deviceTier === "midrange" ? 95 : 55;
-    laborHours = deviceTier === "flagship" ? 2.0 : 1.5;
+    laborHours = deviceTier === "flagship" ? 2.25 : 1.75;
   } else if (issueType === "battery") {
-    partsCost = deviceTier === "flagship" ? 45 : deviceTier === "midrange" ? 35 : 25;
-    laborHours = 1.0;
+    laborHours = deviceTier === "flagship" ? 1.25 : 1.0;
   } else if (issueType === "button") {
-    partsCost = deviceTier === "flagship" ? 30 : deviceTier === "midrange" ? 20 : 12;
-    laborHours = 1.25;
+    laborHours = deviceTier === "flagship" ? 1.5 : 1.15;
+  } else {
+    laborHours = 2.0;
   }
 
   const baseLabor = laborHours * hourlyLaborRate;
-  const rawSubtotal = (partsCost + baseLabor) * overheadMultiplier;
+  const rawSubtotal = (partsCost + supplyChainPremium + baseLabor) * overheadMultiplier;
   
   // Format to standard retail increments e.g., rounding nicely
   const finalPrice = Math.round(rawSubtotal * 100) / 100;
 
   return {
+    partInventoryId,
+    partName,
+    stockStatus,
+    stockLocation,
+    itemInStock,
     partsCost: Math.round(partsCost * 100) / 100,
+    supplyChainPremium,
+    laborHours,
+    hourlyLaborRate,
     laborCost: Math.round(baseLabor * 100) / 100,
-    overhead: Math.round((rawSubtotal - partsCost - baseLabor) * 100) / 100,
+    overhead: Math.round((rawSubtotal - partsCost - supplyChainPremium - baseLabor) * 100) / 100,
     subtotal: finalPrice,
   };
 }
@@ -329,15 +622,15 @@ app.post("/api/tax-lookup", (req, res) => {
 });
 
 // API endpoint for secure dynamic quote generation
-app.post("/api/generate-quote", (req, res) => {
-  const { issueType, deviceTier, zipCode, isCorporate, companyName } = req.body;
+app.post("/api/generate-quote", apiGatewayMiddleware, (req, res) => {
+  const { issueType, deviceTier, zipCode, isCorporate, companyName, modelName } = req.body;
 
   if (!issueType || !deviceTier) {
     return res.status(400).json({ error: "issueType ('screen' | 'battery' | 'button') and deviceTier ('flagship' | 'midrange' | 'budget') are required." });
   }
 
-  // Calculate base quote
-  const billing = calculateQuoteInternal(issueType, deviceTier);
+  // Calculate base quote incorporating dynamic inventory cost, labor complexity and model Wildcards
+  const billing = calculateQuoteInternal(issueType, deviceTier, modelName || "");
   
   // Tax lookup
   let taxRate = 0.1035; // default Seattle rate if none given
@@ -353,12 +646,14 @@ app.post("/api/generate-quote", (req, res) => {
     }
   }
 
-  // B2B discount lookup details (20% flat discount on whole ticket parts & labor)
+  // B2B discount lookup details
   let discountAmount = 0;
   let hasB2BDiscount = false;
+  let discountPercentage = 0;
   
   if (isCorporate) {
     hasB2BDiscount = true;
+    discountPercentage = 20;
     discountAmount = Math.round((billing.subtotal * 0.2) * 100) / 100;
   }
 
@@ -376,7 +671,7 @@ app.post("/api/generate-quote", (req, res) => {
     },
     discountInfo: {
       applied: hasB2BDiscount,
-      percentage: 20,
+      percentage: discountPercentage,
       amount: discountAmount,
       company: companyName || "Corporate Account",
     },
@@ -508,7 +803,7 @@ function detectSpecsFromText(text: string, currentDetails?: any) {
 }
 
 // API endpoint for secure mobile triage conversations with Google Search groundings and structured auto-syncing
-app.post("/api/triage", async (req, res) => {
+app.post("/api/triage", apiGatewayMiddleware, async (req, res) => {
   const { messages, deviceDetails } = req.body;
   
   if (!messages || !Array.isArray(messages)) {

@@ -27,6 +27,14 @@ export interface QuoteBreakdown {
   laborCost: number;
   overhead: number;
   subtotal: number;
+  partInventoryId?: string;
+  partName?: string;
+  stockStatus?: string;
+  stockLocation?: string;
+  itemInStock?: boolean;
+  supplyChainPremium?: number;
+  laborHours?: number;
+  hourlyLaborRate?: number;
 }
 
 export interface TaxResponse {

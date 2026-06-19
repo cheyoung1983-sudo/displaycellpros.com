@@ -67,6 +67,48 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "userId", "pathway", "rating", "deviceModel", "createdAt"]
+    },
+    "SessionDraft": {
+      "title": "Diagnostic Session Draft",
+      "description": "Temporary auto-synced telemetry and diagnostic chat draft to resume sessions across devices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string", "enum": ["user", "assistant"] },
+              "text": { "type": "string" }
+            },
+            "required": ["role", "text"]
+          }
+        },
+        "forensicLogs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "forensicDevice": { "type": "string" },
+        "sessionLabel": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "messages", "forensicLogs", "lastUpdated"]
+    },
+    "POSLog": {
+      "title": "POS Log",
+      "description": "Synchronized POS transaction audit log representing active repair workstation ticketing flow",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "level": { "type": "string" },
+        "message": { "type": "string" },
+        "source": { "type": "string", "enum": ["Square", "CellSmart", "WebHook-Receiver"] },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "level", "message", "source", "userId"]
     }
   },
   "firestore": {
@@ -85,6 +127,14 @@
     "s2c-feedback/{feedbackId}": {
       "schema": "S2CFeedback",
       "description": "Technician ratings and comments indicating validation quality of logic board circuits"
+    },
+    "drafts/{draftId}": {
+      "schema": "SessionDraft",
+      "description": "Temporary session state for live chat and telemetry data enabling cross-device resume"
+    },
+    "pos-logs/{logId}": {
+      "schema": "POSLog",
+      "description": "Synchronized real-time POS logs coupled with automated repair ticket creation actions"
     }
   }
 }

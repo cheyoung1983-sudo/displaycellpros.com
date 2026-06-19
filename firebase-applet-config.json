@@ -1,9 +1,11 @@
 {
-  "projectId": "boxwood-coil-477014-r2",
-  "appId": "1:935082447045:web:057422c8d2a08da890e0ac",
-  "apiKey": "AIzaSyCEajdj9Z00LWnzO24_xEVeemuhME1-C7c",
-  "authDomain": "boxwood-coil-477014-r2.firebaseapp.com",
-  "storageBucket": "boxwood-coil-477014-r2.firebasestorage.app",
-  "messagingSenderId": "935082447045",
-  "measurementId": ""
+  "projectId": "displaycellpros-com",
+  "appId": "1:1046067704682:web:57ddd382ffa651995bab13",
+  "apiKey": "AIzaSyBfBa4Xxt4mUh7k9idDNbpZ_TZ9HjhxvGM",
+  "authDomain": "displaycellpros-com.firebaseapp.com",
+  "databaseURL": "https://displaycellpros-com-default-rtdb.firebaseio.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "displaycellpros-com.firebasestorage.app",
+  "messagingSenderId": "1046067704682",
+  "measurementId": "G-M7SSZ6N2GY"
 }
