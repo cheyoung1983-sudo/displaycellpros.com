@@ -70,6 +70,7 @@ import { SignaturePad } from "./components/SignaturePad";
 import { FormsIntegrationView } from "./components/FormsIntegrationView";
 import { GmailIntegrationView } from "./components/GmailIntegrationView";
 import { FirebaseAiWorkbenchView } from "./components/FirebaseAiWorkbenchView";
+import { GoogleWorkspaceHubView } from "./components/GoogleWorkspaceHubView";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
 import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
@@ -143,7 +144,7 @@ export default function App() {
   });
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai">("triage");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub">("triage");
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [leads, setLeads] = useState<HighPriorityLead[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState<boolean>(false);
@@ -2920,6 +2921,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
             setDeviceTier={setDeviceTier}
             handleGoogleSignIn={handleGoogleSignIn}
             handleSandboxLogin={handleSandboxLogin}
+            googleAccessToken={googleAccessToken}
           />
         )}
         
@@ -3510,6 +3512,21 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         <span>Firebase AI Workbench</span>
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-purple-950 text-purple-300 border border-purple-850/40 font-bold">SDK</span>
+                    </button>
+
+                    <button
+                      onClick={() => setLabTab("workspace_hub")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "workspace_hub" 
+                          ? "bg-blue-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-sky-450" />
+                        <span>Google Workspace Hub</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-sky-950 text-sky-305 border border-sky-850/45 font-bold">GWS</span>
                     </button>
                   </nav>
                 </div>
@@ -5158,6 +5175,18 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                 {labTab === "firebase_ai" && (
                   <FirebaseAiWorkbenchView
                     addToast={addToast}
+                  />
+                )}
+
+                {labTab === "workspace_hub" && (
+                  <GoogleWorkspaceHubView
+                    accessToken={googleAccessToken}
+                    authUser={authUser}
+                    onLinkGoogleAuth={handleGoogleSignIn}
+                    addToast={addToast}
+                    tickets={tickets}
+                    leads={leads}
+                    onAddNewTicket={handleAddNewTicketFromForms}
                   />
                 )}
 
@@ -8142,6 +8171,7 @@ interface CustomerHubViewProps {
   setDeviceTier: (t: "flagship" | "midrange" | "budget") => void;
   handleGoogleSignIn: () => Promise<void>;
   handleSandboxLogin: () => void;
+  googleAccessToken: string | null;
 }
 
 function CustomerHubView({
@@ -8171,7 +8201,8 @@ function CustomerHubView({
   setIssueType,
   setDeviceTier,
   handleGoogleSignIn,
-  handleSandboxLogin
+  handleSandboxLogin,
+  googleAccessToken
 }: CustomerHubViewProps) {
   const [activeHubTab, setActiveHubTab] = useState<"profile" | "usb" | "quotes" | "booking" | "chat">("profile");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -8189,6 +8220,7 @@ function CustomerHubView({
   const [bookDate, setBookDate] = useState("");
   const [bookTime, setBookTime] = useState("10:00 AM - 12:00 PM");
   const [bookRemarks, setBookRemarks] = useState("");
+  const [isPushingCalendarItem, setIsPushingCalendarItem] = useState(false);
 
   // Requirement: block customer from accessing diagnostic features until they sign up
   if (!authUser) {
@@ -8402,6 +8434,78 @@ function CustomerHubView({
     }
   };
 
+  const handleDirectCalendarPush = async () => {
+    if (!bookDate) {
+      addToast("Field Required", "Please choose a desired dispatch date before pushing to Google Calendar.", "error");
+      return;
+    }
+
+    let token = googleAccessToken;
+    if (!token) {
+      addToast("SSO Authentication Initiated", "Redirecting to authorize Google Workspace integration...", "info");
+      try {
+        await handleGoogleSignIn();
+        addToast("Authentication Success", "Session linked! Press 'Push to Google Calendar' again to finalize database transmission.", "success");
+        return;
+      } catch (authErr: any) {
+        addToast("Authorization Fault", authErr.message || "Failed to link Google account.", "error");
+        return;
+      }
+    }
+
+    setIsPushingCalendarItem(true);
+    try {
+      // Parse time windows
+      let startHour = "10:00";
+      let endHour = "12:00";
+      if (bookTime.includes("12:00 PM")) {
+        startHour = "12:00";
+        endHour = "14:00";
+      } else if (bookTime.includes("2:00 PM")) {
+        startHour = "14:00";
+        endHour = "16:00";
+      } else if (bookTime.includes("4:00 PM")) {
+        startHour = "16:00";
+        endHour = "18:00";
+      }
+
+      const startDateTime = `${bookDate}T${startHour}:00`;
+      const endDateTime = `${bookDate}T${endHour}:00`;
+
+      const eventBody = {
+        summary: `🛠️ D&CP Home Van Surgery: ${profilePreferredDevice}`,
+        description: `Driveway Dispatch - Board forensics and hardware rescue.\nClient: ${customerName}\nPhone: ${profilePhone}\nDirections & Remarks: ${bookRemarks || "No special instructions."}\nManual synchronization triggered on workbench.`,
+        start: { dateTime: startDateTime, timeZone: "America/Los_Angeles" },
+        end: { dateTime: endDateTime, timeZone: "America/Los_Angeles" }
+      };
+
+      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(eventBody)
+      });
+
+      if (res.ok) {
+        addToast(
+          "Google Calendar Event Synced!", 
+          `Registered custom appointment for ${bookDate} (${bookTime}) directly inside your google calendar details!`, 
+          "success"
+        );
+      } else {
+        const errObj = await res.json().catch(() => ({}));
+        throw new Error(errObj?.error?.message || `HTTP ${res.status}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      addToast("Manual Sync Failed", err.message || "Could not push to Google Calendar.", "error");
+    } finally {
+      setIsPushingCalendarItem(false);
+    }
+  };
+
   const handleBookAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bookDate) {
@@ -8433,8 +8537,70 @@ function CustomerHubView({
       }
       
       setLeads(prev => [newLead, ...prev]);
+
+      let calendarSyncSuccess = false;
+      
+      // --- INTERACTIVE GOOGLE CALENDAR SYNC DISPATCHER ---
+      if (googleAccessToken) {
+        try {
+          // Parse time window
+          let startHour = "10:00";
+          let endHour = "12:00";
+          if (bookTime.includes("12:00 PM")) {
+            startHour = "12:00";
+            endHour = "14:00";
+          } else if (bookTime.includes("2:00 PM")) {
+            startHour = "14:00";
+            endHour = "16:00";
+          } else if (bookTime.includes("4:00 PM")) {
+            startHour = "16:00";
+            endHour = "18:00";
+          }
+
+          const startDateTime = `${bookDate}T${startHour}:00`;
+          const endDateTime = `${bookDate}T${endHour}:00`;
+
+          const bodyContent = {
+            summary: `🛠️ D&CP Home Van Surgery: ${profilePreferredDevice}`,
+            description: `Driveway Dispatch - Board forensics and hardware rescue.\nClient: ${customerName}\nPhone: ${profilePhone}\nDirections & Remarks: ${bookRemarks || "No special instructions."}\nSystem Verification ID: ${newLead.id}`,
+            start: { dateTime: startDateTime, timeZone: "America/Los_Angeles" },
+            end: { dateTime: endDateTime, timeZone: "America/Los_Angeles" }
+          };
+
+          const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${googleAccessToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(bodyContent)
+          });
+
+          if (calRes.ok) {
+            calendarSyncSuccess = true;
+          } else {
+            console.warn("Google Calendar non-200 status response:", calRes.status);
+          }
+        } catch (calErr) {
+          console.error("Error creating Google Calendar appointment:", calErr);
+        }
+      }
+
       setBookRemarks("");
-      addToast("Driveway Dispatch Booked", `Spokane Mobile Lab Van scheduled on ${bookDate} inside slot ${bookTime}!`, "success");
+      
+      if (calendarSyncSuccess) {
+        addToast(
+          "Driveway Dispatch Booked", 
+          `Spokane Mobile Lab Van scheduled on ${bookDate}! Synced successfully with your Google Calendar diary.`, 
+          "success"
+        );
+      } else {
+        addToast(
+          "Driveway Dispatch Booked", 
+          `Spokane Mobile Lab Van scheduled on ${bookDate} inside slot ${bookTime}!`, 
+          "success"
+        );
+      }
     } catch (err: any) {
       addToast("Booking Fault", err.message || "Could not save appointment.", "error");
     }
@@ -8898,6 +9064,101 @@ function CustomerHubView({
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 resize-none"
                         placeholder="Please pull into the second driveway. Beware of friendly golden retriever!"
                       />
+                    </div>
+
+                    {/* Google Calendar Direct Push Integration Segment */}
+                    <div className="p-4 rounded-xl border text-left flex flex-col gap-4 transition-all text-xs bg-slate-950/70 border-slate-800 shadow-xl">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                          <h4 className="font-extrabold uppercase font-mono tracking-wider text-[11px] text-slate-200">
+                            Sync to Google Calendar
+                          </h4>
+                        </div>
+                        {googleAccessToken ? (
+                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md font-bold uppercase font-mono">
+                            Connected
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md font-bold uppercase font-mono">
+                            Offline
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Display the selected date and time beautifully in an explicit preview box */}
+                      <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-2">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest block">Selected Appointment Info</span>
+                        
+                        <div className="grid grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <span className="text-[10px] text-slate-400 uppercase font-mono block">Scheduled Date</span>
+                            <span className="text-xs font-extrabold text-blue-400 font-mono block mt-0.5">
+                              {bookDate ? (
+                                new Date(bookDate + "T00:00:00").toLocaleDateString(undefined, {
+                                  weekday: 'short',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric'
+                                })
+                              ) : (
+                                "⚠️ No Date Selected"
+                              )}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] text-slate-400 uppercase font-mono block">Time Window</span>
+                            <span className="text-xs font-extrabold text-teal-400 font-mono block mt-0.5">
+                              {bookTime}
+                            </span>
+                          </div>
+                        </div>
+
+                        {bookDate && (
+                          <div className="text-[10px] text-slate-450 border-t border-slate-850 pt-2 flex items-center justify-between">
+                            <span>Target Device: <strong className="text-slate-300 font-mono">{profilePreferredDevice || "Diagnostic Lab Unit"}</strong></span>
+                            <span className="text-slate-500">Duration: 2 Hours</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        Click the button below to publish this appointment slot directly to your primary Google Calendar.
+                      </p>
+
+                      <div className="flex flex-col gap-2">
+                        {googleAccessToken ? (
+                          <button
+                            type="button"
+                            onClick={handleDirectCalendarPush}
+                            disabled={isPushingCalendarItem}
+                            className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-md flex items-center justify-center gap-2 cursor-pointer transition-transform"
+                          >
+                            {isPushingCalendarItem ? (
+                              <>
+                                <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Syncing to Google Calendar...
+                              </>
+                            ) : (
+                              <>
+                                📅 Sync to Google Calendar
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleDirectCalendarPush}
+                            className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-md flex items-center justify-center gap-2 cursor-pointer transition-transform"
+                          >
+                            ⚡ Authorize & Sync to Google Calendar
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <button

@@ -17,6 +17,14 @@ googleProvider.addScope("https://www.googleapis.com/auth/gmail.send");
 googleProvider.addScope("https://www.googleapis.com/auth/gmail.readonly");
 googleProvider.addScope("https://www.googleapis.com/auth/gmail.compose");
 googleProvider.addScope("https://www.googleapis.com/auth/gmail.modify");
+googleProvider.addScope("https://www.googleapis.com/auth/spreadsheets");
+googleProvider.addScope("https://www.googleapis.com/auth/documents");
+googleProvider.addScope("https://www.googleapis.com/auth/calendar");
+googleProvider.addScope("https://www.googleapis.com/auth/chat.messages");
+googleProvider.addScope("https://www.googleapis.com/auth/chat.spaces.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/drive");
+googleProvider.addScope("https://www.googleapis.com/auth/drive.file");
+googleProvider.addScope("https://www.googleapis.com/auth/drive.metadata.readonly");
 
 // Standardized Google Sign-In with popup
 googleProvider.setCustomParameters({ prompt: "select_account" });
