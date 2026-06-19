@@ -937,30 +937,13 @@ app.post("/api/create-ticket", (req, res) => {
 // ============================================================================
 
 const ENCRYPTION_ALGORITHM = "aes-256-cbc";
-
-// Compute a cryptographically sound 32-byte key source dynamically to prevent crash
-function getEncryptionKey(): Buffer {
-  try {
-    const rawKey = process.env.OAUTH_ENCRYPTION_KEY;
-    if (rawKey) {
-      if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
-        return Buffer.from(rawKey, "hex");
-      }
-      return crypto.createHash("sha256").update(rawKey).digest();
-    }
-  } catch (err) {
-    console.warn("[Crypto Warning] Failed parsing environment key, falling back to secure derivation.", err);
-  }
-  return Buffer.from("8f7ab2d6e3c091f1b2c45e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b", "hex");
-}
-
-const encryptionKeyBuffer = getEncryptionKey();
+const ENCRYPTION_KEY = process.env.OAUTH_ENCRYPTION_KEY || "8f7ab2d6e3c091f1b2c45e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b"; // Static clean fallback
 
 // Helper: Encrypt confidential client states
 function encryptToken(text: string): string {
   try {
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, encryptionKeyBuffer, iv);
+    const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, Buffer.from(ENCRYPTION_KEY, "hex"), iv);
     let encrypted = cipher.update(text, "utf8", "hex");
     encrypted += cipher.final("hex");
     return `${iv.toString("hex")}:${encrypted}`;
@@ -977,7 +960,7 @@ function decryptToken(encryptedText: string): string {
     const parts = encryptedText.split(":");
     const iv = Buffer.from(parts.shift()!, "hex");
     const encryptedHex = parts.join(":");
-    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, encryptionKeyBuffer, iv);
+    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, Buffer.from(ENCRYPTION_KEY, "hex"), iv);
     let decrypted = decipher.update(encryptedHex, "hex", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
