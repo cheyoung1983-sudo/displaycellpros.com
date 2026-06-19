@@ -41,6 +41,20 @@ export interface GatewayLog {
   clientIp: string;
 }
 
+export interface RotationLog {
+  id: string;
+  timestamp: string;
+  triggerType: "SCHEDULED" | "MANUAL";
+  rotatedKeysCount: number;
+  secretManagerUpdates: {
+    secretId: string;
+    version: number;
+    status: "SUCCESS" | "FAILURE";
+  }[];
+  notifiedAdminEmail: string;
+  notificationStatus: "DELIVERED" | "FAILED";
+}
+
 interface ApiGatewayDashboardProps {
   tickets: RepairTicket[];
 }
@@ -53,6 +67,15 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
   const [logs, setLogs] = useState<GatewayLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefreshingLogs, setIsRefreshingLogs] = useState<boolean>(false);
+
+  // Key Rotation States
+  const [rotationSchedule, setRotationSchedule] = useState<"HOURLY" | "DAILY" | "WEEKLY" | "OFF">("DAILY");
+  const [lastRotationTime, setLastRotationTime] = useState<string>("");
+  const [nextRotationTime, setNextRotationTime] = useState<string>("");
+  const [adminEmail, setAdminEmail] = useState<string>("");
+  const [rotationRulesLogs, setRotationRulesLogs] = useState<RotationLog[]>([]);
+  const [isRotating, setIsRotating] = useState<boolean>(false);
+  const [isSyncingRotation, setIsSyncingRotation] = useState<boolean>(false);
 
   // Key creation inputs
   const [newKeyName, setNewKeyName] = useState<string>("");
@@ -86,11 +109,28 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
         setActiveKeys(settings.activeKeys || []);
       }
 
+      await fetchRotationMetrics();
       await refreshLogs();
     } catch (err) {
       console.error("Error loading API Gateway state:", err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchRotationMetrics = async () => {
+    try {
+      const res = await fetch("/api/gateway/rotation");
+      if (res.ok) {
+        const data = await res.json();
+        setRotationSchedule(data.rotationSchedule);
+        setLastRotationTime(data.lastRotationTime);
+        setNextRotationTime(data.nextRotationTime);
+        setAdminEmail(data.adminEmail);
+        setRotationRulesLogs(data.rotationLogs || []);
+      }
+    } catch (err) {
+      console.error("Error loading gateway rotation metrics:", err);
     }
   };
 
@@ -106,6 +146,61 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
       console.error("Error loading logs:", err);
     } finally {
       setIsRefreshingLogs(false);
+    }
+  };
+
+  const updateRotationSettings = async (updates: { schedule?: string; email?: string }) => {
+    setIsSyncingRotation(true);
+    try {
+      const res = await fetch("/api/gateway/rotation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRotationSchedule(data.rotationSchedule);
+        setLastRotationTime(data.lastRotationTime);
+        setNextRotationTime(data.nextRotationTime);
+        setAdminEmail(data.adminEmail);
+        setRotationRulesLogs(data.rotationLogs || []);
+      }
+    } catch (err) {
+      console.error("Error updating rotation parameters:", err);
+    } finally {
+      setIsSyncingRotation(false);
+    }
+  };
+
+  const handleForceKeyRotation = async () => {
+    setIsRotating(true);
+    try {
+      const res = await fetch("/api/gateway/rotation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "force-rotate" })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRotationSchedule(data.rotationSchedule);
+        setLastRotationTime(data.lastRotationTime);
+        setNextRotationTime(data.nextRotationTime);
+        setAdminEmail(data.adminEmail);
+        setRotationRulesLogs(data.rotationLogs || []);
+        
+        // Refresh API keys instantly since their keys changed
+        const resSettings = await fetch("/api/gateway/settings");
+        if (resSettings.ok) {
+          const settings = await resSettings.json();
+          setActiveKeys(settings.activeKeys || []);
+        }
+        
+        await refreshLogs();
+      }
+    } catch (err) {
+      console.error("Failed to execute force credentials rotation:", err);
+    } finally {
+      setIsRotating(false);
     }
   };
 
@@ -565,6 +660,160 @@ paths:
                     <span>30 (Balanced)</span>
                     <span>60 (High Capacity)</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Secret Manager Key Rotation & Cron Job Controller Panel */}
+              <div className="bg-slate-900/40 border border-slate-750 rounded-xl p-4 space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <div>
+                    <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Cron Key Rotation Engine</h3>
+                    <p className="text-[10px] text-slate-450">Scheduled client secret updates & admin alerts</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3.5">
+                  {/* Cron frequency */}
+                  <div className="space-y-1.5">
+                    <label htmlFor="rotationFreqSelect" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono block">Rotation Schedule</label>
+                    <select
+                      id="rotationFreqSelect"
+                      value={rotationSchedule}
+                      onChange={(e) => updateRotationSettings({ schedule: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-750 text-slate-205 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="HOURLY">HOURLY (Test Cadence)</option>
+                      <option value="DAILY">DAILY (Recommended)</option>
+                      <option value="WEEKLY">WEEKLY (Secure)</option>
+                      <option value="OFF">DISABLED / OFF</option>
+                    </select>
+                  </div>
+
+                  {/* Admin Email */}
+                  <div className="space-y-1.5">
+                    <label htmlFor="socAdminEmailInput" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono block">Admin Alert Email</label>
+                    <div className="flex gap-1.5">
+                      <input
+                        id="socAdminEmailInput"
+                        type="email"
+                        value={adminEmail}
+                        onChange={(e) => setAdminEmail(e.target.value)}
+                        placeholder="admin@enterprise.com"
+                        className="w-full bg-slate-950 border border-slate-755 text-slate-205 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateRotationSettings({ email: adminEmail })}
+                        disabled={isSyncingRotation}
+                        className="px-2.5 bg-slate-850 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-extrabold uppercase transition-colors shrink-0 cursor-pointer"
+                      >
+                        {isSyncingRotation ? "..." : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Next scheduled rotation stats block */}
+                <div className="bg-slate-950/60 rounded-xl p-3 border border-slate-850 grid grid-cols-2 gap-2 text-xs font-mono font-semibold text-slate-350 select-none">
+                  <div className="space-y-1 border-r border-slate-850/60 pr-2">
+                    <span className="text-[8.5px] uppercase text-slate-500 tracking-wider">Last Chrono Rotated</span>
+                    <span className="block text-[11px] text-cyan-400 font-bold truncate">
+                      {lastRotationTime ? new Date(lastRotationTime).toLocaleTimeString() : "PENDING"}
+                    </span>
+                    <span className="block text-[8.5px] text-slate-500 truncate">
+                      {lastRotationTime ? new Date(lastRotationTime).toLocaleDateString() : ""}
+                    </span>
+                  </div>
+                  <div className="space-y-1 pl-2">
+                    <span className="text-[8.5px] uppercase text-slate-500 tracking-wider">Next Planned Run</span>
+                    <span className={`block text-[11px] font-bold truncate ${rotationSchedule === "OFF" ? "text-red-400" : "text-emerald-405"}`}>
+                      {rotationSchedule === "OFF" ? "INACTIVE" : nextRotationTime ? new Date(nextRotationTime).toLocaleTimeString() : "HOURLY_DAEMON"}
+                    </span>
+                    <span className="block text-[8.5px] text-slate-500 truncate">
+                      {rotationSchedule === "OFF" ? "Schedules Off" : nextRotationTime ? new Date(nextRotationTime).toLocaleDateString() : ""}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Immediate active trigger */}
+                <button
+                  type="button"
+                  onClick={handleForceKeyRotation}
+                  disabled={isRotating}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-extrabold uppercase tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-50 select-none cursor-pointer shadow-md active:scale-[0.982]"
+                >
+                  {isRotating ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>ROTATING SECRETS & EMITTING ADMIN WARNINGS...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Settings className="w-3.5 h-3.5 animate-pulse" />
+                      <span>FORCE IMMEDIATE CRON ROTATION</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Sub-ledger of active rotation logs */}
+              <div className="bg-slate-900/30 border border-slate-750 rounded-xl p-4 space-y-3.5">
+                <div className="flex justify-between items-center select-none">
+                  <h4 className="text-[10px] font-bold text-slate-450 uppercase tracking-widest font-mono">Secret Rotation Event Logs</h4>
+                  <span className="text-[9.5px] text-slate-500 font-mono">Retaining last {rotationRulesLogs.length} audit chains</span>
+                </div>
+
+                <div className="space-y-2.5 max-h-[170px] overflow-y-auto pr-1">
+                  {rotationRulesLogs.map((log) => (
+                    <div key={log.id} className="bg-slate-950 p-3 rounded-lg border border-slate-850 space-y-2 shadow-inner">
+                      <div className="flex items-center justify-between text-[11.5px] font-mono leading-none">
+                        <span className="text-emerald-400 font-bold">{log.id}</span>
+                        <span className="text-slate-530 select-none text-[10px]">{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-1 px-1 text-[10px] font-mono leading-relaxed text-slate-400">
+                        <div>
+                          <span className="text-slate-500 select-none mr-1">Trigger:</span>
+                          <span className={`font-bold ${log.triggerType === "MANUAL" ? "text-amber-500" : "text-cyan-400"}`}>
+                            {log.triggerType}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 select-none mr-1">Secrets Updated:</span>
+                          <span className="text-slate-200 font-bold">{log.rotatedKeysCount} components</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 select-none mr-1">Alert Targeted:</span>
+                          <span className="text-blue-400 hover:underline font-bold truncate block max-w-[130px] inline-block align-top">{log.notifiedAdminEmail}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 select-none mr-1">Dispatch Code:</span>
+                          <span className="text-emerald-400 border border-emerald-900/50 bg-emerald-950/40 px-1 rounded text-[9px] font-extrabold select-none">
+                            {log.notificationStatus}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Nested details showing Google Secret Manager API simulation target resource version IDs */}
+                      <div className="border-t border-slate-900/60 pt-1.5 px-1 space-y-1">
+                        <span className="text-[9px] font-extrabold text-slate-500 uppercase font-mono tracking-wider">Secret Manager Commit Targets</span>
+                        <div className="space-y-1 font-mono text-[9px] text-slate-450 leading-relaxed max-h-[80px] overflow-y-auto">
+                          {log.secretManagerUpdates.map((u, i) => (
+                            <div key={i} className="flex justify-between items-center text-[9.5px]">
+                              <span className="truncate max-w-[190px] font-extrabold text-blue-400/95" title={u.secretId}>{u.secretId.substring(u.secretId.lastIndexOf("/") + 1)}</span>
+                              <span className="text-slate-300 font-bold font-mono">v{u.version} (SUCCESS)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {rotationRulesLogs.length === 0 && (
+                    <div className="text-center py-6 text-slate-500 font-mono text-xs uppercase tracking-widest select-none">
+                      [No registration logs synced]
+                    </div>
+                  )}
                 </div>
               </div>
 
