@@ -6,6 +6,7 @@ import {
   Loader2, FileDown, RefreshCw, Brain
 } from "lucide-react";
 import { jsPDF } from "jspdf";
+import { MotherboardSchematicOverlay } from "./MotherboardSchematicOverlay";
 
 interface ForensicsViewProps {
   forensicDevice: "iPhone XR" | "iPad Pro 9.7";
@@ -553,6 +554,31 @@ double tempReading = IOPSGetTemperatureReading(sources[0]);
             )}
           </div>
         </div>
+      </div>
+
+      {/* SOVEREIGN INTERACTIVE SCHEMATIC TELEMETRY OVERLAY */}
+      <div className="mb-6">
+        <MotherboardSchematicOverlay
+          activeDevice={forensicDevice}
+          liveDiodeReading={s2cAmmeterReading}
+          liveAmmeterReading={s2cAmmeterReading}
+          liveTemp={s2cBatteryTemp}
+          onFaultInjected={(fault) => {
+            if (fault === "short_rail") {
+              setS2cActivePathway("short_rail");
+              setCovCustomDraft(getPathwayDraft("short_rail"));
+              addToast("Multimeter Pinpointed VDD MAIN Short", "C247_W dielectric main short-to-ground detected.", "warning");
+            } else if (fault === "backlight") {
+              setS2cActivePathway("backlight");
+              setCovCustomDraft(getPathwayDraft("backlight"));
+              addToast("Multimeter Pinpointed Backlight Break", "FL1728 open loop backlight fuse break detected.", "warning");
+            } else {
+              setS2cActivePathway("charging");
+              setCovCustomDraft(getPathwayDraft("charging"));
+              addToast("Faults Cleared", "Schematic traces reset to normal operating values.", "success");
+            }
+          }}
+        />
       </div>
 
       {/* INTERACTIVE CHAIN-OF-VERIFICATION (CoV) FLOW & ABSTENTION SANDBOX */}
