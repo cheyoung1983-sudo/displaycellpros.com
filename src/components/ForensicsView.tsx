@@ -6,7 +6,6 @@ import {
   Loader2, FileDown, RefreshCw, Brain
 } from "lucide-react";
 import { jsPDF } from "jspdf";
-import { MotherboardSchematicOverlay } from "./MotherboardSchematicOverlay";
 
 interface ForensicsViewProps {
   forensicDevice: "iPhone XR" | "iPad Pro 9.7";
@@ -174,23 +173,26 @@ export const ForensicsView: React.FC<ForensicsViewProps> = ({
   pass
 }) => {
   return (
-    <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300 font-sans text-left">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-slate-700 pb-4 mb-5 gap-3">
-        <div className="flex items-center gap-2">
-          <Cpu className="w-5 h-5 text-violet-400 animate-pulse" />
+    <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md overflow-hidden animate-in fade-in duration-300 font-sans text-left">
+      <div className="bg-slate-850 px-6 py-5 border-b border-slate-700 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <BrandLogo size={34} showText={true} />
+          <div className="h-10 w-px bg-slate-700 hidden xl:block"></div>
           <div>
             <h2 className="text-sm font-bold text-white uppercase tracking-tight font-mono">
-              Forensic RAG-Diagnostics Orchestrator Command Center
+              [S2C Intelligence Dashboard]
             </h2>
-            <p className="text-xs text-slate-400">
-              Active, closed-loop micro-electronics diagnostic engine with hardware-level telemetry ingestion, strict CoV validation, and enterprise-scale RAG-routing.
+            <p className="text-[11px] text-slate-400 max-w-xl">
+              Forensic RAG-Diagnostics Engine with hardware-level telemetry ingestion and strict NIST SP 800-88 R1 audit protocols.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 bg-violet-955/60 border border-violet-900/40 px-3 py-1 rounded-lg text-[9.5px] font-mono text-violet-300 font-extrabold uppercase tracking-wider">
-          Closed-Loop CoV System Live
+        <div className="flex items-center gap-2 bg-violet-955/60 border border-violet-900/40 px-3 py-1 rounded-lg text-[9.5px] font-mono text-violet-300 font-extrabold uppercase tracking-wider shrink-0">
+          CoV System Live
         </div>
       </div>
+
+      <div className="p-5 flex flex-col flex-1">
 
       {/* TOP GRID: Low-Level Physical Telemetry & NotebookLM API Capacity limits */}
       <div className="grid grid-cols-12 gap-5 mb-6 items-stretch">
@@ -1533,6 +1535,7 @@ double tempReading = IOPSGetTemperatureReading(sources[0]);
           </div>
         )}
       </div>
+    </div>
     </section>
   );
 };

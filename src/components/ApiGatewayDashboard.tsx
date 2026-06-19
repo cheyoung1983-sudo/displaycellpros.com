@@ -21,6 +21,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { RepairTicket } from "../types";
+import { BrandLogo } from "./BrandLogo";
 
 export interface GatewayKey {
   name: string;
@@ -463,6 +464,27 @@ paths:
   return (
     <div className="flex flex-col flex-1 gap-6 animate-in fade-in duration-300">
       
+      {/* Brand Header Rail */}
+      <div className="bg-slate-800/50 border border-slate-700/80 rounded-xl px-6 py-5 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm">
+        <div className="flex items-center gap-4">
+          <BrandLogo size={34} showText={true} />
+          <div className="h-10 w-px bg-slate-700 hidden md:block"></div>
+          <div>
+            <h2 className="text-sm font-extrabold text-white uppercase tracking-tight font-mono">[NIST Compliance] Gateway</h2>
+            <p className="text-[11px] text-slate-400">Secure, rate-limited entrance for Triage-AI mobile hardware Diagnostics.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-700/50">
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest leading-none">Gateway Status</span>
+            <span className={`text-[11px] font-black tracking-wider ${enforceGateway ? "text-emerald-400" : "text-amber-400"}`}>
+              {enforceGateway ? "ENFORCED" : "BYPASSED"}
+            </span>
+          </div>
+          <div className={`h-3 w-3 rounded-full ${enforceGateway ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" : "bg-amber-500"}`}></div>
+        </div>
+      </div>
+
       {/* Upper Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">

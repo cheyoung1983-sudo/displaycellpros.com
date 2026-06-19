@@ -21,9 +21,11 @@ import {
   BarChart4, 
   RefreshCw, 
   Sparkles,
-  Layers
+  Layers,
+  Activity
 } from "lucide-react";
 import { RepairTicket } from "../types";
+import { BrandLogo } from "./BrandLogo";
 
 interface TechnicianDashboardProps {
   tickets: RepairTicket[];
@@ -196,17 +198,17 @@ export const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
   };
 
   return (
-    <div id="technician-operating-dashboard" className="bg-slate-900 border border-slate-755 rounded-xl p-5 mb-6 text-left animate-in fade-in duration-350">
+    <div id="technician-operating-dashboard" className="bg-slate-900 border border-slate-755 rounded-xl overflow-hidden mb-6 text-left animate-in fade-in duration-350 shadow-lg">
       
       {/* Dashboard Top Row Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-5">
-        <div>
-          <div className="flex items-center gap-1.5 mb-1">
-            <BarChart4 className="w-4 h-4 text-emerald-400" />
-            <span className="text-[10px] font-extrabold text-blue-400 uppercase tracking-widest font-mono">Real-time Performance Analytics</span>
+      <div className="bg-slate-850 px-6 py-5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <BrandLogo size={32} showText={true} />
+          <div className="h-8 w-px bg-slate-700 hidden sm:block"></div>
+          <div>
+            <h2 className="text-sm font-extrabold text-white tracking-tight uppercase font-mono">Telemetry-First Audit Hub</h2>
+            <p className="text-[11px] text-slate-400">Continuous telemetry aggregation for Spokane-region logic board forensics.</p>
           </div>
-          <h2 className="text-base font-extrabold text-white tracking-tight">Diagnostic Lab Performance Hub</h2>
-          <p className="text-xs text-slate-400">Continuous telemetry aggregation for driveway repairs and active POS ticket invoicing.</p>
         </div>
         
         <div className="flex items-center gap-2">
@@ -224,7 +226,8 @@ export const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
         </div>
       </div>
 
-      {/* KPI Visual Metric Cards Grid */}
+      <div className="p-5">
+        {/* KPI Visual Metric Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         
         {/* KPI 1: Today's Revenue */}
@@ -435,7 +438,7 @@ export const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
         </div>
 
       </div>
-
     </div>
-  );
+  </div>
+);
 };

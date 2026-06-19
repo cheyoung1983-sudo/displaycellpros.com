@@ -57,7 +57,8 @@ import {
   ShieldAlert,
   Filter,
   FileSpreadsheet,
-  Mail
+  Mail,
+  Lock
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
@@ -72,6 +73,9 @@ import { GmailIntegrationView } from "./components/GmailIntegrationView";
 import { FirebaseAiWorkbenchView } from "./components/FirebaseAiWorkbenchView";
 import { GoogleWorkspaceHubView } from "./components/GoogleWorkspaceHubView";
 import { ApiGatewayDashboard } from "./components/ApiGatewayDashboard";
+import QuoteBuilderDashboard from "./components/QuoteBuilderDashboard";
+import { BrandLogo } from "./components/BrandLogo";
+import { TelemetryDashboard } from "./components/TelemetryDashboard";
 import { motion, AnimatePresence } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, BarChart, Bar } from "recharts";
 import { jsPDF } from "jspdf";
@@ -146,7 +150,7 @@ export default function App() {
   });
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub" | "gateway">("triage");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub" | "gateway" | "quote_builder" | "telemetry">("telemetry");
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [leads, setLeads] = useState<HighPriorityLead[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState<boolean>(false);
@@ -2947,11 +2951,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
             <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => setActiveTab("home")}>
-              <Wrench className="h-8 w-8 text-blue-500 mr-3 animate-pulse" />
-              <div>
-                <span className="font-bold text-xl tracking-tight text-white block leading-none">DISPLAY & CELL PROS</span>
-                <span className="text-[10px] text-blue-400 font-semibold uppercase tracking-widest">Professional On-Site Solutions</span>
-              </div>
+              <BrandLogo size={42} showText={true} />
             </div>
             
             {/* Desktop Menu */}
@@ -3056,7 +3056,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                       : "text-slate-400 hover:text-white"
                   }`}
                 >
-                  <Wrench className="w-3.5 h-3.5" />
+                  <Cpu className="w-3.5 h-3.5 text-emerald-400" />
                   Technician
                 </button>
               </div>
@@ -3129,7 +3129,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                     userRole === "technician" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"
                   }`}
                 >
-                  <Wrench className="w-3.5 h-3.5" /> Tech View
+                  <Cpu className="w-3.5 h-3.5 text-emerald-400" /> Tech View
                 </button>
               </div>
             </div>
@@ -3636,6 +3636,23 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-2 font-mono">Active Lab Module</p>
                   <nav className="space-y-1">
                     <button
+                      onClick={() => setLabTab("telemetry")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "telemetry" 
+                          ? "bg-[#008080] text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-teal-400 animate-pulse" />
+                        <span>Triage-AI Live Telemetry</span>
+                      </div>
+                      <span className={`px-1.5 py-0.2 text-[9px] rounded font-mono ${
+                        labTab === "telemetry" ? "bg-teal-700 text-white" : "bg-slate-800 text-slate-400"
+                      }`}>LAB</span>
+                    </button>
+
+                    <button
                       onClick={() => setLabTab("triage")}
                       className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
                         labTab === "triage" 
@@ -3645,11 +3662,26 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     >
                       <div className="flex items-center gap-2">
                         <Terminal className="w-4 h-4" />
-                        <span>AI Diagnostic Console</span>
+                        <span>[Initiate Forensic Triage]</span>
                       </div>
                       <span className={`px-1.5 py-0.2 text-[9px] rounded font-mono ${
                         labTab === "triage" ? "bg-blue-700 text-white" : "bg-slate-800 text-slate-400"
                       }`}>LV3</span>
+                    </button>
+
+                    <button
+                      onClick={() => setLabTab("quote_builder")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "quote_builder" 
+                          ? "bg-blue-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                        <span>[Client Terminal] (Quotes)</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-emerald-990 text-emerald-400 border border-emerald-900/40">DECOUPLED</span>
                     </button>
 
                     <button
@@ -3662,7 +3694,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     >
                       <div className="flex items-center gap-2">
                         <Activity className="w-4 h-4" />
-                        <span>POS Ledger & Sync APIs</span>
+                        <span>[Client Terminal] (POS)</span>
                       </div>
                       <span className={`px-1.5 py-0.2 text-[9px] rounded font-mono ${
                         labTab === "pos" ? "bg-blue-700 text-white" : "bg-slate-800 text-slate-400"
@@ -3711,7 +3743,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     >
                       <div className="flex items-center gap-2">
                         <Phone className="w-4 h-4 text-amber-550" />
-                        <span>Tier 3 Callbacks</span>
+                        <span>Audit Trajectories (Callbacks)</span>
                       </div>
                       <span className={`px-1.5 py-0.2 text-[9px] rounded font-mono ${
                         labTab === "escalation" ? "bg-amber-700 text-white" : "bg-slate-800 text-slate-400"
@@ -3728,7 +3760,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     >
                       <div className="flex items-center gap-2">
                         <Cpu className="w-4 h-4 text-violet-400" />
-                        <span>Triage-AI Forensics Hub</span>
+                        <span>[S2C Intelligence Dashboard]</span>
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-violet-900/50 text-violet-300">RAG</span>
                     </button>
@@ -3803,7 +3835,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     >
                       <div className="flex items-center gap-2">
                         <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        <span>Secure API Gateway</span>
+                        <span>[NIST Compliance] (Gateway)</span>
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-emerald-950 text-emerald-300 border border-emerald-850/40 font-bold">GW</span>
                     </button>
@@ -3942,23 +3974,25 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       </button>
                       <button
                         onClick={() => setDiagnosticMode("thinking")}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all font-mono flex items-center gap-1 ${
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all font-mono flex items-center gap-1.5 ${
                           diagnosticMode === "thinking"
                             ? "bg-gradient-to-r from-violet-600 to-indigo-650 text-white shadow-md border border-violet-500/25"
                             : "bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-slate-200 border border-slate-800/60"
                         }`}
                       >
                         🧠 Schematic Reasoning (High-Think)
+                        {!authUser && <Lock className="w-3 h-3 text-amber-500 ml-1 animate-pulse" />}
                       </button>
                       <button
                         onClick={() => setDiagnosticMode("vision")}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all font-mono flex items-center gap-1 ${
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all font-mono flex items-center gap-1.5 ${
                           diagnosticMode === "vision"
                             ? "bg-emerald-600 text-white shadow-md border border-emerald-500/25"
                             : "bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-slate-200 border border-slate-800/60"
                         }`}
                       >
                         📸 Photo Vision Analyst
+                        {!authUser && <Lock className="w-3 h-3 text-amber-500 ml-1 animate-pulse" />}
                       </button>
                     </div>
 
@@ -4240,128 +4274,242 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     )}
 
                     {diagnosticMode === "thinking" && (
-                      <div className="p-5 flex-1 flex flex-col gap-4 min-h-[350px] bg-slate-900/10">
-                        <div>
-                          <span className="text-[10px] font-extrabold text-violet-400 uppercase tracking-widest font-mono block mb-1">
-                            🧠 COGNITIVE REASONING MATRIX (Model: gemini-3.1-pro-preview)
+                      !authUser ? (
+                        <div className="p-8 flex-1 flex flex-col items-center justify-center text-center bg-slate-950/80 border border-slate-850 rounded-xl min-h-[400px] animate-in fade-in duration-300">
+                          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-600/20 to-indigo-650/20 border border-violet-500/30 flex items-center justify-center text-violet-400 mb-6 relative">
+                            <Brain className="w-8 h-8 animate-pulse" />
+                            <Lock className="w-4 h-4 text-amber-500 absolute bottom-0 right-0 bg-slate-1000 rounded-full p-0.5 border border-slate-800" />
+                          </div>
+                          
+                          <span className="text-[10px] font-extrabold text-violet-400 uppercase tracking-widest font-mono bg-violet-950/40 px-2.5 py-1 rounded border border-violet-905/30 mb-3">
+                            Registered Analyst Portal Locked
                           </span>
-                          <h3 className="text-sm font-bold text-white">Advanced Electrical Schematic Diagnostic Planner</h3>
-                          <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
-                            Queries are dispatched to the <strong className="text-violet-400 font-bold">gemini-3.1-pro-preview</strong> cluster with <strong className="text-violet-400">thinkingLevel: HIGH</strong> to construct step-by-step motherboard test steps with voltage tolerances.
+                          
+                          <h3 className="text-lg font-black text-white uppercase tracking-tight leading-snug">
+                            STOP GUESSING. <span className="text-violet-400">START AUDITING.</span>
+                          </h3>
+                          
+                          <p className="text-xs text-slate-450 mt-3 max-w-sm leading-relaxed font-sans">
+                            Deploying the server-side <strong className="text-violet-400">Cognitive Schematic Reasoning Solver</strong> (utilizing <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-[10.5px]">gemini-3.1-pro-preview</code> at <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-[10.5px]">ThinkingLevel.HIGH</code>) is restricted to registered Display Cell Pros analysts.
                           </p>
-                        </div>
 
-                        <form onSubmit={handleRunThinkingDiagnostic} className="space-y-3">
-                          <label htmlFor="thinkingPrompt" className="block text-[10px] text-slate-450 uppercase font-bold font-mono tracking-wider">Troubleshooting directive</label>
-                          <textarea
-                            id="thinkingPrompt"
-                            name="thinkingPrompt"
-                            value={thinkingPrompt}
-                            onChange={(e) => setThinkingPrompt(e.target.value)}
-                            rows={4}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-600 font-mono focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                            placeholder="State circuit symptoms, ribbon line specs, short circuit behaviors to plan electrical audits..."
-                          />
-                          <div className="flex justify-end">
+                          <div className="mt-6 w-full max-w-md bg-slate-900/40 rounded-lg p-4 border border-slate-800/60 text-left space-y-3 font-mono text-[11px]">
+                            <div className="text-[9px] uppercase font-bold text-slate-500 tracking-wider border-b border-slate-850 pb-1.5 flex items-center justify-between">
+                              <span>S2C Forensic RAG Engine Access</span>
+                              <span className="text-amber-500 font-extrabold font-mono">Tier 3 Audit Mode</span>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="text-violet-400 mt-0.5">●</span>
+                              <p className="text-slate-300 font-sans leading-relaxed">
+                                <strong>Logic Board Schematic Dissections</strong>: Track primary voltage rails (3.82V) on multimeters and pinpoint trace tolerances across microelectronics like <strong className="text-white font-mono">FL1728</strong>.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="text-violet-400 mt-0.5">●</span>
+                              <p className="text-slate-300 font-sans leading-relaxed">
+                                <strong>Measurement-First Protocol Planning</strong>: Generate custom diode-drop tables and troubleshooting trees specific to Right-to-Repair Spokane guidelines.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full max-w-xs sm:max-w-none justify-center">
                             <button
-                              type="submit"
-                              disabled={isDeepDiagnosing || !thinkingPrompt.trim()}
-                              className="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider font-mono bg-gradient-to-r from-violet-650 ... to-indigo-600 hover:from-violet-550 hover:to-indigo-500 text-white disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-500 transition-all shadow-md"
+                              onClick={handleGoogleSignIn}
+                              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-blue-500/10 inline-flex items-center gap-2 w-full sm:w-auto justify-center cursor-pointer"
                             >
-                              {isDeepDiagnosing ? "THINKING PROCESS CHANNELS ACTIVE..." : "DISPATCH COGNITIVE SOLVER"}
+                              <User className="w-4 h-4" />
+                              Connect Analyst Account
+                            </button>
+                            <button
+                              onClick={handleSandboxLogin}
+                              className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-widest rounded-xl border border-slate-800 transition-all inline-flex items-center gap-2 w-full sm:w-auto justify-center font-mono cursor-pointer"
+                            >
+                              <Terminal className="w-4 h-4 text-blue-450" />
+                              Try Sandbox Bypass
                             </button>
                           </div>
-                        </form>
-
-                        {deepDiagnosticResult && (
-                          <div className="mt-4 bg-slate-950 border border-slate-850 rounded-lg p-4 font-mono text-[11px] leading-relaxed text-indigo-300 shadow-inner max-h-[280px] overflow-y-auto">
-                            <div className="text-[9px] text-violet-400 font-extrabold border-b border-slate-850 pb-2 mb-2 uppercase tracking-widest flex justify-between items-center">
-                              <span>[SCHEMATIC DISCHARGE GRAPH]</span>
-                              <span className="text-slate-505 font-medium">THINKING_LEVEL_HIGH</span>
-                            </div>
-                            <p className="whitespace-pre-line text-slate-300 font-serif leading-relaxed text-xs">{deepDiagnosticResult}</p>
+                        </div>
+                      ) : (
+                        <div className="p-5 flex-1 flex flex-col gap-4 min-h-[350px] bg-slate-900/10">
+                          <div>
+                            <span className="text-[10px] font-extrabold text-violet-400 uppercase tracking-widest font-mono block mb-1">
+                              🧠 COGNITIVE REASONING MATRIX (Model: gemini-3.1-pro-preview)
+                            </span>
+                            <h3 className="text-sm font-bold text-white">Advanced Electrical Schematic Diagnostic Planner</h3>
+                            <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
+                              Queries are dispatched to the <strong className="text-violet-400 font-bold">gemini-3.1-pro-preview</strong> cluster with <strong className="text-violet-400">thinkingLevel: HIGH</strong> to construct step-by-step motherboard test steps with voltage tolerances.
+                            </p>
                           </div>
-                        )}
-                      </div>
+
+                          <form onSubmit={handleRunThinkingDiagnostic} className="space-y-3">
+                            <label htmlFor="thinkingPrompt" className="block text-[10px] text-slate-450 uppercase font-bold font-mono tracking-wider">Troubleshooting directive</label>
+                            <textarea
+                              id="thinkingPrompt"
+                              name="thinkingPrompt"
+                              value={thinkingPrompt}
+                              onChange={(e) => setThinkingPrompt(e.target.value)}
+                              rows={4}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-600 font-mono focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                              placeholder="State circuit symptoms, ribbon line specs, short circuit behaviors to plan electrical audits..."
+                            />
+                            <div className="flex justify-end">
+                              <button
+                                type="submit"
+                                disabled={isDeepDiagnosing || !thinkingPrompt.trim()}
+                                className="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider font-mono bg-gradient-to-r from-violet-650 to-indigo-600 hover:from-violet-550 hover:to-indigo-500 text-white disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-500 transition-all shadow-md"
+                              >
+                                {isDeepDiagnosing ? "THINKING PROCESS CHANNELS ACTIVE..." : "DISPATCH COGNITIVE SOLVER"}
+                              </button>
+                            </div>
+                          </form>
+
+                          {deepDiagnosticResult && (
+                            <div className="mt-4 bg-slate-950 border border-slate-850 rounded-lg p-4 font-mono text-[11px] leading-relaxed text-indigo-300 shadow-inner max-h-[280px] overflow-y-auto">
+                              <div className="text-[9px] text-violet-400 font-extrabold border-b border-slate-850 pb-2 mb-2 uppercase tracking-widest flex justify-between items-center">
+                                <span>[SCHEMATIC DISCHARGE GRAPH]</span>
+                                <span className="text-slate-505 font-medium">THINKING_LEVEL_HIGH</span>
+                              </div>
+                              <p className="whitespace-pre-line text-slate-300 font-serif leading-relaxed text-xs">{deepDiagnosticResult}</p>
+                            </div>
+                          )}
+                        </div>
+                      )
                     )}
 
                     {diagnosticMode === "vision" && (
-                      <div className="p-5 flex-1 flex flex-col gap-4 min-h-[350px] bg-slate-900/10">
-                        <div>
-                          <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-widest font-mono block mb-1">
-                            📸 MULTIMODAL COMPUTER VISION LAB (Model: gemini-3.1-pro-preview)
+                      !authUser ? (
+                        <div className="p-8 flex-1 flex flex-col items-center justify-center text-center bg-slate-950/80 border border-slate-850 rounded-xl min-h-[400px] animate-in fade-in duration-300">
+                          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-600/20 to-teal-650/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-6 relative">
+                            <Upload className="w-8 h-8 animate-pulse" />
+                            <Lock className="w-4 h-4 text-amber-500 absolute bottom-0 right-0 bg-slate-1000 rounded-full p-0.5 border border-slate-800" />
+                          </div>
+                          
+                          <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-widest font-mono bg-emerald-950/40 px-2.5 py-1 rounded border border-emerald-905/30 mb-3">
+                            Multimodal Photo Vision Locked
                           </span>
-                          <h3 className="text-sm font-bold text-white">Visual Mechanical/Fracture Pattern Audit</h3>
-                          <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
-                            Upload high-definition closeups of smartphones, bloated cells, stuck power triggers, or oxidized motherboards to compute visual defect check lists.
+                          
+                          <h3 className="text-lg font-black text-white uppercase tracking-tight leading-snug">
+                            STOP GUESSING. <span className="text-emerald-400">START AUDITING.</span>
+                          </h3>
+                          
+                          <p className="text-xs text-slate-450 mt-3 max-w-sm leading-relaxed font-sans">
+                            Conducting computer-vision mechanical audits (such as tracing fracture lines, backplane swelling, and corrosion traces using <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-[10.5px]">gemini-3.1-pro-preview</code>) is a premium registered feature of the Spokane telemetry hub.
                           </p>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500/50 bg-slate-950/40 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-all relative">
-                            <label htmlFor="triageImageUpload" className="sr-only">Upload device photo for mechanical audit</label>
-                            <input
-                              id="triageImageUpload"
-                              name="triageImageUpload"
-                              type="file"
-                              accept="image/*"
-                              onChange={handleImageUploadChange}
-                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                            />
-                            <Upload className="w-8 h-8 text-slate-500 mb-2" />
-                            <p className="text-xs font-bold text-slate-300">
-                              {selectedImageName ? `Photo Selected: ${selectedImageName}` : "Click / Drag photo here"}
-                            </p>
-                            <p className="text-[10px] text-slate-500 mt-1 font-mono">[Accepted format: images only]</p>
-                          </div>
-
-                          <div className="bg-slate-955/80 rounded-xl p-3 border border-slate-800 flex items-center justify-center min-h-[140px]">
-                            {selectedImageBase64 ? (
-                              <img
-                                src={`data:image/png;base64,${selectedImageBase64}`}
-                                alt="Hardware diagnostic preview"
-                                referrerPolicy="no-referrer"
-                                className="max-h-[130px] rounded-lg shadow-md border border-slate-800 object-contain"
-                              />
-                            ) : (
-                              <div className="text-center text-slate-500 font-mono text-[9px] uppercase tracking-widest leading-loose">
-                                [Preview Screen empty]
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2">
-                          {selectedImageBase64 && (
-                            <button
-                              onClick={() => {
-                                setSelectedImageBase64(null);
-                                setSelectedImageName("");
-                                setDeepDiagnosticResult("");
-                              }}
-                              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-950 border border-slate-800 text-slate-400 hover:text-white rounded-lg text-[10px] font-bold font-mono transition-colors uppercase"
-                            >
-                              Clear
-                            </button>
-                          )}
-                          <button
-                            onClick={handleVisionDiagnostic}
-                            disabled={isDeepDiagnosing || !selectedImageBase64}
-                            className="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider font-mono bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white transition-all shadow-md"
-                          >
-                            {isDeepDiagnosing ? "PROBING GEOMETRIC MESH..." : "EXECUTE COMPUTER VISION AUDIT"}
-                          </button>
-                        </div>
-
-                        {deepDiagnosticResult && (
-                          <div className="mt-4 bg-slate-950 border border-slate-850 rounded-lg p-4 font-mono text-[11px] leading-relaxed text-slate-300 shadow-inner max-h-[250px] overflow-y-auto">
-                            <div className="text-[9px] text-emerald-400 font-extrabold border-b border-slate-850 pb-2 mb-2 uppercase tracking-widest mb-2 font-mono">
-                              [VISUAL AUDIT RESULT LOG]
+                          <div className="mt-6 w-full max-w-md bg-slate-900/40 rounded-lg p-4 border border-slate-800/60 text-left space-y-3 font-mono text-[11px]">
+                            <div className="text-[9px] uppercase font-bold text-slate-500 tracking-wider border-b border-slate-850 pb-1.5 flex items-center justify-between">
+                              <span>Optoelectronic Mesh Inspection</span>
+                              <span className="text-amber-500 font-extrabold font-mono">Live Telemetry Node</span>
                             </div>
-                            <p className="whitespace-pre-line text-xs font-serif leading-relaxed text-slate-200">{deepDiagnosticResult}</p>
+                            <div className="flex items-start gap-2.5">
+                              <span className="text-emerald-400 mt-0.5">●</span>
+                              <p className="text-slate-300 font-sans leading-relaxed">
+                                <strong>Optical Fracture Trace Tuning</strong>: Feed macro chassis photography to identify microscopic hairline glass fatigue patterns and structural bezel gaps.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="text-emerald-400 mt-0.5">●</span>
+                              <p className="text-slate-300 font-sans leading-relaxed">
+                                <strong>Thermal / Cell Defect Detection</strong>: Analyze physical alignment for high-probability underfill cracks or potential thermal expansion risks.
+                              </p>
+                            </div>
                           </div>
-                        )}
-                      </div>
+
+                          <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full max-w-xs sm:max-w-none justify-center">
+                            <button
+                              onClick={handleGoogleSignIn}
+                              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-blue-500/10 inline-flex items-center gap-2 w-full sm:w-auto justify-center cursor-pointer"
+                            >
+                              <User className="w-4 h-4" />
+                              Connect Analyst Account
+                            </button>
+                            <button
+                              onClick={handleSandboxLogin}
+                              className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-widest rounded-xl border border-slate-800 transition-all inline-flex items-center gap-2 w-full sm:w-auto justify-center font-mono cursor-pointer"
+                            >
+                              <Terminal className="w-4 h-4 text-blue-450" />
+                              Try Sandbox Bypass
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-5 flex-1 flex flex-col gap-4 min-h-[350px] bg-slate-900/10">
+                          <div>
+                            <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-widest font-mono block mb-1">
+                              📸 MULTIMODAL COMPUTER VISION LAB (Model: gemini-3.1-pro-preview)
+                            </span>
+                            <h3 className="text-sm font-bold text-white">Visual Mechanical/Fracture Pattern Audit</h3>
+                            <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
+                              Upload high-definition closeups of smartphones, bloated cells, stuck power triggers, or oxidized motherboards to compute visual defect check lists.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500/50 bg-slate-950/40 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-all relative">
+                              <label htmlFor="triageImageUpload" className="sr-only">Upload device photo for mechanical audit</label>
+                              <input
+                                id="triageImageUpload"
+                                name="triageImageUpload"
+                                type="file"
+                                accept="image/*"
+                                onChange={handleImageUploadChange}
+                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                              />
+                              <Upload className="w-8 h-8 text-slate-500 mb-2" />
+                              <p className="text-xs font-bold text-slate-300">
+                                {selectedImageName ? `Photo Selected: ${selectedImageName}` : "Click / Drag photo here"}
+                              </p>
+                              <p className="text-[10px] text-slate-500 mt-1 font-mono">[Accepted format: images only]</p>
+                            </div>
+
+                            <div className="bg-slate-955/80 rounded-xl p-3 border border-slate-800 flex items-center justify-center min-h-[140px]">
+                              {selectedImageBase64 ? (
+                                <img
+                                  src={`data:image/png;base64,${selectedImageBase64}`}
+                                  alt="Hardware diagnostic preview"
+                                  referrerPolicy="no-referrer"
+                                  className="max-h-[130px] rounded-lg shadow-md border border-slate-800 object-contain"
+                                />
+                              ) : (
+                                <div className="text-center text-slate-500 font-mono text-[9px] uppercase tracking-widest leading-loose">
+                                  [Preview Screen empty]
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end gap-2">
+                            {selectedImageBase64 && (
+                              <button
+                                onClick={() => {
+                                  setSelectedImageBase64(null);
+                                  setSelectedImageName("");
+                                  setDeepDiagnosticResult("");
+                                }}
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-white rounded-lg text-[10px] font-bold font-mono transition-colors uppercase"
+                              >
+                                Clear
+                              </button>
+                            )}
+                            <button
+                              onClick={handleVisionDiagnostic}
+                              disabled={isDeepDiagnosing || !selectedImageBase64}
+                              className="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider font-mono bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white transition-all shadow-md"
+                            >
+                              {isDeepDiagnosing ? "PROBING GEOMETRIC MESH..." : "EXECUTE COMPUTER VISION AUDIT"}
+                            </button>
+                          </div>
+
+                          {deepDiagnosticResult && (
+                            <div className="mt-4 bg-slate-950 border border-slate-850 rounded-lg p-4 font-mono text-[11px] leading-relaxed text-slate-300 shadow-inner max-h-[250px] overflow-y-auto">
+                              <div className="text-[9px] text-emerald-400 font-extrabold border-b border-slate-850 pb-2 mb-2 uppercase tracking-widest mb-2 font-mono">
+                                [VISUAL AUDIT RESULT LOG]
+                              </div>
+                              <p className="whitespace-pre-line text-xs font-serif leading-relaxed text-slate-200">{deepDiagnosticResult}</p>
+                            </div>
+                          )}
+                        </div>
+                      )
                     )}
                   </section>
                 )}
@@ -5492,6 +5640,15 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                   </section>
                 )}
 
+                {labTab === "telemetry" && (
+                  <TelemetryDashboard
+                    authUser={authUser}
+                    handleGoogleSignIn={handleGoogleSignIn}
+                    handleSandboxLogin={handleSandboxLogin}
+                    addToast={addToast}
+                  />
+                )}
+
                 {labTab === "forensics" && (
                   <ForensicsView
                     forensicDevice={forensicDevice}
@@ -5612,6 +5769,12 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     tickets={tickets}
                     leads={leads}
                     onAddNewTicket={handleAddNewTicketFromForms}
+                  />
+                )}
+
+                {labTab === "quote_builder" && (
+                  <QuoteBuilderDashboard 
+                    addToast={addToast}
                   />
                 )}
 
@@ -7178,8 +7341,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center mb-4 cursor-pointer" onClick={() => setActiveTab("home")}>
-                <Wrench className="h-6 w-6 text-blue-500 mr-2" />
-                <span className="font-bold text-lg text-white">Display & Cell Pros LLC</span>
+                <BrandLogo size={32} showText={true} />
               </div>
               <p className="text-sm text-slate-400 mb-4 max-w-sm leading-relaxed">
                 Spokane's premier mobile technical service laboratory. Combat-veteran owned, operating in strict compliance with Washington State's Right to Repair laws.
@@ -7297,11 +7459,49 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [faqCategory, setFaqCategory] = useState<string>("All");
 
+  // Live Telemetry Handshake States for the Centered Brand Curiosity Engine
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditProgress, setAuditProgress] = useState(0);
+  const [auditLogs, setAuditLogs] = useState<string[]>([]);
+  const [handshakeComplete, setHandshakeComplete] = useState(false);
+
   // New interactive Landing Page Website State
   const [microscopeStep, setMicroscopeStep] = useState<"shorted" | "thermal" | "resolved">("shorted");
   const [calcBrand, setCalcBrand] = useState<"Apple" | "Samsung" | "Google">("Apple");
   const [calcIssue, setCalcIssue] = useState<"screen" | "battery" | "motherboard">("screen");
   const [calcIsCorporate, setCalcIsCorporate] = useState<boolean>(false);
+
+  const startTelemetryHandshake = () => {
+    if (isAuditing) return;
+    setIsAuditing(true);
+    setHandshakeComplete(false);
+    setAuditProgress(0);
+    setAuditLogs([
+      "[DCP] Establishing logic trace twin over virtual cleanroom multiplexer...",
+      "[TRACE] Bypassing OS abstraction layer to bind hardware diagnostics..."
+    ]);
+    
+    let currentStep = 0;
+    const steps = [
+      { p: 15, l: "[TRACE] Probing PP_VCC_MAIN voltage rail stability (nominal: 4.2V)..." },
+      { p: 35, l: "[DEBUG] Voltage detected: 4.16V. Nominal ripple: 0.04V. Rail cleared." },
+      { p: 50, l: "[TRACE] Injecting test impedance loop to verify SMBus/I2C battery logs..." },
+      { p: 68, l: "[S2C] Mapping micro-impedance delta curve. Thermal junction limits: 34.2°C (STABLE)." },
+      { p: 85, l: "[NIST] Verifying cryptographically signed hardware sanitation markers..." },
+      { p: 100, l: "[SUCCESS] NIST SP 800-88 R1 storage clearing token: 0x8F51F2A9B93_DCP_CERTIFIED." }
+    ];
+
+    const timer = setInterval(() => {
+      if (currentStep < steps.length) {
+        setAuditProgress(steps[currentStep].p);
+        setAuditLogs(prev => [...prev, steps[currentStep].l]);
+        currentStep++;
+      } else {
+        clearInterval(timer);
+        setHandshakeComplete(true);
+      }
+    }, 400);
+  };
 
   const SPOKANE_ZIPS = ["99201", "99202", "99203", "99204", "99205", "99206", "99207", "99208", "99212", "99216", "99217", "99218", "99016", "99037", "99223"];
 
@@ -7361,6 +7561,104 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
 
   return (
     <div className="animate-in fade-in duration-300">
+      {/* CENTERING IDENTITY PROS BRAND SHOWCASE */}
+      <div className="relative bg-[#111111] overflow-hidden border-b border-slate-900/60 py-16 px-4">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,128,128,0.05)_0%,_transparent_65%)] pointer-events-none"></div>
+        <div className="max-w-4xl mx-auto flex flex-col items-center text-center relative z-10">
+          
+          <div className="mb-4 font-mono text-[10px] tracking-[0.3em] uppercase text-slate-500 font-bold flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#008080] animate-pulse"></span>
+            Hardware Audit Hub
+            <span className="w-1.5 h-1.5 rounded-full bg-[#008080] animate-pulse"></span>
+          </div>
+
+          {/* Large Interactive Centered Logo (Hover & Tap effect matching physical board grid) */}
+          <div 
+            onClick={startTelemetryHandshake}
+            className={`cursor-pointer transition-all duration-500 p-8 rounded-3xl border select-none group relative bg-black/40 ${
+              isAuditing 
+                ? "border-[#00BFFF]/40 shadow-[0_0_30px_rgba(0,191,255,0.15)] scale-102" 
+                : "border-slate-800/80 hover:border-[#008080]/60 hover:shadow-[0_0_25px_rgba(0,128,128,0.1)] hover:scale-101"
+            }`}
+          >
+            {/* Absolute positioning of diagnostic glow lines */}
+            {isAuditing && (
+              <>
+                <span className="absolute top-0 left-10 right-10 h-[1.5px] bg-gradient-to-r from-transparent via-[#00BFFF] to-transparent animate-pulse"></span>
+                <span className="absolute bottom-0 left-10 right-10 h-[1.5px] bg-gradient-to-r from-transparent via-[#FFBF00] to-transparent animate-pulse"></span>
+              </>
+            )}
+
+            <BrandLogo size={140} layout="col" />
+            
+            {/* Help Prompt */}
+            <div className="mt-5 text-[11px] font-mono text-slate-400 group-hover:text-[#00BFFF] transition-colors">
+              {!isAuditing ? (
+                <span className="animate-pulse">⚡ Click Symbol to Initialize Forensic Handshake ⚡</span>
+              ) : handshakeComplete ? (
+                <span className="text-emerald-400 font-bold">✓ Silicon Layer Handshake Secure</span>
+              ) : (
+                <span className="text-[#FFBF00] font-bold animate-pulse">⚙ Reading Logic Rails ({auditProgress}%)</span>
+              )}
+            </div>
+          </div>
+
+          {/* S2C Live Terminal Logs Screen (Information Gap architecture) */}
+          <AnimatePresence>
+            {isAuditing && (
+              <motion.div 
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="w-full max-w-xl mt-8 bg-black/90 p-5 rounded-xl border border-slate-800 text-left font-mono text-[11px] leading-relaxed text-slate-400 shadow-2xl relative overflow-hidden"
+              >
+                <div className="absolute top-2 right-3 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-[#FFBF00] animate-ping"></span>
+                  <span className="text-[9px] text-[#FFBF00] uppercase font-bold tracking-wider">Live Diagnostic Twin</span>
+                </div>
+                
+                <div className="text-slate-500 pb-2 mb-2 border-b border-slate-900 flex justify-between uppercase tracking-wider font-extrabold text-[9px]">
+                  <span>Telemetry Audit Logs // MDF-CORE</span>
+                  <span>Port: Direct USB Mux</span>
+                </div>
+
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {auditLogs.map((log, index) => (
+                    <div key={index} className="transition-opacity duration-300">
+                      {log.startsWith("[SUCCESS]") ? (
+                        <span className="text-[#00BFFF]">{log}</span>
+                      ) : log.startsWith("[S2C]") ? (
+                        <span className="text-[#FFBF05]">{log}</span>
+                      ) : log.startsWith("[TRACE]") ? (
+                        <span className="text-slate-300">{log}</span>
+                      ) : (
+                        <span className="text-slate-400">{log}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Progress fluid line */}
+                <div className="w-full bg-slate-950 h-1 rounded-full mt-4 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-[#008080] via-[#00BFFF] to-[#FFBF00] h-full transition-all duration-300"
+                    style={{ width: `${auditProgress}%` }}
+                  ></div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <h2 className="text-2xl sm:text-3xl font-bold font-sans text-white tracking-tight mt-10 mb-3 max-w-lg leading-snug">
+            STOP GUESSING. <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#008080] to-[#00BFFF]">START AUDITING.</span>
+          </h2>
+          <p className="text-xs text-slate-400 font-medium max-w-md leading-relaxed select-none">
+            Silicon-layer forensics, multi-point impedance signatures, and raw logic telemetry. We do not do blind part-swapping. We identify exact node collapses directly under 40x micro-magnification in Spokane and Seattle.
+          </p>
+
+        </div>
+      </div>
+
       {/* Premium Hero Section */}
       <div className="relative overflow-hidden bg-slate-900 border-b border-slate-800">
         <div className="absolute inset-0 z-0">
