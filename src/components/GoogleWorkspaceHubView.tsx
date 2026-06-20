@@ -69,7 +69,7 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
   onAddNewTicket,
 }) => {
   const [activeTab, setActiveTab] = useState<"sheets" | "picker" | "calendar" | "docs" | "chat">("sheets");
-  const [isSandboxMode, setIsSandboxMode] = useState(!accessToken);
+  
   const [isLoading, setIsLoading] = useState(false);
 
   // --- GOOGLE SHEETS STATE ---
@@ -106,17 +106,15 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
 
   // Synchronize Sandbox or Live modes based on standard credential injection
   useEffect(() => {
-    setIsSandboxMode(!accessToken);
+    // Removed isSandboxMode
   }, [accessToken]);
 
   // Read mock or real arrays on initialization
   useEffect(() => {
-    if (isSandboxMode) {
-      loadSandboxData();
-    } else {
+    if (accessToken) {
       fetchRealData();
     }
-  }, [isSandboxMode, accessToken, activeTab]);
+  }, [accessToken, activeTab]);
 
   const loadSandboxData = () => {
     // Standard mock states
@@ -257,20 +255,6 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
 
     setIsSyncingSheets(true);
     try {
-      if (isSandboxMode) {
-        await new Promise(r => setTimeout(r, 1200));
-        const newId = "sheet_sb_" + Date.now();
-        const newSheet = {
-          id: newId,
-          name: sheetName,
-          url: `https://docs.google.com/spreadsheets/d/${newId}/edit`,
-          date: new Date().toLocaleString()
-        };
-        const updated = [newSheet, ...sheetsList];
-        setSheetsList(updated);
-        localStorage.setItem("dcp_sandbox_sheets", JSON.stringify(updated));
-        addToast("Sheets Export Compiled (Sandbox)", `Synchronized POS tickets successfully into "${sheetName}".`, "success");
-      } else {
         // 1. Create Spreadsheet
         const createRes = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
           method: "POST",
@@ -319,7 +303,6 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
 
         addToast("Spreadsheet Compiled!", `Successfully synced active register to "${sheetName}".`, "success");
         fetchRealData();
-      }
     } catch (e: any) {
       console.error(e);
       addToast("Sheets Sync Failed", e.message || "Drive authentication mismatch.", "error");
@@ -330,10 +313,7 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
 
   // --- ACTION: REAL INTERACTIVE GOOGLE PICKER WINDOW TRIGGER ---
   const triggerNativeGooglePicker = () => {
-    if (isSandboxMode || !accessToken) {
-      addToast("SSO Authentication Required", "Standard OAuth token is required to open the official Google Picker dialog overlay.", "warning");
-      return;
-    }
+    if (!accessToken) return;
 
     addToast("Google Picker Diagnostic", "Opening floating secure File Selector. In case iframe boundaries interfere, use the Drive Vault below.", "info");
     
@@ -393,24 +373,7 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
       const endTimeFormatted = `${endHour < 10 ? '0' + endHour : endHour}:${eventTime.split(":")[1]}`;
       const endTime = `${eventDate}T${endTimeFormatted}:00`;
 
-      if (isSandboxMode) {
-        await new Promise(r => setTimeout(r, 800));
-        const newEventObj: CalendarEvent = {
-          id: "cal_sb_" + Date.now(),
-          summary: eventSummary,
-          description: eventDesc,
-          start: { dateTime: startTime },
-          end: { dateTime: endTime },
-          htmlLink: "https://calendar.google.com"
-        };
-        const updated = [newEventObj, ...calendarEvents];
-        setCalendarEvents(updated);
-        localStorage.setItem("dcp_sandbox_calendar", JSON.stringify(updated));
-        addToast("Surgery Event Queued (Sandbox)", `"${eventSummary}" registered successfully in local sandbox diary.`, "success");
-        setEventSummary("");
-        setEventDesc("");
-      } else {
-        const bodyContent = {
+      const bodyContent = {
           summary: eventSummary,
           description: eventDesc,
           start: { dateTime: startTime, timeZone: "America/Los_Angeles" },
@@ -433,7 +396,6 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
         setEventDesc("");
         setEventGuest("");
         fetchRealData();
-      }
     } catch (e: any) {
       console.error(e);
       addToast("Calendar Booking Blocked", e.message || "Contact Workspace admin.", "error");
@@ -474,12 +436,7 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
         `AUTH PRINCIPAL ENGINEER CODE: D&CP-SPOKANE-NIST-CLEAR-SIGN\n`
       ].join("");
 
-      if (isSandboxMode) {
-        await new Promise(r => setTimeout(r, 1500));
-        setGeneratedDocUrl("https://docs.google.com/document/d/mock-doc-101/edit");
-        addToast("NIST Doc Formatted (Sandbox)", "Virtual data sanitization document generated! Copy output below.", "success");
-      } else {
-        // Create Document on real endpoint
+      // Create Document on real endpoint
         const res = await fetch("https://docs.google.com/v1/documents", {
           method: "POST",
           headers: {
@@ -514,7 +471,6 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
 
         setGeneratedDocUrl(`https://docs.google.com/document/d/${documentId}/edit`);
         addToast("Google Doc Certificate Generated!", "Document formatted and stored on your drive.", "success");
-      }
     } catch (e: any) {
       console.error(e);
       addToast("Doc Generation Blocked", e.message || "Permissions boundary failure.", "error");
@@ -529,11 +485,6 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
 
     setIsSendingChat(true);
     try {
-      if (isSandboxMode) {
-        await new Promise(r => setTimeout(r, 600));
-        addToast("Chat Alert Dispatched (Sandbox)", `Message dispatched to space: "${chatMessage.substring(0, 30)}..."`, "success");
-        setChatMessage("");
-      } else {
         const postUrl = selectedSpace === "spaces/spokane_lab" 
           ? `https://chat.googleapis.com/v1/spaces/spokane_lab/messages` // Sim fallback URL
           : `https://chat.googleapis.com/v1/${selectedSpace}/messages`;
@@ -555,7 +506,6 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
           addToast("Dashboard Bulletin Dispatched!", "Alert published on Google Chat Space ledger.", "success");
         }
         setChatMessage("");
-      }
     } catch (e: any) {
       console.error(e);
       addToast("Chat Dispatch Blocked", e.message || "Network API error.", "error");

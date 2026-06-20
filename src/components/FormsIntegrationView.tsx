@@ -90,31 +90,24 @@ export const FormsIntegrationView: React.FC<FormsIntegrationViewProps> = ({
   
   const [formDetails, setFormDetails] = useState<GoogleFormDetails | null>(null);
   const [submissions, setSubmissions] = useState<FormResponse[]>([]);
-  const [isSandboxMode, setIsSandboxMode] = useState(!accessToken);
+  
 
-  // Auto-sync sandbox vs real mode depending on token availability
+  // Read saved state on mount or mode switch
   useEffect(() => {
-    if (accessToken) {
-      setIsSandboxMode(false);
-    } else {
-      setIsSandboxMode(true);
-    }
   }, [accessToken]);
 
   // Read saved form details on mount or mode switch
   useEffect(() => {
     if (formId) {
       localStorage.setItem("dcp_google_form_id", formId);
-      if (!isSandboxMode && accessToken) {
+      if (accessToken) {
         fetchRealFormDetailsAndResponses();
-      } else if (isSandboxMode) {
-        generateMockFormDetails();
       }
     } else {
       setFormDetails(null);
       setSubmissions([]);
     }
-  }, [formId, isSandboxMode, accessToken]);
+  }, [formId, accessToken]);
 
   const generateMockFormDetails = () => {
     const mockDetails: GoogleFormDetails = {
@@ -220,20 +213,7 @@ export const FormsIntegrationView: React.FC<FormsIntegrationViewProps> = ({
   };
 
   const handleCreateNewForm = async () => {
-    if (isSandboxMode) {
-      setIsCreating(true);
-      setTimeout(() => {
-        setIsCreating(false);
-        const randId = "form-sb-" + Math.floor(1000 + Math.random() * 9000);
-        setFormId(randId);
-        addToast(
-          "Google Form Created (Sandbox)",
-          "A virtual repair check-in Google Form has been initialized for the diagnostic lab. Feel free to run operations.",
-          "success"
-        );
-      }, 1000);
-      return;
-    }
+    
 
     if (!accessToken) {
       addToast("Auth Token Expired", "Please link your Google session to provision forms.", "warning");
@@ -489,15 +469,9 @@ export const FormsIntegrationView: React.FC<FormsIntegrationViewProps> = ({
               <Database className="w-4 h-4 text-blue-400 animate-pulse" />
               Auth Status
             </h3>
-            {isSandboxMode ? (
-              <span className="text-[9px] font-mono bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded border border-amber-500/20 uppercase font-extrabold">
-                Sandbox Mode
-              </span>
-            ) : (
-              <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 uppercase font-extrabold">
-                Production Live
-              </span>
-            )}
+            <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 uppercase font-extrabold">
+              Production Live
+            </span>
           </div>
 
           {!accessToken ? (
@@ -520,8 +494,8 @@ export const FormsIntegrationView: React.FC<FormsIntegrationViewProps> = ({
               
               <button
                 onClick={() => {
-                  setIsSandboxMode(true);
-                  setFormId("sandbox-intake-form");
+                  
+                  
                   addToast("Sandbox Initiated", "Switched to local simulation sandbox. No Google SSO required.", "info");
                 }}
                 className="w-full py-2 px-4 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold tracking-wide border border-slate-700 transition-colors"
@@ -542,15 +516,6 @@ export const FormsIntegrationView: React.FC<FormsIntegrationViewProps> = ({
               <div className="text-[11px] text-slate-400">
                 Google Forms scopes loaded successfully. Token active in-memory.
               </div>
-              
-              {isSandboxMode && (
-                <button
-                  onClick={() => setIsSandboxMode(false)}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg uppercase tracking-wide transition-colors"
-                >
-                  Switch to Live Forms
-                </button>
-              )}
             </div>
           )}
         </section>
@@ -672,7 +637,7 @@ export const FormsIntegrationView: React.FC<FormsIntegrationViewProps> = ({
                 )}
                 
                 <button
-                  onClick={isSandboxMode ? generateMockFormDetails : fetchRealFormDetailsAndResponses}
+                  onClick={fetchRealFormDetailsAndResponses}
                   disabled={isLoading}
                   className="flex items-center gap-1 px-3 py-1.5 bg-normal bg-slate-800 border border-slate-700 hover:bg-slate-750 text-slate-200 rounded text-xs font-semibold transition-colors"
                 >
@@ -699,8 +664,8 @@ export const FormsIntegrationView: React.FC<FormsIntegrationViewProps> = ({
               <div className="flex gap-3">
                 <button
                   onClick={() => {
-                    setIsSandboxMode(true);
-                    setFormId("sandbox-intake");
+                    
+                    
                   }}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition-all uppercase tracking-wide cursor-pointer"
                 >

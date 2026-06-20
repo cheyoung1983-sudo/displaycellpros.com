@@ -114,21 +114,19 @@ export const GmailIntegrationView: React.FC<GmailIntegrationViewProps> = ({
   const [draftBody, setDraftBody] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("intake_auth");
 
-  const [isSandboxMode, setIsSandboxMode] = useState(!accessToken);
+  
 
   // Run dynamic sync between modes based on standard credential injection
   useEffect(() => {
-    setIsSandboxMode(!accessToken);
+    
   }, [accessToken]);
 
   // Read message store on load or switch
   useEffect(() => {
-    if (isSandboxMode) {
-      loadSandboxMessages();
-    } else {
+    if (accessToken) {
       fetchRealGmailInbox();
     }
-  }, [isSandboxMode, accessToken]);
+  }, [accessToken]);
 
   // Load sandbox emails to give technicians responsive interactions
   const loadSandboxMessages = () => {
@@ -256,8 +254,6 @@ Fleet Operations Division`,
     } catch (err: any) {
       console.error(err);
       addToast("Gmail Loading Failed", err.message || "Please check your network session.", "error");
-      setIsSandboxMode(true);
-      loadSandboxMessages();
     } finally {
       setIsLoading(false);
     }
@@ -377,39 +373,6 @@ Fleet Operations Division`,
 
     setIsSending(true);
     try {
-      if (isSandboxMode) {
-        // Mock processing interval
-        await new Promise(res => setTimeout(res, 900));
-        
-        // Append sent message directly to thread list showing successful simulation
-        const outgoingId = `msg_sb_out_${Math.floor(1000 + Math.random() * 9000)}`;
-        const newMsg: ThreadMessage = {
-          id: outgoingId,
-          threadId: `th_out_${Math.floor(1000 + Math.random() * 9000)}`,
-          from: "Display & Cell Pros <intake@displaycellpros.com>",
-          to: draftTo,
-          subject: draftSubject,
-          date: new Date().toISOString(),
-          snippet: draftBody.replace(/<[^>]*>/g, "").substring(0, 100),
-          body: draftBody,
-          labelIds: ["SENT"]
-        };
-
-        const updated = [newMsg, ...messages];
-        setMessages(updated);
-        localStorage.setItem("dcp_sandbox_gmail", JSON.stringify(updated));
-
-        addToast(
-          "Email Dispatched (Sandbox)",
-          `Successfully delivered simulated notification draft to ${draftTo}. Output stored in Sent register.`,
-          "success"
-        );
-        
-        // Reset compose
-        setDraftTo("");
-        setDraftSubject("");
-        setDraftBody("");
-      } else {
         // REAL GOOGLE GMAIL TRANSMISSION VIA HTTPS API PUSH
         const emailContent = [
           `To: ${draftTo}`,
@@ -452,7 +415,6 @@ Fleet Operations Division`,
         setDraftSubject("");
         setDraftBody("");
         fetchRealGmailInbox();
-      }
     } catch (err: any) {
       console.error(err);
       addToast("Transmission Blocked", err.message || "Could not interact with mail service API.", "error");
@@ -466,13 +428,6 @@ Fleet Operations Division`,
     if (!confirm) return;
 
     try {
-      if (isSandboxMode) {
-        const filtered = messages.filter(m => m.id !== id);
-        setMessages(filtered);
-        localStorage.setItem("dcp_sandbox_gmail", JSON.stringify(filtered));
-        setSelectedMsg(null);
-        addToast("Sandbox Message Removed", "Thread cleared from workspace storage.", "info");
-      } else {
         // Move message to trash on real Google Server
         const trashRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/trash`, {
           method: "POST",
@@ -486,7 +441,6 @@ Fleet Operations Division`,
         } else {
           throw new Error(`Trash endpoint return status ${trashRes.status}`);
         }
-      }
     } catch (err: any) {
       addToast("Failed Deleting Thread", err.message || "Contact Workspace Administrator", "error");
     }
@@ -514,15 +468,9 @@ Fleet Operations Division`,
               <Inbox className="w-4 h-4 text-red-500 animate-pulse" />
               Gmail API Gateway
             </h3>
-            {isSandboxMode ? (
-              <span className="text-[9px] font-mono bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded border border-amber-500/20 font-bold uppercase">
-                Sandbox Mode
-              </span>
-            ) : (
-              <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">
-                API Linked
-              </span>
-            )}
+            <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">
+              API Linked
+            </span>
           </div>
 
           {!accessToken ? (
@@ -539,7 +487,7 @@ Fleet Operations Division`,
               </button>
               <button
                 onClick={() => {
-                  setIsSandboxMode(true);
+                  
                   loadSandboxMessages();
                   addToast("Sandbox Feed Ready", "Using simulated diagnostic inbox.", "info");
                 }}
@@ -560,14 +508,6 @@ Fleet Operations Division`,
               <p className="text-[10px] leading-relaxed">
                 Tokens parsed with compose, send, and metadata access scopes. Real system alerts will ship from your account.
               </p>
-              {isSandboxMode && (
-                <button
-                  onClick={() => setIsSandboxMode(false)}
-                  className="w-full py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase rounded"
-                >
-                  Activate Live Feed
-                </button>
-              )}
             </div>
           )}
         </section>
@@ -704,7 +644,7 @@ Fleet Operations Division`,
                   Diagnostic Inbox System
                 </h3>
                 <p className="text-xs text-slate-400">
-                  {isSandboxMode ? "Reviewing sandbox workspace threads" : "Streaming production messages in Spokane county"}
+                  {"Streaming production messages in Spokane county"}
                 </p>
               </div>
             </div>
@@ -721,7 +661,7 @@ Fleet Operations Division`,
                 />
               </div>
               <button
-                onClick={isSandboxMode ? loadSandboxMessages : fetchRealGmailInbox}
+                onClick={fetchRealGmailInbox}
                 disabled={isLoading}
                 className="p-1 px-2 bg-slate-800 text-slate-300 rounded hover:bg-slate-750 transition-colors border border-slate-700 font-semibold"
                 title="Force Feed Sync"

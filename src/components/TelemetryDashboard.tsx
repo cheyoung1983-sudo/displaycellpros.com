@@ -26,14 +26,12 @@ import { BrandLogo } from "./BrandLogo";
 interface TelemetryDashboardProps {
   authUser: any;
   handleGoogleSignIn: () => Promise<void>;
-  handleSandboxLogin: () => void;
   addToast: (message: string, description: string, type: "success" | "error" | "info" | "warning") => void;
 }
 
 export function TelemetryDashboard({
   authUser,
   handleGoogleSignIn,
-  handleSandboxLogin,
   addToast
 }: TelemetryDashboardProps) {
   // Navigation / screen states
@@ -435,13 +433,6 @@ export function TelemetryDashboard({
                   >
                     <User className="w-4 h-4" />
                     Connect Analyst Account
-                  </button>
-                  <button
-                    onClick={handleSandboxLogin}
-                    className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-widest rounded-xl border border-slate-800 transition-all inline-flex items-center gap-2 w-full sm:w-auto justify-center font-mono cursor-pointer"
-                  >
-                    <Terminal className="w-4 h-4 text-blue-450" />
-                    Try Sandbox Simulation
                   </button>
                 </div>
               </div>
