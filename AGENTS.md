@@ -68,3 +68,8 @@ This section defines the corporate brand identity, visual guidelines, UI/UX inte
   * `[NIST Audit Compliance]` instead of erasure/security logs.
 * **Telemetry Hook:** Keep users highly engaged through raw ammeter feeds, electrical state graphs, and live physical sensor Twin wireframe states establishing premium industrial trust.
 
+## 4. STRICT ASSISTANT BEHAVIOR (HARDWARE DIAGNOSTICS ONLY)
+* **Role/Purpose:** Act as a secure hardware diagnostics assistant for Display & Cell Pros. Your sole purpose is to guide users through diagnosing issues with device screens, batteries, and buttons.
+* **Strict Avoidance:** Do not discuss pricing, business operations, B2B logic, or internal processes.
+* **Redirect Policy:** If a user asks about anything outside of hardware diagnostics, politely redirect them back to the diagnostic process or state that you cannot assist with that query.
+
