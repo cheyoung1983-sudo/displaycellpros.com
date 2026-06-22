@@ -61,7 +61,8 @@ import {
   Filter,
   FileSpreadsheet,
   Mail,
-  Lock
+  Lock,
+  BookOpen
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
@@ -77,6 +78,7 @@ import { FirebaseAiWorkbenchView } from "./components/FirebaseAiWorkbenchView";
 import { GoogleWorkspaceHubView } from "./components/GoogleWorkspaceHubView";
 import { ApiGatewayDashboard } from "./components/ApiGatewayDashboard";
 import QuoteBuilderDashboard from "./components/QuoteBuilderDashboard";
+import { SmdComponentLibrary } from "./components/SmdComponentLibrary";
 import { BrandLogo } from "./components/BrandLogo";
 import { TelemetryDashboard } from "./components/TelemetryDashboard";
 import { motion, AnimatePresence } from "motion/react";
@@ -153,7 +155,7 @@ export default function App() {
   });
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub" | "gateway" | "quote_builder" | "telemetry">("telemetry");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub" | "gateway" | "quote_builder" | "telemetry" | "smd_library">("telemetry");
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [leads, setLeads] = useState<HighPriorityLead[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState<boolean>(false);
@@ -1774,7 +1776,10 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     try {
       const res = await fetch("/api/generate-quote", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+        },
         body: JSON.stringify({
           issueType,
           deviceTier,
@@ -1812,7 +1817,10 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     try {
       const res = await fetch("/api/triage", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+        },
         body: JSON.stringify({
           messages: updatedMessages,
           deviceDetails: {
@@ -3620,6 +3628,21 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                         <span>[NIST Compliance] (Gateway)</span>
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-emerald-950 text-emerald-300 border border-emerald-850/40 font-bold">GW</span>
+                    </button>
+
+                    <button
+                      onClick={() => setLabTab("smd_library")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "smd_library" 
+                          ? "bg-teal-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-teal-400" />
+                        <span>SMD Component Library</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-teal-950 text-teal-300 border border-teal-850/40 font-bold">LIB</span>
                     </button>
                   </nav>
                 </div>
@@ -5539,6 +5562,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                   <ApiGatewayDashboard 
                     tickets={tickets}
                   />
+                )}
+
+                {labTab === "smd_library" && (
+                  <SmdComponentLibrary />
                 )}
 
                 {labTab === "forensics_deprecated" && (
@@ -9775,7 +9802,10 @@ function CustomerHubView({
     try {
       const res = await fetch("/api/triage", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+        },
         body: JSON.stringify({
           messages: customerMessages
             .filter(m => m.sender !== "system")
@@ -11300,7 +11330,10 @@ function AIAssistantWidget({
       
       const res = await fetch("/api/triage", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+        },
         body: JSON.stringify({
           messages: [...history, { role: "user", text: userMsgText }],
           deviceDetails: {
