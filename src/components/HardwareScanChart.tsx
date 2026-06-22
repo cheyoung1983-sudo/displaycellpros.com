@@ -12,6 +12,7 @@ import {
   Legend
 } from "recharts";
 import { Zap, Battery, Activity } from "lucide-react";
+import { motion } from "motion/react";
 
 interface HardwareScanChartProps {
   deviceBrand: string;
@@ -80,7 +81,14 @@ export const HardwareScanChart: React.FC<HardwareScanChartProps> = ({
   const baseHealth = isBatteryIssue ? 76 : 94;
 
   return (
-    <div id="hardware-scan-recharts-metrics" className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-3.5">
+    <motion.div
+      id="hardware-scan-recharts-metrics"
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      whileHover={{ y: -2, borderColor: "rgba(59, 130, 246, 0.4)", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.6)" }}
+      className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-3.5 transition-colors duration-350"
+    >
       {/* Battery Radial Meter & Status Panel */}
       <div className="flex items-center justify-between bg-slate-900/60 p-2.5 rounded border border-slate-850/60 gap-3">
         <div className="flex-1 min-w-0 space-y-1">
@@ -146,26 +154,30 @@ export const HardwareScanChart: React.FC<HardwareScanChartProps> = ({
           </span>
         </div>
         <div className="flex bg-slate-900 border border-slate-800 p-0.5 rounded">
-          <button
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => setActiveMetric("voltage")}
-            className={`px-2 py-0.5 rounded text-[8.5px] font-bold font-mono transition-all uppercase ${
+            className={`px-2 py-0.5 rounded text-[8.5px] font-bold font-mono uppercase cursor-pointer transition-colors ${
               activeMetric === "voltage"
                 ? "bg-blue-600 text-white"
                 : "text-slate-500 hover:text-slate-300"
             }`}
           >
             V-Rails
-          </button>
-          <button
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => setActiveMetric("capacity")}
-            className={`px-2 py-0.5 rounded text-[8.5px] font-bold font-mono transition-all uppercase ${
+            className={`px-2 py-0.5 rounded text-[8.5px] font-bold font-mono uppercase cursor-pointer transition-colors ${
               activeMetric === "capacity"
                 ? "bg-blue-600 text-white"
                 : "text-slate-500 hover:text-slate-300"
             }`}
           >
             Cycles
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -191,8 +203,31 @@ export const HardwareScanChart: React.FC<HardwareScanChartProps> = ({
                   fontSize: "9px"
                 }}
               />
-              <Area type="monotone" dataKey="active" stroke="#3b82f6" strokeWidth={1.5} fillOpacity={1} fill="url(#colorActive)" name="Measured V" />
-              <Area type="monotone" dataKey="nominal" stroke="#10b981" strokeWidth={1} strokeDasharray="4 4" fill="none" name="Nominal V" />
+              <Area
+                type="monotone"
+                dataKey="active"
+                stroke="#3b82f6"
+                strokeWidth={1.5}
+                fillOpacity={1}
+                fill="url(#colorActive)"
+                name="Measured V"
+                isAnimationActive={true}
+                animationDuration={900}
+                animationEasing="ease-out"
+                activeDot={{ r: 5.5, stroke: "#60a5fa", strokeWidth: 1.5, fill: "#090d16" }}
+              />
+              <Area
+                type="monotone"
+                dataKey="nominal"
+                stroke="#10b981"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                fill="none"
+                name="Nominal V"
+                isAnimationActive={true}
+                animationDuration={1100}
+                animationEasing="ease-out"
+              />
             </AreaChart>
           ) : (
             <LineChart data={capacityData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
@@ -207,7 +242,18 @@ export const HardwareScanChart: React.FC<HardwareScanChartProps> = ({
                   fontSize: "9px"
                 }}
               />
-              <Line type="monotone" dataKey="capacity" stroke={issueType === "battery" ? "#f43f5e" : "#10b981"} strokeWidth={1.5} dot={{ r: 2 }} name="Health %" />
+              <Line
+                type="monotone"
+                dataKey="capacity"
+                stroke={issueType === "battery" ? "#f43f5e" : "#10b981"}
+                strokeWidth={1.5}
+                dot={{ r: 3, strokeWidth: 1.5, fill: "#090d16" }}
+                activeDot={{ r: 6, stroke: issueType === "battery" ? "#f43f5e" : "#10b981", strokeWidth: 1.5, fill: "#090d16" }}
+                name="Health %"
+                isAnimationActive={true}
+                animationDuration={900}
+                animationEasing="ease-out"
+              />
             </LineChart>
           )}
         </ResponsiveContainer>
@@ -234,6 +280,6 @@ export const HardwareScanChart: React.FC<HardwareScanChartProps> = ({
           </span>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

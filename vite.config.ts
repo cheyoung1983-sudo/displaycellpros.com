@@ -11,6 +11,34 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      minify: 'esbuild',
+      cssMinify: true,
+      cssCodeSplit: true,
+      assetsInlineLimit: 4096, // Inline assets under 4KB to save HTTP requests
+      sourcemap: false, // Disable sourcemaps in production to conserve storage and reduce overhead
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('recharts')) {
+                return 'recharts';
+              }
+              if (id.includes('jspdf')) {
+                return 'jspdf';
+              }
+              if (id.includes('lucide-react')) {
+                return 'lucide-react';
+              }
+            }
+          },
+        },
+      },
+    },
+    esbuild: {
+      drop: ['console', 'debugger'], // Strip debug statements for performance and security
+      legalComments: 'none', // Exclude licensing text block sizes from compiled assets
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

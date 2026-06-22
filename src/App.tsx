@@ -232,6 +232,9 @@ export default function App() {
   const [isDnsModalOpen, setIsDnsModalOpen] = useState<boolean>(false);
   const [dnsCustomDomain, setDnsCustomDomain] = useState<string>("triage.displaycellpros.com");
   const [dnsTab, setDnsTab] = useState<"all" | "subdomain" | "root">("all");
+  const [dnsPropagationStatus, setDnsPropagationStatus] = useState<"propagated" | "partial" | "unresolved" | "checking">("checking");
+  const [dnsPropagationInfo, setDnsPropagationInfo] = useState<string>("Initializing automatic background DNS validation loop...");
+  const [lastDnsCheckedTime, setLastDnsCheckedTime] = useState<string>("Never");
   const [unauthorizedDomainError, setUnauthorizedDomainError] = useState<{
     domain: string;
     projectId: string;
@@ -720,6 +723,54 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  const checkDnsPropagation = async (domainName: string, isManual = false) => {
+    if (!domainName || domainName.trim() === "") return;
+    
+    setDnsPropagationStatus("checking");
+
+    try {
+      const response = await fetch(`/api/dns-check?domain=${encodeURIComponent(domainName)}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      
+      setDnsPropagationStatus(data.status || "unresolved");
+      setDnsPropagationInfo(data.info || "No records resolved.");
+      setLastDnsCheckedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+
+      if (isManual) {
+        if (data.status === "propagated") {
+          addToast("Verification Successful", `Custom domain ${domainName} is fully propagated & verified on us-central1 edge routers!`, "success");
+        } else if (data.status === "partial") {
+          addToast("Partial Propagation Detected", "Found some records, but missing Google ownership TXT token or anycast targets.", "warning");
+        } else {
+          addToast("Not Propagated", "No target DNS records have propagated to the regional nameservers yet.", "error");
+        }
+      }
+    } catch (err: any) {
+      console.warn("Unable to check DNS propagation:", err);
+      setDnsPropagationStatus("unresolved");
+      setDnsPropagationInfo(`Query failure context: ${err.message || String(err)}`);
+      if (isManual) {
+        addToast("DNS Check Failed", "Backend resolver returned an error. Using local visual simulation states.", "warning");
+      }
+    }
+  };
+
+  // Automated background polling service for custom domain DNS propagation checks
+  useEffect(() => {
+    // Run initial check
+    checkDnsPropagation(dnsCustomDomain, false);
+
+    // Set polling interval check every 30 seconds
+    const checkInterval = setInterval(() => {
+      checkDnsPropagation(dnsCustomDomain, false);
+    }, 30000);
+
+    return () => clearInterval(checkInterval);
+  }, [dnsCustomDomain]);
 
   // Recalculate quote automatically on changes
   useEffect(() => {
@@ -2980,10 +3031,21 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => setIsDnsModalOpen(true)}
-                  className="bg-teal-950/80 hover:bg-teal-900 border border-teal-500/35 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold text-teal-400 flex items-center gap-2 shadow-md uppercase transition-all duration-200 cursor-pointer"
+                  className="bg-teal-950/80 hover:bg-teal-900 border border-teal-500/35 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold text-teal-400 flex items-center gap-2.5 shadow-md uppercase transition-all duration-200 cursor-pointer"
                 >
-                  <Globe className="w-4 h-4 text-teal-450 shrink-0" />
+                  <Globe className="w-4 h-4 text-teal-450 shrink-0 animate-pulse" />
                   <span>🌐 DNS Setup</span>
+                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase font-mono tracking-tight flex items-center shrink-0 ${
+                    dnsPropagationStatus === "propagated"
+                      ? "bg-emerald-950 text-emerald-400 border border-emerald-500/25"
+                      : dnsPropagationStatus === "partial"
+                      ? "bg-amber-950 text-amber-400 border border-amber-500/25"
+                      : dnsPropagationStatus === "checking"
+                      ? "bg-slate-900 text-slate-400 border border-slate-750 animate-pulse"
+                      : "bg-red-950 text-red-405 border border-red-500/25"
+                  }`}>
+                    {dnsPropagationStatus === "checking" ? "Verifying..." : dnsPropagationStatus}
+                  </span>
                 </button>
                 <div className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-mono flex items-center gap-2">
                   <Wifi className="w-4 h-4 text-emerald-500" />
@@ -7595,6 +7657,39 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                   </div>
                 </div>
 
+                {/* Live DNS Checker & Propagation status panel */}
+                <div className={`p-4 rounded-xl border border-dashed flex flex-col md:flex-row md:items-center justify-between gap-4 font-mono text-xs ${
+                  dnsPropagationStatus === "propagated"
+                    ? "bg-emerald-950/15 border-emerald-500/30 text-emerald-300"
+                    : dnsPropagationStatus === "partial"
+                    ? "bg-amber-950/15 border-amber-500/30 text-amber-300"
+                    : dnsPropagationStatus === "checking"
+                    ? "bg-slate-900/40 border-slate-705/30 text-slate-300 animate-pulse"
+                    : "bg-red-950/15 border-red-500/30 text-red-350"
+                }`}>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 font-black uppercase tracking-wider">
+                      <span className={`inline-block h-2 w-2 rounded-full ${
+                        dnsPropagationStatus === "propagated"
+                          ? "bg-emerald-450 animate-pulse"
+                          : dnsPropagationStatus === "partial"
+                          ? "bg-amber-450"
+                          : dnsPropagationStatus === "checking"
+                          ? "bg-slate-450 animate-pulse"
+                          : "bg-red-450"
+                      }`} />
+                      <span>Live propagation status: {dnsPropagationStatus.toUpperCase()}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-350 leading-normal font-sans normal-case">
+                      {dnsPropagationInfo}
+                    </p>
+                  </div>
+                  <div className="flex flex-col md:items-end justify-center shrink-0">
+                    <span className="text-[9px] text-slate-500 uppercase font-bold">Last Evaluated</span>
+                    <span className="text-white font-extrabold">{lastDnsCheckedTime}</span>
+                  </div>
+                </div>
+
                 {/* DNS Records Table Section */}
                 <div className="space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -7725,15 +7820,17 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                 <div className="flex gap-2">
                   <button
                     type="button"
+                    disabled={dnsPropagationStatus === "checking"}
                     onClick={() => {
-                      addToast("Running DNS Query Check", "Resolving DNS Records directly from root name servers...", "info");
-                      setTimeout(() => {
-                        addToast("Verification Successful", "Verified site-verification and anycast targets have propagated on us-central1 edge routers!", "success");
-                      }, 2000);
+                      checkDnsPropagation(dnsCustomDomain, true);
                     }}
-                    className="px-4 py-2 bg-teal-600 hover:bg-teal-500 border border-teal-500 text-white rounded-lg text-xs font-bold font-mono cursor-pointer transition-colors"
+                    className={`px-4 py-2 border text-white rounded-lg text-xs font-bold font-mono cursor-pointer transition-colors ${
+                      dnsPropagationStatus === "checking"
+                        ? "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed animate-pulse"
+                        : "bg-teal-600 hover:bg-teal-500 border-teal-500"
+                    }`}
                   >
-                    ⚡ Test DNS Propagation
+                    {dnsPropagationStatus === "checking" ? "⚡ Executing DNS Queries..." : "⚡ Test DNS Propagation"}
                   </button>
                   <button
                     type="button"
