@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -1563,10 +1564,26 @@ function decryptToken(encryptedText: string): string {
   }
 }
 
+// Helper: Verify if database connection socket / host is live before pool connection
+function isDbAvailable(): boolean {
+  if (!process.env.SQL_HOST) return false;
+  if (process.env.SQL_HOST.startsWith("/")) {
+    try {
+      const socketPath = path.join(process.env.SQL_HOST, ".s.PGSQL.5432");
+      if (!fs.existsSync(socketPath)) {
+        return false;
+      }
+    } catch (e) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Startup: Seed Relational Symptom-to-Circuit database on board boot
 async function seedS2CDiagnostics() {
-  if (!process.env.SQL_HOST) {
-    console.log("[S2C DB] SQL_HOST is not configured, bypassing startup seeding. Relational S2C tables will fall back to local schematic vaults.");
+  if (!isDbAvailable()) {
+    console.log("[S2C DB] SQL_HOST database socket/service is not reachable or configured, bypassing startup seeding. Relational S2C tables will fall back to local schematic vaults.");
     return;
   }
   try {
@@ -1620,7 +1637,7 @@ app.post("/api/auth/save-oauth", async (req, res) => {
   const encryptedRefresh = refreshToken ? encryptToken(refreshToken) : "";
   const expiry = expiresAt ? new Date(expiresAt) : new Date(Date.now() + 3600 * 1000);
 
-  if (process.env.SQL_HOST) {
+  if (isDbAvailable()) {
     try {
       // Clean up previous tokens
       await db.delete(encryptedOauthCredentials).where(eq(encryptedOauthCredentials.userId, userId));
@@ -1650,7 +1667,7 @@ app.get("/api/auth/get-oauth/:userId", async (req, res) => {
     return res.status(400).json({ error: "userId is required" });
   }
 
-  if (process.env.SQL_HOST) {
+  if (isDbAvailable()) {
     try {
       const records = await db.select().from(encryptedOauthCredentials).where(eq(encryptedOauthCredentials.userId, userId));
       if (records.length > 0) {
@@ -1696,7 +1713,7 @@ app.post("/api/nist-secure-wipe", async (req, res) => {
 app.get("/api/s2c-lookup", async (req, res) => {
   const { model, symptom } = req.query;
   
-  if (process.env.SQL_HOST) {
+  if (isDbAvailable()) {
     try {
       const records = await db.select().from(s2cDiagnosticDatabase);
       

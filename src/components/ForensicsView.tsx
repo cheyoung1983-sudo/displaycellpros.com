@@ -173,6 +173,80 @@ export const ForensicsView: React.FC<ForensicsViewProps> = ({
   noisePenalty,
   pass
 }) => {
+  // Pathway configuration metadata for rendering S2C interactive circuit trace layout with nominal specifications
+  const pathwayData = {
+    backlight: {
+      pdf: "iPad-Pro-9.7-Backlight-FL1728.pdf",
+      sourceName: "iPad Pro Backlight Schema",
+      component: "FL1728",
+      rail: "PP_LCM_BL_ANODE (Backlight)",
+      color: "#00BFFF", // Silicon Blue
+      description: "LCD backlight fuse filter FL1728 open loop. Display is functional but backlight doesn't activate.",
+      nodes: [
+        { id: "vbat", label: "PP_BAT_VCC", desc: "Battery Main Power", x: 70, y: 120, status: "good", val: "3.82V", nominalRail: "PP_BAT_VCC", nominalVoltage: "3.7V - 4.2V", expectedDiodeValue: "0.345 V" },
+        { id: "fuse", label: "FL1728", desc: "Backlight Filter Fuse", x: 210, y: 120, status: "fault", val: "OL Impedance", isFault: true, nominalRail: "PP_LCM_BL_ANODE_CONN", nominalVoltage: "18.5V - 22.0V", expectedDiodeValue: "0.522 V" },
+        { id: "diode", label: "D4020", desc: "Schottky Boost Diode", x: 350, y: 120, status: "blocked", val: "3.82V (Unboosted)", nominalRail: "PP_LCM_BL_ANODE_SW", nominalVoltage: "18.5V - 22.0V", expectedDiodeValue: "0.412 V" },
+        { id: "lcm", label: "J4200 Pin Anode", desc: "LCM Screen Connector", x: 490, y: 120, status: "bad", val: "0V Output", nominalRail: "PP_BL_LCM_ANODE", nominalVoltage: "18.5V - 22.0V", expectedDiodeValue: "0.520 V" }
+      ],
+      traces: [
+        { from: "vbat", to: "fuse" },
+        { from: "fuse", to: "diode" },
+        { from: "diode", to: "lcm" }
+      ]
+    },
+    charging: {
+      pdf: "Tristar-1610A3-USB-Multiplexer.pdf",
+      sourceName: "Tristar 1610A3 Multiplexer",
+      component: "1610A3",
+      rail: "USB_VBUS",
+      color: "#008080", // Audit Teal
+      description: "USB handshake controller failed, drawing flat static 1.1A without registering charge.",
+      nodes: [
+        { id: "vbus", label: "VBUS_OVP", desc: "USB Charger Input", x: 70, y: 120, status: "good", val: "5.04V", nominalRail: "PP_VBUS_E75", nominalVoltage: "4.75V - 5.25V", expectedDiodeValue: "0.485 V" },
+        { id: "ic", label: "U4500", desc: "1610A3 Tristar IC", x: 210, y: 120, status: "fault", val: `${s2cAmmeterReading}A Draw / Short`, isFault: true, nominalRail: "PP_VCC_MAIN", nominalVoltage: "3.71V - 4.2V", expectedDiodeValue: "0.315 V" },
+        { id: "mosfet", label: "Q4500", desc: "OVP MOSFET Gate", x: 350, y: 120, status: "blocked", val: "0.0V (Latch closed)", nominalRail: "PP_VBUS_PROT", nominalVoltage: "4.75V - 5.25V", expectedDiodeValue: "0.490 V" },
+        { id: "pmic", label: "U2100 PMIC", desc: "Power Management IC", x: 490, y: 120, status: "bad", val: "0.0A Charging", nominalRail: "PP1V8_ALWAYS", nominalVoltage: "1.80V", expectedDiodeValue: "0.285 V" }
+      ],
+      traces: [
+        { from: "vbus", to: "ic" },
+        { from: "ic", to: "mosfet" },
+        { from: "mosfet", to: "pmic" }
+      ]
+    },
+    short_rail: {
+      pdf: "iPhone-XR-Schematics-Power-Rails.pdf",
+      sourceName: "iPhone XR Power Rails Schema",
+      component: "C247_W",
+      rail: "VDD_MAIN",
+      color: "#00BFFF", // Silicon Blue
+      description: "Filter capacitor C247_W short-to-ground collapsed main power rail, generating heat.",
+      nodes: [
+        { id: "vbat", label: "PP_BATT_VCC", desc: "Battery Source Input", x: 70, y: 120, status: "good", val: "3.82V", nominalRail: "PP_BAT_VCC", nominalVoltage: "3.7V - 4.2V", expectedDiodeValue: "0.345 V" },
+        { id: "cap", label: "C247_W", desc: "Dielectric Capacitor", x: 210, y: 120, status: "fault", val: "0.1 Ω Short", isFault: true, nominalRail: "PP_VDD_MAIN", nominalVoltage: "3.71V - 4.2V", expectedDiodeValue: "0.322 V" },
+        { id: "rail", label: "VDD_MAIN", desc: "Collapsed System Rail", x: 350, y: 120, status: "bad", val: `${s2cBatteryTemp > 65 ? "Thermal Halt" : "Collapsed (0.04V)"}`, nominalRail: "PP_VDD_MAIN", nominalVoltage: "3.71V - 4.2V", expectedDiodeValue: "0.322 V" },
+        { id: "ap", label: "A12 Core", desc: "Processor Power Rails", x: 490, y: 120, status: "bad", val: "0V Core Supply", nominalRail: "PP_CPU_CORE", nominalVoltage: "0.95V - 1.12V", expectedDiodeValue: "0.024 V" }
+      ],
+      traces: [
+        { from: "vbat", to: "cap" },
+        { from: "cap", to: "rail" },
+        { from: "rail", to: "ap" }
+      ]
+    }
+  };
+
+  const [selectedNodeState, setSelectedNodeState] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setSelectedNodeState(null);
+  }, [s2cActivePathway]);
+
+  const selectedPathway = pathwayData[s2cActivePathway] || pathwayData.backlight;
+  const isMounted = !!mountedSources[selectedPathway.pdf];
+
+  // Derive the active node inside the selected pathway
+  const activeNodeId = selectedNodeState || (selectedPathway.nodes.find(n => n.isFault)?.id || selectedPathway.nodes[0].id);
+  const activeNode = selectedPathway.nodes.find(n => n.id === activeNodeId) || selectedPathway.nodes[0];
+
   return (
     <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md overflow-hidden animate-in fade-in duration-300 font-sans text-left">
       <div className="bg-slate-850 px-6 py-5 border-b border-slate-700 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
@@ -923,6 +997,370 @@ double tempReading = IOPSGetTemperatureReading(sources[0]);
             ))}
           </div>
         )}
+      </div>
+
+      {/* Visual 'S2C Diagnostic Trace' Mapping Chart */}
+      <div className="bg-[#111111] border border-slate-800 rounded-xl p-5 mb-6 block text-left font-mono animate-in fade-in zoom-in-95 duration-250">
+        <style>{`
+          @keyframes traceDash {
+            to {
+              stroke-dashoffset: -20;
+            }
+          }
+          .animate-trace {
+            stroke-dasharray: 6, 4;
+            animation: traceDash 1.2s linear infinite;
+          }
+          @keyframes pulseScale {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.15); opacity: 0.8; }
+          }
+          .animate-node-pulse {
+            animation: pulseScale 2s ease-in-out infinite;
+          }
+        `}</style>
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-3 mb-4 gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-teal-950/40 border border-teal-850 rounded-lg text-teal-400">
+              <Cpu className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                Silicon S2C Diagnostic Trace & Circuit Path mapping [CoV Engine]
+              </h3>
+              <p className="text-[11px] text-slate-400 font-sans leading-tight">
+                Grounded logic board trace mapping physical sensors directly to mounted source schematics validation layers.
+              </p>
+            </div>
+          </div>
+          
+          {/* Active Status metrics / Badge */}
+          <div className="flex items-center gap-2 text-[10px]">
+            {isMounted ? (
+              <span className="bg-teal-950/80 border border-teal-800 text-teal-400 font-extrabold px-2.5 py-1 rounded-md flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></span>
+                CoV GROUNDED: SOURCE MOUNTED
+              </span>
+            ) : (
+              <span className="bg-amber-950/70 border border-amber-850 text-amber-400 font-extrabold px-2.5 py-1 rounded-md flex items-center gap-1 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                UNGROUNDED WARNING: SRC UNMOUNTED
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Diagnostic Grid layout */}
+        <div className="grid grid-cols-12 gap-5">
+          {/* Left panel: Interactive SVG Schematic Trace Area */}
+          <div className="col-span-12 lg:col-span-8 bg-slate-950 border border-slate-850 rounded-xl relative p-4 flex flex-col justify-between min-h-[310px]">
+            
+            {/* PCB Blueprint grid background effect */}
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
+              backgroundImage: `radial-gradient(circle, #00BFFF 1px, transparent 1px)`,
+              backgroundSize: "20px 20px"
+            }}></div>
+            
+            <div className="flex items-center justify-between text-[10px] text-slate-500 border-b border-slate-900 pb-2 mb-3 z-10">
+              <span>BOARD MODEL WORKBENCH LAYOUT CO-ORDINATE SYSTEM [GRID_v2.1]</span>
+              <span className="text-violet-400 font-bold uppercase">{selectedPathway.sourceName}</span>
+            </div>
+
+            {/* SVG Interactive Circuit Layout */}
+            <div className="relative w-full overflow-x-auto flex justify-center py-6 z-10 scrollbar-none">
+              <svg width="560" height="200" viewBox="0 0 560 200" className="mx-auto block">
+                {/* Board tracks background lines */}
+                <path d="M 50,100 L 510,100" 
+                      fill="none" 
+                      stroke="#1e293b" 
+                      strokeWidth="1.5" />
+
+                {/* Live Current Flow Signal Pulse (only active if mounted) */}
+                {isMounted && (
+                  <path d="M 50,100 L 510,100" 
+                        fill="none" 
+                        stroke={selectedPathway.color} 
+                        strokeWidth="2" 
+                        className="animate-trace opacity-90" />
+                )}
+
+                {/* Active Highlight Leader Line & Detail HUD Box overlaid on the active, clicked node */}
+                {activeNode && (
+                  <g transform={`translate(${activeNode.x > 280 ? activeNode.x - 170 : activeNode.x + 35}, 15)`} className="transition-all duration-300">
+                    {/* Shadow overlay effect */}
+                    <rect width="135" height="70" rx="5" fill="#020617" className="opacity-40" transform="translate(2, 2)" />
+                    {/* Body container */}
+                    <rect width="135" height="70" rx="5" fill="#090d16" stroke={isMounted ? "#00BFFF" : "#FFBF00"} strokeWidth="1.5" className="opacity-95" />
+                    
+                    {/* Header bar area */}
+                    <rect width="135" height="18" rx="2" fill={isMounted ? "rgba(0,191,255,0.15)" : "rgba(255,191,0,0.15)"} />
+                    <text x="6" y="12" fill={isMounted ? "#00BFFF" : "#FFBF00"} fontSize="7.5" fontWeight="black" className="font-mono">
+                      {isMounted ? "✔️ SPEC METRIC ACTIVE" : "⚠️ UNGROUNDED NODE"}
+                    </text>
+                    
+                    {/* Nominal Voltage Rail */}
+                    <text x="6" y="32" fill="#94a3b8" fontSize="7" fontWeight="bold" className="font-mono uppercase">RAIL:</text>
+                    <text x="32" y="32" fill="#ffffff" fontSize="7" fontWeight="black" className="font-mono">{activeNode.nominalRail}</text>
+                    
+                    {/* Expected Diode Drop Value */}
+                    <text x="6" y="46" fill="#94a3b8" fontSize="7" fontWeight="bold" className="font-mono uppercase">DIODE:</text>
+                    <text x="32" y="46" fill="#14b8a6" fontSize="7.5" fontWeight="bold" className="font-mono">{activeNode.expectedDiodeValue}</text>
+
+                    {/* Nominal Voltage */}
+                    <text x="6" y="60" fill="#94a3b8" fontSize="7" fontWeight="bold" className="font-mono uppercase">NOMINAL:</text>
+                    <text x="44" y="60" fill="#38bdf8" fontSize="7.5" fontWeight="extrabold" className="font-mono">{activeNode.nominalVoltage}</text>
+
+                    {/* Mathematically precise overlay leader indicator line going directly to node */}
+                    <path 
+                      d={`M ${activeNode.x > 280 ? 135 : 0},35 L ${activeNode.x > 280 ? 170 : -35},85`} 
+                      fill="none" 
+                      stroke={isMounted ? "#00BFFF" : "#FFBF00"} 
+                      strokeWidth="1.2" 
+                      strokeDasharray="2,2" 
+                    />
+                  </g>
+                )}
+
+                {/* Nodes representation */}
+                {selectedPathway.nodes.map((node) => {
+                  const circleColor = node.isFault 
+                    ? "#FFBF00" 
+                    : node.status === "bad" 
+                    ? "#ef4444" 
+                    : node.status === "blocked"
+                    ? "#64748b"
+                    : "#a7f3d0";
+
+                  const isCurrentActive = node.id === activeNodeId;
+
+                  return (
+                    <g 
+                      key={node.id} 
+                      transform={`translate(${node.x}, ${node.y - 20})`} 
+                      onClick={() => {
+                        setSelectedNodeState(node.id);
+                        addToast(
+                          "Forensic Focus Shift", 
+                          `Probing board node ${node.label} [${node.nominalRail}]. Specifications overlay loaded.`, 
+                          "success"
+                        );
+                      }} 
+                      className="cursor-pointer group select-none transition-transform duration-150 hover:scale-110 active:scale-95"
+                    >
+                      {/* Active highlight golden/teal overlays rings */}
+                      {isCurrentActive && (
+                        <circle r="22" fill="none" stroke={isMounted ? "#00BFFF" : "#FFBF00"} strokeWidth="2.2" className="animate-node-pulse" />
+                      )}
+                      {isCurrentActive && (
+                        <circle r="29" fill="none" stroke={isMounted ? "rgba(0,191,255,0.25)" : "rgba(255,191,0,0.2)"} strokeWidth="1" strokeDasharray="3,3" />
+                      )}
+
+                      {/* Default glowing failure rings */}
+                      {node.isFault && !isCurrentActive && (
+                        <circle r="20" fill="none" stroke="#FFBF00" strokeWidth="1" strokeDasharray="2,2" className="animate-node-pulse" />
+                      )}
+                      
+                      {node.status === "good" && isMounted && !isCurrentActive && (
+                        <circle r="16" fill="none" stroke="#00BFFF" strokeWidth="1.5" className="animate-node-pulse opacity-40" />
+                      )}
+
+                      {/* Node circle body */}
+                      <circle r="12" fill="#111" stroke={node.isFault ? "#FFBF00" : isCurrentActive ? (isMounted ? "#00BFFF" : "#FFBF00") : "#334155"} strokeWidth="2" />
+                      <circle r="4" fill={circleColor} />
+                      
+                      {/* Tooltip on Node Hover */}
+                      <foreignObject x="-45" y="-55" width="100" height="42" className="overflow-visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                        <div className="bg-slate-950 text-[9px] border border-slate-800 rounded p-1.5 shadow-xl text-center text-slate-300 pointer-events-none leading-normal font-mono">
+                          <div className="font-extrabold text-white text-[9.5px]">{node.label}</div>
+                          <div>{node.val}</div>
+                        </div>
+                      </foreignObject>
+
+                      {/* Display labels */}
+                      <text x="0" y="26" textAnchor="middle" fill="#fff" fontSize="9.5" fontWeight={isCurrentActive ? "black" : "bold"} className="select-none font-mono">
+                        {node.label}
+                      </text>
+                      <text x="0" y="36" textAnchor="middle" fill={isCurrentActive ? "#67e8f9" : "#94a3b8"} fontSize="8" className="select-none font-mono">
+                        {node.desc}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* Multimeter Probing Leads Visual Overlay */}
+                <g opacity="0.85" transform="translate(0, -20)">
+                  {/* Lead connection trace */}
+                  <path d="M 210,100 C 170,140 230,165 210,100" 
+                        fill="none" 
+                        stroke="#FFBF00" 
+                        strokeWidth="1" 
+                        strokeDasharray="2,2" />
+                  
+                  {/* Failure Tag Indicator box */}
+                  <g transform={`translate(${selectedPathway.nodes[1].x + 30}, ${selectedPathway.nodes[1].y - 35})`}>
+                    <rect width="112" height="32" rx="4" fill="#1e1e1e" stroke="#FFBF00" strokeWidth="1.2" />
+                    <text x="56" y="13" textAnchor="middle" fill="#FFBF00" fontSize="8" fontWeight="black" className="font-mono">
+                      ▲ SILICON CIRCUIT FAULT
+                    </text>
+                    <text x="56" y="24" textAnchor="middle" fill="#fff" fontSize="8.5" fontWeight="semibold" className="font-mono">
+                      {selectedPathway.nodes[1].val}
+                    </text>
+                  </g>
+                </g>
+              </svg>
+            </div>
+
+            <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-900/50 mt-2 z-10">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="text-left">
+                  <span className="text-[9px] text-slate-550 block font-bold">ACTIVE PATHWAY BLUEPRINT EXPLANATION:</span>
+                  <p className="text-[11px] text-slate-300 leading-normal font-sans font-medium">
+                    {selectedPathway.description}
+                  </p>
+                </div>
+                {/* Interaction Instruction */}
+                <div className="text-right shrink-0">
+                  <span className="text-[8.5px] text-teal-400 font-extrabold bg-[#111] border border-teal-950 px-2.5 py-1 rounded font-mono animate-pulse">
+                    💡 Click nodes to toggle highlight specifications overlay
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right panel: Board Pin Inquisitor specs, CoV, and Toggle mount button */}
+          <div className="col-span-12 lg:col-span-4 flex flex-col justify-between space-y-4">
+            
+            {/* Interactive Pin Inquisitor Spec Card */}
+            <div className="bg-slate-950/65 border border-slate-850 p-4 rounded-xl space-y-3 flex-1 flex flex-col justify-start">
+              <div className="border-b border-slate-900 pb-2 mb-1 flex justify-between items-center">
+                <span className="text-[9.5px] text-violet-400 font-extrabold uppercase tracking-wider">🔬 Board Pin Inquisitor Specs</span>
+                <span className="text-[8px] text-teal-400 bg-teal-950/40 border border-teal-900 px-1.5 py-0.5 rounded font-black font-mono">
+                  FOCUS: {activeNode.label}
+                </span>
+              </div>
+              
+              {/* Quick Tab Selectors */}
+              <div className="grid grid-cols-4 gap-1 pt-1">
+                {selectedPathway.nodes.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedNodeState(n.id);
+                      addToast("Pin Focused", `Highlighted motherboard component ${n.label} nominal values.`, "success");
+                    }}
+                    className={`text-[8.5px] py-1 border rounded font-black tracking-wide truncate transition-all cursor-pointer ${
+                      n.id === activeNodeId
+                        ? "bg-teal-950 text-teal-400 border-teal-800"
+                        : "bg-slate-900/60 text-slate-400 border-slate-850 hover:text-slate-200"
+                    }`}
+                  >
+                    {n.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Specification table */}
+              <div className="p-2.5 bg-[#090d16]/90 border border-slate-850 rounded-lg space-y-2 text-left text-[11px]">
+                <div className="flex justify-between items-start">
+                  <span className="text-slate-500">Component:</span>
+                  <span className="text-white font-extrabold text-right">{activeNode.label} ({activeNode.desc})</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Nominal Voltage Rail:</span>
+                  <span className="text-violet-300 font-bold text-right">{activeNode.nominalRail}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Expected Value (Diode):</span>
+                  <span className="text-cyan-400 font-bold text-right">{activeNode.expectedDiodeValue}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Expected Target V:</span>
+                  <span className="text-teal-400 font-extrabold text-right">{activeNode.nominalVoltage}</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-slate-900 pt-1.5 mt-1.5 text-[10px]">
+                  <span className="text-slate-500">Ammeter Node State:</span>
+                  <span className={`font-semibold text-right ${activeNode.status === 'good' ? 'text-emerald-450' : 'text-amber-400'}`}>
+                    {activeNode.status === 'good' ? '✅ NORMAL' : activeNode.status === 'fault' ? '⚡ CRITICAL FAULT' : '⏸️ BLOCKED / COLLAPSED'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Auxiliary general stats */}
+              <div className="space-y-1.5 pt-1 text-[11px] border-t border-slate-900/40">
+                <div className="flex justify-between items-center text-left">
+                  <span className="text-slate-500">Live Pathway current:</span>
+                  <span className="text-amber-400 font-bold">{s2cAmmeterReading}A</span>
+                </div>
+                <div className="flex justify-between items-center text-left">
+                  <span className="text-slate-500">Live Temperature level:</span>
+                  <span className="text-rose-400 font-bold">{s2cBatteryTemp}°C</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Document details / CoV Validation Card */}
+            <div className="bg-slate-950/65 border border-slate-850 p-4 rounded-xl flex-1 flex flex-col justify-between">
+              <div>
+                <div className="border-b border-slate-900 pb-2 mb-3">
+                  <span className="text-[9.5px] text-violet-400 font-extrabold uppercase tracking-wider">Schematic Verification Status</span>
+                </div>
+                
+                <div className="space-y-3 font-sans text-xs">
+                  <div className="p-2.5 bg-[#111] border border-slate-850 rounded-lg flex items-center gap-2">
+                    <FileText className={`w-4 h-4 ${isMounted ? "text-teal-400" : "text-amber-500"}`} />
+                    <div className="text-left font-mono text-[10.5px]">
+                      <span className="text-slate-400 block font-bold text-[9px] uppercase">DOCUMENT REFERENCE:</span>
+                      <span className="text-white font-semibold truncate block max-w-[170px]" title={selectedPathway.pdf}>
+                        {selectedPathway.pdf}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isMounted ? (
+                    <div className="p-2.5 bg-teal-950/30 border border-teal-900/30 text-teal-400 rounded-lg text-left text-[11px] font-mono leading-normal">
+                      ✅ <strong>Check Active:</strong> Schematic verified inside core local source vaults. CoV matches hardware designators.
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-amber-950/20 border border-amber-900/30 text-amber-300 rounded-lg text-left text-[11px] font-mono leading-normal animate-pulse">
+                      ⚠️ <strong>Verification Blocked:</strong> Grounding source unmounted. Please mount the document to verify the trace.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dynamic Interactive toggle button to Mount/Unmount document */}
+              <div className="pt-4 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !isMounted;
+                    setMountedSources((prev) => ({
+                      ...prev,
+                      [selectedPathway.pdf]: nextVal,
+                    }));
+                    addToast(
+                      nextVal ? "Schematic Mounted" : "Schematic Unmounted", 
+                      `${selectedPathway.pdf} state updated in NotebookLM database context.`, 
+                      nextVal ? "success" : "warning"
+                    );
+                  }}
+                  className={`w-full py-2 border rounded-lg text-xs font-bold font-mono tracking-wide uppercase transition-all cursor-pointer ${
+                    isMounted 
+                      ? "bg-slate-900 hover:bg-slate-850 border-slate-850 text-slate-300 cursor-pointer"
+                      : "bg-teal-950/60 hover:bg-teal-950 text-teal-400 border-teal-900/60 shadow-md shadow-teal-900/10 cursor-pointer"
+                  }`}
+                >
+                  {isMounted ? "🔌 Unmount Reference schematic" : "📂 Mount Reference" }
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
       </div>
 
       {/* INTERACTIVE SYMPTOM-TO-CIRCUIT (S2C) ENGINE & MICRO-SOLDERING REFERENCE LIBRARY */}

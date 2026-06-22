@@ -34,6 +34,8 @@ import {
   Database,
   Upload,
   Zap,
+  Flame,
+  Thermometer,
   Trash2,
   Globe,
   Settings,
@@ -55,6 +57,7 @@ import {
   SlidersHorizontal,
   Brain,
   ShieldAlert,
+  ExternalLink,
   Filter,
   FileSpreadsheet,
   Mail,
@@ -225,6 +228,21 @@ export default function App() {
     short_rail: false,
   });
   const [s2cIsSubmittingFeedback, setS2cIsSubmittingFeedback] = useState<boolean>(false);
+  const [isThermalModalOpen, setIsThermalModalOpen] = useState<boolean>(false);
+  const [isDnsModalOpen, setIsDnsModalOpen] = useState<boolean>(false);
+  const [dnsCustomDomain, setDnsCustomDomain] = useState<string>("triage.displaycellpros.com");
+  const [dnsTab, setDnsTab] = useState<"all" | "subdomain" | "root">("all");
+  const [unauthorizedDomainError, setUnauthorizedDomainError] = useState<{
+    domain: string;
+    projectId: string;
+  } | null>(null);
+  const [thermalChecks, setThermalChecks] = useState<Record<string, boolean>>({
+    disconnectBattery: false,
+    verifyRailImpedance: false,
+    groundStrapAttached: false,
+    fumeExtractorOn: false,
+    boardCooled: false,
+  });
 
   // --- FORENSICS ORCHESTRATOR VISUAL SUB-STATES ---
   const [telemetrySpecTab, setTelemetrySpecTab] = useState<"visual" | "android" | "ios" | "macos">("visual");
@@ -413,8 +431,22 @@ export default function App() {
       const result = await signInWithPopup(auth, googleProvider);
       addToast("Authentication Success", `Signed in as ${result.user.displayName}`, "success");
     } catch (err: any) {
-      console.error(err);
-      addToast("Login Failed", err.message, "error");
+      console.warn("Authentication Error/Notice:", err);
+      if (err.code === "auth/unauthorized-domain" || (err.message && err.message.includes("unauthorized-domain"))) {
+        setUnauthorizedDomainError({
+          domain: window.location.hostname || "localhost",
+          projectId: "displaycellpros-com",
+        });
+        addToast("Authorization Error", "This domain is not authorized in Firebase Console settings. Please check authorized domains.", "error");
+      } else if (err.code === "auth/popup-closed-by-user" || (err.message && err.message.includes("popup-closed-by-user"))) {
+        addToast("Authentication Closed", "The sign-in popup was closed before completion. Please try again.", "info");
+      } else if (err.code === "auth/cancelled-popup-request" || (err.message && err.message.includes("cancelled-popup-request"))) {
+        addToast("Authentication Swapped", "A newer sign-in request was initiated, cancelling the old one.", "info");
+      } else if (err.code === "auth/popup-blocked" || (err.message && err.message.includes("popup-blocked"))) {
+        addToast("Popup Blocked", "Your browser blocked the sign-in popup. Please allow popups for this site.", "warning");
+      } else {
+        addToast("Login Failed", err.message || "An authentication error occurred.", "error");
+      }
     }
   };
 
@@ -681,6 +713,12 @@ export default function App() {
     fetchPOSLogs();
     fetchSdStatus();
     handleListNamespaces("displaycellpros", "us-central1");
+
+    // Reactive subscription to Firebase Authentication state for session/badge clarity
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+    });
+    return () => unsubscribe();
   }, []);
 
   // Recalculate quote automatically on changes
@@ -906,6 +944,18 @@ export default function App() {
   };
 
   useEffect(() => {
+    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+    if (userRole === "technician" && !isTechnician) {
+      setUserRole("customer");
+      setActiveTab("customer-hub");
+      addToast(
+        "Access Denied",
+        "Technician privileges are restricted to the verified organization administrator account (cheyoung1983@gmail.com). Downgraded to customer view.",
+        "error"
+      );
+      return;
+    }
+
     localStorage.setItem("dcp_user_role", userRole);
     
     // Systematically scrub diagnostic caches, lead data, forensics, and ticket states 
@@ -929,6 +979,41 @@ export default function App() {
       }
     }
   }, [userRole, authUser]);
+
+  // Strict Force Out and Redirect Security Protocol
+  useEffect(() => {
+    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+    
+    // Explicit security boundary: Reject if "customer" tries to force "lab" view, 
+    // or if a non-technician authenticated user tries to load the technician workspace.
+    if (activeTab === "lab") {
+      if (userRole === "customer" || !isTechnician) {
+        if (authUser) {
+          // Force sign out immediately due to security escalation for customer/non-technician
+          signOut(auth).then(() => {
+            setAuthUser(null);
+            handleSessionReset();
+            addToast(
+              "Security Escalation",
+              "Violation detected: Unauthorized account attempted to load restricted terminal endpoints. Triggering automated session expulsion.",
+              "error"
+            );
+          }).catch((err) => {
+            console.error("Forced Logout Failed:", err);
+          });
+        } else {
+          addToast(
+            "Access Restricted",
+            "Deep forensics and technician dashboard require authentication with approved displaycellpros administrator credentials.",
+            "warning"
+          );
+        }
+        
+        setUserRole("customer");
+        setActiveTab("customer-hub");
+      }
+    }
+  }, [activeTab, userRole, authUser]);
 
   const handleVerifyB2B = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -2347,6 +2432,113 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-blue-500/30 flex flex-col justify-between">
       
+      {/* EXCLUSION TROUBLESHOOTING DIALOG: Firebase auth/unauthorized-domain */}
+      {unauthorizedDomainError && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="max-w-2xl w-full bg-[#111111] border-2 border-amber-500 rounded-2xl shadow-2xl p-6 md:p-8 text-left font-mono relative overflow-hidden">
+            {/* Abstract structural graphics in background representing silicon layer */}
+            <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{
+              backgroundImage: "radial-gradient(#ffbf00 1px, transparent 1px), radial-gradient(#ffbf00 1px, transparent 1px)",
+              backgroundSize: "20px 20px",
+              backgroundPosition: "0 0, 10px 10px"
+            }} />
+
+            {/* Decorative accent bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-teal-500 to-cyan-500" />
+
+            {/* Header with forensic identity elements */}
+            <div className="flex items-start gap-4 mb-6">
+              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-900/30 text-amber-500 shrink-0">
+                <ShieldAlert className="w-8 h-8 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] bg-amber-950 text-amber-400 border border-amber-900/40 px-2 py-0.5 rounded font-black uppercase tracking-wider">
+                    SECURITY AUDIT EXCLUSION
+                  </span>
+                  <span className="text-[9px] bg-slate-900 text-slate-400 border border-slate-800 px-2 py-0.5 rounded font-black uppercase tracking-wider">
+                    S2C FAIL-SAFE
+                  </span>
+                </div>
+                <h2 className="text-xl md:text-2xl font-black text-white mt-1.5 uppercase tracking-wide">
+                  Firebase Auth: Domain Not Authorized
+                </h2>
+              </div>
+            </div>
+
+            {/* Error explanation content */}
+            <div className="space-y-4 text-xs md:text-sm text-slate-350 leading-relaxed border-y border-slate-900 py-5">
+              <p>
+                The Firebase Authentication service detected a domain mismatch. Staging/preview domains in AI Studio run dynamically and must be explicitly whitelisted to establish the secure <span className="text-teal-400 font-bold">Oauth redirection pipeline</span>.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950 border border-slate-900 p-4 rounded-xl">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-500 uppercase font-black">STAGING DOMAIN</span>
+                  <div className="text-amber-400 font-black break-all bg-slate-900/50 p-2 border border-slate-900 rounded font-mono select-all">
+                    {unauthorizedDomainError.domain}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-500 uppercase font-black">FIREBASE PROJECT ID</span>
+                  <div className="text-cyan-400 font-black bg-slate-900/50 p-2 border border-slate-900 rounded font-mono select-all">
+                    {unauthorizedDomainError.projectId}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <h3 className="text-xs font-black text-white uppercase tracking-wider text-teal-400 flex items-center gap-2">
+                  <span>🔧 CHRONOLOGICAL RESOLUTION STEPS:</span>
+                </h3>
+                <ol className="list-decimal pl-4 space-y-2 text-slate-400 font-sans text-xs">
+                  <li>
+                    Navigate to your <a href={`https://console.firebase.google.com/project/${unauthorizedDomainError.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 font-bold hover:underline inline-flex items-center gap-1">Firebase Console Settings <ExternalLink className="w-3" /></a>.
+                  </li>
+                  <li>
+                    Go to the <strong className="text-white">Settings</strong> tab inside Authentication.
+                  </li>
+                  <li>
+                    Select <strong className="text-white">Authorized Domains</strong> from the left sidebar or parameters menu.
+                  </li>
+                  <li>
+                    Click <strong className="text-white">Add Domain</strong> and paste the precise staging domain value shown above: <code className="bg-slate-900 text-amber-400 border border-slate-800 px-1.5 py-0.5 rounded font-mono text-[11px] font-semibold">{unauthorizedDomainError.domain}</code>.
+                  </li>
+                  <li>
+                    Return to this secure analyst hub and initiate the triage authentication flow again.
+                  </li>
+                </ol>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
+              <span className="text-[10px] text-slate-500 font-medium font-sans">
+                Audit Sign-In Scope Enforces NIST SP 800-88 R1 Protocols
+              </span>
+              <div className="flex gap-3 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setUnauthorizedDomainError(null)}
+                  className="w-full sm:w-auto px-5 py-2.5 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Acknowledge & Close
+                </button>
+                <a
+                  href={`https://console.firebase.google.com/project/${unauthorizedDomainError.projectId}/authentication/providers`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 border border-amber-500 text-white rounded-lg font-bold text-xs text-center transition-all shadow-lg flex items-center justify-center gap-2"
+                >
+                  Launch Firebase Console
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PROFESSIONAL BUSINESS TOP UTILITY BAR */}
       <div className="bg-slate-950 border-b border-slate-800 text-slate-400 text-xs py-2 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 shrink-0 select-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -2383,8 +2575,55 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
-            <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => setActiveTab("home")}>
-              <BrandLogo size={42} showText={true} />
+            <div className="flex-shrink-0 flex items-center gap-4">
+              <div className="flex items-center cursor-pointer" onClick={() => setActiveTab("home")}>
+                <BrandLogo size={42} showText={true} />
+              </div>
+
+              {/* SESSION / ROLE INDICATOR BADGES */}
+              <div className="hidden md:flex items-center gap-2 font-mono">
+                {authUser ? (
+                  <>
+                    {userRole === "technician" ? (
+                      <span className="text-[10px] bg-teal-950/90 text-teal-300 border-2 border-teal-500/50 font-black px-3 py-1.5 rounded-lg flex items-center gap-2 uppercase tracking-wide shadow-[0_0_15px_rgba(20,184,166,0.15)]">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-400"></span>
+                        </span>
+                        <span>Technician Dashboard</span>
+                        <span className="text-[9px] bg-teal-900/60 px-1.5 py-0.5 rounded text-teal-400 font-semibold max-w-[120px] truncate border border-teal-800/40">
+                          {authUser.email || "Cheyoung"}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-blue-950/90 text-blue-300 border border-blue-500/30 font-black px-3 py-1.5 rounded-lg flex items-center gap-2 uppercase tracking-wide shadow-[0_0_15px_rgba(59,130,246,0.1)]">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-400"></span>
+                        </span>
+                        <span>Customer Workspace</span>
+                        <span className="text-[9px] bg-blue-900/60 px-1.5 py-0.5 rounded text-blue-400 font-semibold max-w-[120px] truncate border border-blue-800/40">
+                          {authUser.email || "Client"}
+                        </span>
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {userRole === "technician" ? (
+                      <span className="text-[10px] bg-slate-950 text-slate-400 border border-slate-800 font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 uppercase tracking-normal">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span>Dashboard (Guest Session)</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-slate-950 text-slate-400 border border-slate-800 font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 uppercase tracking-normal">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-600"></span>
+                        <span>Customer Session (Guest)</span>
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
             
             {/* Desktop Menu */}
@@ -2480,6 +2719,15 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                   title="Switch to Technician view"
                   type="button"
                   onClick={() => {
+                    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+                    if (!isTechnician) {
+                      addToast(
+                        "Access Denied",
+                        "Technician privileges are restricted to the verified organization administrator account (cheyoung1983@gmail.com). Please authenticate with the administrator account to access.",
+                        "error"
+                      );
+                      return;
+                    }
                     setUserRole("technician");
                     setActiveTab("home");
                   }}
@@ -2508,6 +2756,34 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         {mobileMenuOpen && (
           <div className="md:hidden bg-slate-850 border-b border-slate-705">
             <div className="px-3 pt-2 pb-4 space-y-3">
+              {/* MOBILE SESSION / ROLE INDICATOR BADGE */}
+              <div className="px-3 py-2 bg-slate-900 rounded-lg border border-slate-800 flex items-center justify-between font-mono text-[10px] uppercase">
+                <span className="text-slate-400">Session State:</span>
+                {authUser ? (
+                  userRole === "technician" ? (
+                    <span className="text-teal-450 font-black flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse"></span>
+                      Technician Active
+                    </span>
+                  ) : (
+                    <span className="text-blue-455 font-black flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                      Customer Active
+                    </span>
+                  )
+                ) : (
+                  userRole === "technician" ? (
+                    <span className="text-amber-500 font-bold flex items-center gap-1">
+                      Technician (Guest)
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-bold flex items-center gap-1">
+                      Customer (Guest)
+                    </span>
+                  )
+                )}
+              </div>
+
               {userRole === "technician" ? (
                 <>
                   <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
@@ -2554,6 +2830,15 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                 </button>
                 <button
                   onClick={() => {
+                    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+                    if (!isTechnician) {
+                      addToast(
+                        "Access Denied",
+                        "Technician privileges are restricted to the verified organization administrator account (cheyoung1983@gmail.com). Please authenticate with the administrator account to access.",
+                        "error"
+                      );
+                      return;
+                    }
                     setUserRole("technician");
                     setActiveTab("home");
                     setMobileMenuOpen(false);
@@ -2693,6 +2978,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
 
               {/* Lab telemetry summary indicators */}
               <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => setIsDnsModalOpen(true)}
+                  className="bg-teal-950/80 hover:bg-teal-900 border border-teal-500/35 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold text-teal-400 flex items-center gap-2 shadow-md uppercase transition-all duration-200 cursor-pointer"
+                >
+                  <Globe className="w-4 h-4 text-teal-450 shrink-0" />
+                  <span>🌐 DNS Setup</span>
+                </button>
                 <div className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-mono flex items-center gap-2">
                   <Wifi className="w-4 h-4 text-emerald-500" />
                   <span className="text-slate-400">Sync:</span> <span className="text-emerald-400 font-bold">ONLINE</span>
@@ -5540,6 +5832,14 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           <span className="text-[10px] bg-indigo-950 text-indigo-300 font-extrabold uppercase font-mono px-2 py-0.5 rounded border border-indigo-900/40 tracking-wider">
                             S2C_V3_CORE_ENG
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsThermalModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1 bg-amber-950/65 hover:bg-amber-900/80 border border-amber-500/50 hover:border-amber-400 text-amber-300 hover:text-white rounded text-xs font-black uppercase tracking-wider font-mono transition-all cursor-pointer shadow-sm shadow-amber-950/40 animate-pulse"
+                          >
+                            <Flame className="w-3.5 h-3.5 text-amber-400" />
+                            Thermal Rework Guide
+                          </button>
                         </div>
                       </div>
 
@@ -6850,6 +7150,605 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onClose={removeToast} />
+
+      {/* Dynamic Thermal Rework Guide Modal */}
+      {isThermalModalOpen && (() => {
+        const data = getThermalPathwayData(s2cActivePathway);
+        
+        // Count how many checks are completed
+        const completedChecksCount = Object.values(thermalChecks).filter(Boolean).length;
+        const totalChecksCount = Object.keys(thermalChecks).length;
+        const isImpedanceChecked = thermalChecks.verifyRailImpedance;
+        const allChecksPassed = completedChecksCount === totalChecksCount;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div 
+              className="bg-[#111111] border border-slate-800 shadow-2xl rounded-2xl w-full max-w-2xl overflow-hidden transform transition-all text-left flex flex-col max-h-[90vh]"
+              role="dialog"
+              aria-modal="true"
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-900 to-slate-950 border-b border-slate-800 p-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-950/40 border border-amber-500/30 rounded-full flex items-center justify-center text-amber-400">
+                    <Flame className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-white text-base font-bold font-mono tracking-wide uppercase">{data.title}</h3>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-tight">
+                      S2C Silicon Diagnostics & Metallurgy Standard
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsThermalModalOpen(false)} 
+                  className="text-slate-400 hover:text-white transition-all p-1.5 hover:bg-slate-900 rounded-lg cursor-pointer"
+                  aria-label="Close modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Scrollable Body */}
+              <div className="p-6 space-y-6 overflow-y-auto flex-1 select-text">
+                
+                {/* Active Pathway Details Card */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Left Specs */}
+                  <div className="bg-slate-950/80 border border-slate-850 p-4 rounded-xl space-y-3 font-mono text-[11px] leading-relaxed">
+                    <div className="border-b border-slate-900 pb-2 mb-2">
+                      <span className="text-[9.5px] text-indigo-400 font-extrabold uppercase tracking-wider">FORENSIC TELEMETRY KEYWORDS</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Target Component:</span>
+                      <strong className="text-teal-400">{data.component}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Suspected Power Rail:</span>
+                      <strong className="text-violet-400">{data.rail}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Golden Diode Value:</span>
+                      <span className="text-white font-semibold">{data.diodeValue}</span>
+                    </div>
+                    <div className="flex justify-between font-mono">
+                      <span className="text-slate-500">Minimum Expected Impedance:</span>
+                      <span className="text-white font-semibold">{data.impedanceMinimum}</span>
+                    </div>
+                  </div>
+
+                  {/* Right Thermal Settings */}
+                  <div className="bg-slate-950/80 border border-slate-850 p-4 rounded-xl space-y-3 font-mono text-[11px] leading-relaxed">
+                    <div className="border-b border-slate-900 pb-2 mb-2">
+                      <span className="text-[9.5px] text-amber-500 font-extrabold uppercase tracking-wider">SAC305 REWORK CONFIGURATION</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Alloy Requirement:</span>
+                      <strong className="text-amber-400">SAC305 Lead-Free (Sn96.5)</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Target Temperature:</span>
+                      <strong className="text-white bg-amber-950/60 border border-amber-900/40 px-1.5 py-0.5 rounded text-[11px] font-black">{data.temperature}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Liquidus Temperature:</span>
+                      <span className="text-amber-300">217°C</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Hot Air Current Flow:</span>
+                      <strong className="text-white">{data.airflow}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Scope Action Box */}
+                <div className="p-3.5 bg-slate-900/40 border border-slate-800 rounded-xl leading-relaxed text-xs">
+                  <div className="text-[10px] text-indigo-400 font-extrabold font-mono uppercase mb-1">Rework Action Plan</div>
+                  <p className="text-slate-300">{data.actionRequired}</p>
+                </div>
+
+                {/* Safety Checklist Section */}
+                <div className="space-y-3 bg-[#161616] border border-slate-800 p-5 rounded-xl">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[11px] font-bold text-white uppercase tracking-wider font-mono">PRE-HEAT SAFETY CHECKLIST</span>
+                    </div>
+                    <span className="text-[11px] font-mono font-semibold text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                      {completedChecksCount} / {totalChecksCount} Verified
+                    </span>
+                  </div>
+
+                  {/* Interactive Checklist Items */}
+                  <div className="space-y-2.5 pt-1.5 font-mono text-xs">
+                    <label className="flex items-center gap-3 p-2 rounded hover:bg-slate-900/50 transition-colors cursor-pointer group">
+                      <input 
+                        type="checkbox"
+                        checked={thermalChecks.disconnectBattery}
+                        onChange={(e) => setThermalChecks(prev => ({ ...prev, disconnectBattery: e.target.checked }))}
+                        className="w-4 h-4 text-indigo-600 bg-slate-950 border-slate-800 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
+                      />
+                      <span className={`transition-colors ${thermalChecks.disconnectBattery ? "text-slate-400 line-through" : "text-white group-hover:text-indigo-300"}`}>
+                        [0V Verification] Assert all active power cells and external batteries are completely isolated.
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-2 rounded hover:bg-slate-900/50 transition-colors cursor-pointer group border border-dashed border-amber-500/25 bg-amber-955/10">
+                      <input 
+                        type="checkbox"
+                        checked={thermalChecks.verifyRailImpedance}
+                        onChange={(e) => setThermalChecks(prev => ({ ...prev, verifyRailImpedance: e.target.checked }))}
+                        className="w-4 h-4 text-amber-500 bg-slate-950 border-slate-800 rounded focus:ring-amber-500 focus:ring-2 cursor-pointer focus:ring-offset-slate-950"
+                      />
+                      <span className={`transition-colors ${thermalChecks.verifyRailImpedance ? "text-slate-400 line-through font-bold" : "text-amber-400 group-hover:text-amber-200"}`}>
+                        [CRITICAL] Verify target rail impedance to prevent interlayer delamination before applying heat source.
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-2 rounded hover:bg-slate-900/50 transition-colors cursor-pointer group">
+                      <input 
+                        type="checkbox"
+                        checked={thermalChecks.groundStrapAttached}
+                        onChange={(e) => setThermalChecks(prev => ({ ...prev, groundStrapAttached: e.target.checked }))}
+                        className="w-4 h-4 text-indigo-600 bg-slate-950 border-slate-800 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
+                      />
+                      <span className={`transition-colors ${thermalChecks.groundStrapAttached ? "text-slate-400 line-through" : "text-white group-hover:text-indigo-300"}`}>
+                        Ensure ESD-safe wristband is connected and grounded to common point.
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-2 rounded hover:bg-slate-900/50 transition-colors cursor-pointer group">
+                      <input 
+                        type="checkbox"
+                        checked={thermalChecks.fumeExtractorOn}
+                        onChange={(e) => setThermalChecks(prev => ({ ...prev, fumeExtractorOn: e.target.checked }))}
+                        className="w-4 h-4 text-indigo-600 bg-slate-950 border-slate-800 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
+                      />
+                      <span className={`transition-colors ${thermalChecks.fumeExtractorOn ? "text-slate-400 line-through" : "text-white group-hover:text-indigo-300"}`}>
+                        Fume extraction fan turned ON and aligned with workbench focal point.
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-2 rounded hover:bg-slate-900/50 transition-colors cursor-pointer group">
+                      <input 
+                        type="checkbox"
+                        checked={thermalChecks.boardCooled}
+                        onChange={(e) => setThermalChecks(prev => ({ ...prev, boardCooled: e.target.checked }))}
+                        className="w-4 h-4 text-indigo-600 bg-slate-950 border-slate-800 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
+                      />
+                      <span className={`transition-colors ${thermalChecks.boardCooled ? "text-slate-400 line-through" : "text-white group-hover:text-indigo-300"}`}>
+                        Ensure motherboard is at safe room temperature (&lt; 35°C) to prevent severe localized warping.
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Reactive Heat Application Status Indicator */}
+                  <div className="pt-3 border-t border-slate-800 font-mono text-[11px] leading-relaxed">
+                    {isImpedanceChecked ? (
+                      <div className="p-3 bg-emerald-950/45 border border-emerald-500/40 text-emerald-400 rounded-lg flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>
+                          <strong>IMPEDANCE VERIFIED</strong>: Measurement of target rail completed successfully. Heat application is safe to proceed.
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-amber-950/30 border border-amber-500/35 text-amber-300 rounded-lg flex items-center gap-2 animate-pulse">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>
+                          <strong>SAFETY INTERLOCK ACTIVE</strong>: You MUST verify rail impedance using diode mode before reflow to calculate proper heat retention.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Deep RAG Reference Step */}
+                <div className="bg-slate-950/60 border border-slate-850 p-4 rounded-xl space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-500 uppercase tracking-wider font-mono font-extrabold">
+                    <Thermometer className="w-3.5 h-3.5" />
+                    Interactive Verification Directive
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-normal font-mono text-left">
+                    {data.verificationStep}
+                  </p>
+                </div>
+
+              </div>
+
+              {/* Footer */}
+              <div className="bg-slate-950 p-4 border-t border-slate-800 flex justify-between items-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Reset all checklist checkboxes for active technician
+                    setThermalChecks({
+                      disconnectBattery: false,
+                      verifyRailImpedance: false,
+                      groundStrapAttached: false,
+                      fumeExtractorOn: false,
+                      boardCooled: false,
+                    });
+                    addToast("Checklist Reset", "S2C Safety checklist variables set back to zero.", "info");
+                  }}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white rounded text-xs font-bold font-mono tracking-tight transition-all cursor-pointer"
+                >
+                  Reset Checklist
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsThermalModalOpen(false)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-xs font-bold font-mono cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!allChecksPassed}
+                    onClick={() => {
+                      setIsThermalModalOpen(false);
+                      addToast("Rework Authorized", `Silicon reflow preheated and verified for ${data.component}. Proceed to workbench!`, "success");
+                    }}
+                    className={`px-4 py-2 text-xs font-bold font-mono rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                      allChecksPassed 
+                        ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/10" 
+                        : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
+                    }`}
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Authorize Rework {allChecksPassed && "✓"}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Google Cloud Run Custom Domain Mapping DNS Records Modal */}
+      {isDnsModalOpen && (() => {
+        // Parse subdomain vs domain
+        const cleanDomain = dnsCustomDomain.trim().toLowerCase().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+        const parts = cleanDomain.split(".");
+        let subdomain = "@";
+        let rootDomain = cleanDomain;
+        
+        if (parts.length > 2) {
+          subdomain = parts.slice(0, -2).join(".");
+          rootDomain = parts.slice(-2).join(".");
+        } else if (cleanDomain === "") {
+          rootDomain = "displaycellpros.com";
+        }
+
+        const handleCopy = (value: string, label: string) => {
+          navigator.clipboard.writeText(value);
+          addToast("Copied successfully", `${label} copied to workbench clipboard!`, "success");
+        };
+
+        const dnsRecords = [
+          {
+            type: "TXT",
+            host: subdomain === "@" ? "@" : subdomain,
+            value: `google-site-verification=gcr-uscentral1-${rootDomain.replace(/\./g, "-")}-VerificationToken5528`,
+            ttl: "3600 (1 Hr)",
+            purpose: "Google Cloud Platform Domain Security & Ownership Verification",
+            status: "Ready to Verify"
+          },
+          {
+            type: "CNAME",
+            host: subdomain === "@" ? "www" : subdomain,
+            value: "ghs.googlehosted.com.",
+            ttl: "3600 (1 Hr)",
+            purpose: `Subdomain target mapping to the Iowa (us-central1) Cloud Run load balancer`,
+            status: "Pending Check"
+          },
+          {
+            type: "A",
+            host: "@",
+            value: "216.239.32.21",
+            ttl: "3600 (1 Hr)",
+            purpose: "Google Global Anycast Front-End Gateway Routing (Primary)",
+            status: "Direct Connect"
+          },
+          {
+            type: "A",
+            host: "@",
+            value: "216.239.34.21",
+            ttl: "3600 (1 Hr)",
+            purpose: "Google Global Anycast Front-End Gateway Routing (Secondary)",
+            status: "Direct Connect"
+          },
+          {
+            type: "A",
+            host: "@",
+            value: "216.239.36.21",
+            ttl: "3600 (1 Hr)",
+            purpose: "Google Global Anycast Front-End Gateway Routing (Tertiary)",
+            status: "Direct Connect"
+          },
+          {
+            type: "A",
+            host: "@",
+            value: "216.239.38.21",
+            ttl: "3600 (1 Hr)",
+            purpose: "Google Global Anycast Front-End Gateway Routing (Backup)",
+            status: "Direct Connect"
+          },
+          {
+            type: "AAAA",
+            host: "@",
+            value: "2001:4860:4802:32::15",
+            ttl: "3600 (1 Hr)",
+            purpose: "IPv6 Global Front-End Gateway Anycast routing",
+            status: "Optional"
+          },
+          {
+            type: "AAAA",
+            host: "@",
+            value: "2001:4860:4802:34::15",
+            ttl: "3600 (1 Hr)",
+            purpose: "IPv6 Global Front-End Gateway Anycast routing",
+            status: "Optional"
+          }
+        ];
+
+        const filteredRecords = dnsRecords.filter(r => {
+          if (dnsTab === "subdomain") return r.type === "CNAME" || r.type === "TXT";
+          if (dnsTab === "root") return r.type === "A" || r.type === "AAAA" || r.type === "TXT";
+          return true; // "all"
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-250">
+            <div 
+              className="bg-[#111111] border border-slate-800 shadow-2xl rounded-2xl w-full max-w-4xl overflow-hidden transform transition-all text-left flex flex-col max-h-[92vh]"
+              role="dialog"
+              aria-modal="true"
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-900 to-slate-950 border-b border-slate-800 p-5 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-teal-950/50 border border-teal-500/30 rounded-full flex items-center justify-center text-teal-400">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-white text-base font-extrabold font-mono tracking-wide uppercase">Google Cloud Run DNS Configuration</h3>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-tight uppercase">
+                      US-Central1 (Iowa) Region Availability Edge Cluster • Custom Domain Mapping
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsDnsModalOpen(false)} 
+                  className="text-slate-400 hover:text-white transition-all p-1.5 hover:bg-slate-900 rounded-lg cursor-pointer"
+                  aria-label="Close modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                
+                {/* Information Card */}
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4.5 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-mono font-extrabold text-teal-400 uppercase tracking-widest">
+                    <span className="h-2 w-2 rounded-full bg-teal-400 animate-pulse"></span>
+                    Architectural Infrastructure Verification Loop
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                    Google Cloud Run uses global anycast front-ends to route TLS traffic to the target environment Container. By mapping a custom domain to custom DNS records, GCP provisions automatic, managed Let's Encrypt certificates and routes requests efficiently through Iowa's high-speed local fibers.
+                  </p>
+                  <div className="text-[10px] text-slate-400 font-mono flex flex-wrap items-center gap-x-4 gap-y-1 pt-1.5 border-t border-slate-800/60">
+                    <div>
+                      GCP Region: <strong className="text-slate-200">us-central1 (Iowa)</strong>
+                    </div>
+                    <div>
+                      Container Target: <strong className="text-slate-250">ais-dev-qaarbg7eivxlz2dpis24f5-367327296310.us-west2.run.app</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interactive Dynamic Custom Domain input */}
+                <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4.5 space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider font-mono mb-1">
+                        Domain Customizer Engine
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Input your registered target domain below. The generated records in the database table of this modal will dynamically adjust to match your exact configuration.
+                      </p>
+                    </div>
+                    <div className="w-full md:w-80">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={dnsCustomDomain}
+                          onChange={(e) => setDnsCustomDomain(e.target.value)}
+                          placeholder="e.g. audit.displaycellpros.com"
+                          className="w-full bg-slate-950 border border-slate-800 text-teal-400 placeholder-slate-600 rounded-lg py-2 pl-3 pr-8 text-xs font-bold font-mono focus:outline-none focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/10 transition-all text-left"
+                        />
+                        <Globe className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 pt-1">
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-850/60 font-mono text-center">
+                      <span className="text-[9px] text-slate-500 block uppercase font-bold">Identified Subdomain</span>
+                      <span className="text-xs text-white font-extrabold">{subdomain}</span>
+                    </div>
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-850/60 font-mono text-center">
+                      <span className="text-[9px] text-slate-500 block uppercase font-bold">Identified Root Domain</span>
+                      <span className="text-xs text-white font-extrabold">{rootDomain}</span>
+                    </div>
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-850/60 font-mono text-center">
+                      <span className="text-[9px] text-slate-500 block uppercase font-bold">Verification Scope</span>
+                      <span className={`text-[10px] font-extrabold uppercase ${subdomain === "@" ? "text-amber-400" : "text-blue-400"}`}>
+                        {subdomain === "@" ? "Apex/Root Scope" : "Subdomain Scope"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DNS Records Table Section */}
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <h4 className="text-xs font-extrabold text-slate-300 uppercase tracking-widest font-mono">
+                      ⚙️ SECURE HARDWARE CLOUD DNS MAPPING TABLE
+                    </h4>
+                    
+                    {/* Record Filter tabs */}
+                    <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex items-center gap-1 font-mono text-[9px] font-bold">
+                      <button
+                        onClick={() => setDnsTab("all")}
+                        className={`px-2.5 py-1 rounded transition-colors ${dnsTab === "all" ? "bg-teal-900/60 text-teal-400 border border-teal-500/20" : "text-slate-400 hover:text-white"}`}
+                      >
+                        ALL RECORDS ({dnsRecords.length})
+                      </button>
+                      <button
+                        onClick={() => setDnsTab("subdomain")}
+                        className={`px-2.5 py-1 rounded transition-colors ${dnsTab === "subdomain" ? "bg-teal-900/60 text-teal-400 border border-teal-500/20" : "text-slate-400 hover:text-white"}`}
+                      >
+                        SUBDOMAIN CNAME
+                      </button>
+                      <button
+                        onClick={() => setDnsTab("root")}
+                        className={`px-2.5 py-1 rounded transition-colors ${dnsTab === "root" ? "bg-teal-900/60 text-teal-400 border border-teal-500/20" : "text-slate-400 hover:text-white"}`}
+                      >
+                        APEX/ROOT A-RECORDS
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-900/40">
+                    <table className="w-full border-collapse font-mono text-[11px] text-left">
+                      <thead>
+                        <tr className="bg-slate-900 border-b border-slate-800 text-[10px] text-slate-400 uppercase font-black">
+                          <th className="px-4 py-3 text-center w-16">Type</th>
+                          <th className="px-4 py-3 w-40">Host / Name</th>
+                          <th className="px-4 py-3">Value / Target</th>
+                          <th className="px-4 py-3 w-20 text-center">TTL</th>
+                          <th className="px-4 py-3 w-24 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {filteredRecords.map((rec, index) => (
+                          <tr key={index} className="hover:bg-slate-900/40 transition-colors">
+                            <td className="px-4 py-3.5 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                rec.type === "TXT" 
+                                  ? "bg-amber-950/50 text-amber-400 border-amber-500/20" 
+                                  : rec.type === "CNAME"
+                                  ? "bg-blue-950/50 text-blue-400 border-blue-500/20"
+                                  : "bg-teal-950/50 text-teal-400 border-teal-500/20"
+                              }`}>
+                                {rec.type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 font-bold text-slate-200 truncate max-w-xs select-all">
+                              {rec.host}
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-300 leading-normal max-w-sm">
+                              <div className="flex items-center justify-between gap-2 bg-slate-950 px-2 py-1.5 rounded border border-slate-850 shadow-inner">
+                                <span className="font-mono text-slate-300 break-all select-all font-medium">{rec.value}</span>
+                              </div>
+                              <span className="text-[9px] text-slate-500 block mt-1 leading-tight">{rec.purpose}</span>
+                            </td>
+                            <td className="px-4 py-3.5 text-center text-slate-400">
+                              {rec.ttl}
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <button
+                                onClick={() => handleCopy(rec.value, `${rec.type} Record`)}
+                                className="px-2.5 py-1 text-[10px] font-bold uppercase rounded bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-white tracking-wider flex items-center gap-1.5 mx-auto transition-all cursor-pointer"
+                              >
+                                <Copy className="w-3 h-3" />
+                                <span>Copy</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Step-by-Step NIST Audit Compliance checklist guide */}
+                <div className="bg-slate-950/40 border border-slate-850 p-5 rounded-2xl space-y-4">
+                  <h4 className="text-xs font-extrabold text-slate-300 uppercase tracking-widest font-mono flex items-center gap-2">
+                    <span className="inline-block py-0.5 px-2 bg-teal-500/10 text-teal-400 border border-teal-500/20 rounded font-mono text-[10px] font-bold">GUIDE</span>
+                    DEPLOYMENT WORKFLOW PROTOCOL
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                    <div className="space-y-1.5 bg-slate-900/50 p-3.5 rounded-xl border border-slate-800/50">
+                      <div className="font-mono text-[10px] font-extrabold text-amber-400 uppercase flex items-center gap-1">
+                        <span className="h-4 w-4 rounded-full bg-amber-950 border border-amber-500/20 text-center leading-4 inline-block text-[9px]">1</span>
+                        Domain Authentication
+                      </div>
+                      <p className="text-[11px] text-slate-350 leading-relaxed font-sans">
+                        Add the generated cryptographic <strong className="text-amber-300 font-mono">TXT</strong> site-verification record to verify your domain. This blocks server hijacking.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5 bg-slate-900/50 p-3.5 rounded-xl border border-slate-800/50">
+                      <div className="font-mono text-[10px] font-extrabold text-blue-400 uppercase flex items-center gap-1">
+                        <span className="h-4 w-4 rounded-full bg-blue-950 border border-blue-500/20 text-center leading-4 inline-block text-[9px]">2</span>
+                        DNS Propagation
+                      </div>
+                      <p className="text-[11px] text-slate-355 leading-relaxed font-sans">
+                        Enter your anycast <strong className="text-blue-300 font-mono">A/AAAA</strong> records or <strong className="text-blue-300 font-mono">CNAME</strong> config. This propagates across global DNS trees (takes 5-15 mins).
+                      </p>
+                    </div>
+                    <div className="space-y-1.5 bg-slate-900/50 p-3.5 rounded-xl border border-slate-800/50">
+                      <div className="font-mono text-[10px] font-extrabold text-teal-400 uppercase flex items-center gap-1">
+                        <span className="h-4 w-4 rounded-full bg-teal-950 border border-teal-500/20 text-center leading-4 inline-block text-[9px]">3</span>
+                        SSL Handshake
+                      </div>
+                      <p className="text-[11px] text-slate-360 leading-relaxed font-sans">
+                        Once validated, the Google Cloud Run load balancer automatically issues a managed cryptographically secure Let's Encrypt SSL/TLS certificate.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Footer */}
+              <div className="bg-slate-950 p-4 border-t border-slate-800 flex justify-between items-center shrink-0">
+                <div className="text-[10px] text-slate-500 font-mono uppercase font-semibold">
+                  🛠️ DISPLAY CELL PROS FORENSICS NETWORK SYSTEM
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addToast("Running DNS Query Check", "Resolving DNS Records directly from root name servers...", "info");
+                      setTimeout(() => {
+                        addToast("Verification Successful", "Verified site-verification and anycast targets have propagated on us-central1 edge routers!", "success");
+                      }, 2000);
+                    }}
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-500 border border-teal-500 text-white rounded-lg text-xs font-bold font-mono cursor-pointer transition-colors"
+                  >
+                    ⚡ Test DNS Propagation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsDnsModalOpen(false)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-xs font-bold font-mono cursor-pointer transition-colors"
+                  >
+                    Close Console
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -6896,8 +7795,13 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
 
     const timer = setInterval(() => {
       if (currentStep < steps.length) {
-        setAuditProgress(steps[currentStep].p);
-        setAuditLogs(prev => [...prev, steps[currentStep].l]);
+        const step = steps[currentStep];
+        if (step) {
+          const progressVal = step.p;
+          const logText = step.l;
+          setAuditProgress(progressVal);
+          setAuditLogs(prev => [...prev, logText]);
+        }
         currentStep++;
       } else {
         clearInterval(timer);
@@ -10430,6 +11334,51 @@ function AIAssistantWidget({
     </div>
   );
 }
+
+const getThermalPathwayData = (pathway: "backlight" | "charging" | "short_rail") => {
+  switch (pathway) {
+    case "backlight":
+      return {
+        title: "Backlight Subsystem Rework Guide",
+        component: "FL1728 (Filter Fuse / Inductor)",
+        rail: "PP_LCM_BL_ANODE (Backlight Boost Rail)",
+        temperature: "350°C - 385°C",
+        airflow: "45% - 55%",
+        underfill: "No direct underfill; handle proximate flex connectors carefully",
+        actionRequired: "Clean oxidation & micro-solder jumper with 0.02mm enameled copper or solder high-signal filter replacement.",
+        diodeValue: "0.350V - 0.520V (Expected drop)",
+        impedanceMinimum: "> 100 Ω (Expected resistance to ground)",
+        verificationStep: "Set multimeter to Ohm/Diode mode. Measure cathode & anode nodes of FL1728 to ground. If shorted to ground (0 Ω), DO NOT apply heat - locate downstream capacitor short first."
+      };
+    case "charging":
+      return {
+        title: "Tristar Charging Multiplexer Rework Guide",
+        component: "1610A3 (Tristar Charging IC)",
+        rail: "USB_VBUS & PMU_USB_BRICKID",
+        temperature: "375°C - 400°C (BGA Ground plane dissipation)",
+        airflow: "35% - 40% (Low airflow to avoid collateral SMD displacement)",
+        underfill: "Underfill present surrounding IC. Soften at 180°C - 220°C and scrub edges before elevating temperature.",
+        actionRequired: "Preheat logic board, scrape surrounding underfill, elevate to reflow temperature, extract IC using specialized BGA tweezers, clean solder pads with leaded alloy, and align fresh 1610A3 component.",
+        diodeValue: "0.380V - 0.450V (Tristar lines dropdown lookup)",
+        impedanceMinimum: "> 10 kΩ (VBUS lines)",
+        verificationStep: "Force impedance/continuity test on nearby filter lines and PMU inputs. Disconnect any battery source first - Tristar handles direct battery inputs (BAT_VCC) which can short out and delaminate board layers if active voltage is present!"
+      };
+    case "short_rail":
+    default:
+      return {
+        title: "Primary VDD_MAIN Voltage Short Rework Guide",
+        component: "C247_W (Filter Capacitor - Direct Main)",
+        rail: "VDD_MAIN / PP_VCC_MAIN",
+        temperature: "360°C - 390°C (High thermal mass of main ground flood)",
+        airflow: "50% - 60%",
+        underfill: "No direct underfill; check proximity of main PMIC underfill",
+        actionRequired: "Target faulty capacitor C247_W identified via thermal camera. Desolder carefully or crush/pop structure cleanly if board integrity is robust. Do not overheat copper thermal sink pad.",
+        diodeValue: "0.320V - 0.480V (Nominal healthy rail drop)",
+        impedanceMinimum: "> 250 Ω (Line to ground resistance)",
+        verificationStep: "Perform four-wire Kelvin resistance measurement on VDD_MAIN rail to ground. Nominal resistance must be > 250 Ω. If resistance is near 0.1 Ω, localized short exists. Apply thermal heat strictly to component - avoid baking other vital BGA ICs unnecessarily."
+      };
+  }
+};
 
 // --- UTILS ---
 
