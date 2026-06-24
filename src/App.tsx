@@ -125,6 +125,24 @@ const STORE_PRODUCTS = [
   { id: 4, name: "Heavy Duty Fleet Case", price: 49.99, category: "Protection", img: "https://images.unsplash.com/photo-1541892079639-65107954fa0f?auto=format&fit=crop&w=300&q=80" }
 ];
 
+// --- GLOBAL HELPER FUNCTIONS ---
+
+export const getActiveApiKey = async (): Promise<string> => {
+  try {
+    const res = await fetch("/api/gateway/settings");
+    if (res.ok) {
+      const data = await res.json();
+      const activeKeyObj = data.activeKeys?.find((k: any) => k.status === "ACTIVE");
+      if (activeKeyObj) {
+        return activeKeyObj.key;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to fetch active gateway API key:", err);
+  }
+  return "DCP_GATEWAY_MOBILE_APP_KEY_2026";
+};
+
 // --- MAIN MASTER APP COMPONENT ---
 
 export default function App() {
@@ -1774,11 +1792,12 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
   const fetchDynamicQuote = async () => {
     setIsCalculatingQuote(true);
     try {
+      const activeApiKey = await getActiveApiKey();
       const res = await fetch("/api/generate-quote", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+          "x-api-key": activeApiKey
         },
         body: JSON.stringify({
           issueType,
@@ -1815,11 +1834,12 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setIsChatSending(true);
 
     try {
+      const activeApiKey = await getActiveApiKey();
       const res = await fetch("/api/triage", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+          "x-api-key": activeApiKey
         },
         body: JSON.stringify({
           messages: updatedMessages,
@@ -2916,11 +2936,15 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
 
       {/* CORE CONTENT ROUTING AREA */}
       <main className="flex-1 pb-16">
-        {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} onLegalClick={() => setActiveTab("legal")} />}
+        {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} onLegalClick={(tab?: string) => setActiveTab(tab || "legal")} />}
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "csp" && <CspManualView addToast={addToast} />}
         {activeTab === "legal" && <LegalView />}
+        {activeTab === "privacy" && <LegalView initialTab="privacy" />}
+        {activeTab === "tos" && <LegalView initialTab="tos" />}
+        {activeTab === "compliance" && <LegalView initialTab="compliance" />}
+        {activeTab === "eula" && <LegalView initialTab="eula" />}
         {activeTab === "store" && (
           <StoreView 
             storeCart={storeCart} 
@@ -7151,13 +7175,14 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
               </ul>
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4 font-mono">Legal</h3>
+              <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4 font-mono">Legal & Forensic Safety</h3>
               <ul className="space-y-2 text-sm text-slate-400">
                 <li>WA UBI: 605 985 265</li>
                 <li>NAICS: 811210</li>
-                <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); setActiveTab("legal"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Privacy Policy</a></li>
-                <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); setActiveTab("legal"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Liability Waiver</a></li>
-                <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); setActiveTab("legal"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Compliance & Legal Guidelines</a></li>
+                <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); setActiveTab("privacy"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Privacy Policy</a></li>
+                <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); setActiveTab("tos"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Liability Waiver</a></li>
+                <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); setActiveTab("compliance"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Compliance & Security guidelines</a></li>
+                <li><a href="https://www.displaycellpros.com/eula" onClick={(e) => { e.preventDefault(); setActiveTab("eula"); }} className="hover:text-amber-400 transition-colors cursor-pointer">AI Triage EULA</a></li>
               </ul>
             </div>
           </div>
@@ -9013,10 +9038,11 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
           <div>
             <strong className="text-white uppercase tracking-widest font-mono text-xs block mb-3">COMPLIANCE & LEGAL</strong>
             <ul className="space-y-1.5 text-[11px] font-mono">
-              <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Compliance Guidelines</a></li>
-              <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Service Terms & Liability</a></li>
-              <li><a href="https://www.displaycellpros.com/warranty" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Hardware Warranty</a></li>
-              <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); onLegalClick(); }} className="hover:text-blue-400 transition-colors">Data Privacy Policy</a></li>
+              <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); onLegalClick("compliance"); }} className="hover:text-blue-400 transition-colors">Compliance Guidelines</a></li>
+              <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); onLegalClick("tos"); }} className="hover:text-blue-400 transition-colors">Service Terms & Liability</a></li>
+              <li><a href="https://www.displaycellpros.com/warranty" onClick={(e) => { e.preventDefault(); onLegalClick("warranty"); }} className="hover:text-blue-400 transition-colors">Hardware Warranty</a></li>
+              <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); onLegalClick("privacy"); }} className="hover:text-blue-400 transition-colors">Data Privacy Policy</a></li>
+              <li><a href="https://www.displaycellpros.com/eula" onClick={(e) => { e.preventDefault(); onLegalClick("eula"); }} className="hover:text-amber-400 transition-colors">AI Triage EULA</a></li>
             </ul>
           </div>
           <div className="space-y-2">
@@ -9800,11 +9826,12 @@ function CustomerHubView({
     setCustomerMessages(p => [...p, { sender: "user", text: userMsg, timestamp: currentTimeStr }]);
 
     try {
+      const activeApiKey = await getActiveApiKey();
       const res = await fetch("/api/triage", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+          "x-api-key": activeApiKey
         },
         body: JSON.stringify({
           messages: customerMessages
@@ -11328,11 +11355,12 @@ function AIAssistantWidget({
           text: m.text
         }));
       
+      const activeApiKey = await getActiveApiKey();
       const res = await fetch("/api/triage", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-api-key": "DCP_GATEWAY_MOBILE_APP_KEY_2026"
+          "x-api-key": activeApiKey
         },
         body: JSON.stringify({
           messages: [...history, { role: "user", text: userMsgText }],
