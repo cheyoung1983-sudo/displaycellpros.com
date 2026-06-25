@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "public",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -9,10 +9,7 @@
     "rewrites": [
       {
         "source": "**",
-        "run": {
-          "serviceId": "display-cell-pros-diagnostic-hub",
-          "region": "us-west2"
-        }
+        "destination": "/index.html"
       }
     ]
   }
