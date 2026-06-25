@@ -12,24 +12,25 @@ export default defineConfig(() => {
       },
     },
     build: {
+      outDir: 'dist',
       minify: 'esbuild',
       cssMinify: true,
       cssCodeSplit: true,
       assetsInlineLimit: 4096, // Inline assets under 4KB to save HTTP requests
       sourcemap: false, // Disable sourcemaps in production to conserve storage and reduce overhead
+      chunkSizeWarningLimit: 2000,
       rollupOptions: {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              if (id.includes('recharts')) {
-                return 'recharts';
-              }
-              if (id.includes('jspdf')) {
-                return 'jspdf';
-              }
-              if (id.includes('lucide-react')) {
-                return 'lucide-react';
-              }
+              if (id.includes('firebase')) return 'firebase-vendor';
+              if (id.includes('@google/genai')) return 'genai-vendor';
+              if (id.includes('recharts')) return 'recharts-vendor';
+              if (id.includes('jspdf')) return 'jspdf-vendor';
+              if (id.includes('lucide-react')) return 'lucide-vendor';
+              if (id.includes('react-dom') || id.includes('react/')) return 'react-vendor';
+              if (id.includes('motion')) return 'motion-vendor';
+              return 'vendor';
             }
           },
         },

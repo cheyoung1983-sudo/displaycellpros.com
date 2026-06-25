@@ -62,25 +62,30 @@ import {
   FileSpreadsheet,
   Mail,
   Lock,
-  BookOpen
+  BookOpen,
+  ArrowLeft
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
-import { HardwareScanChart } from "./components/HardwareScanChart";
-import { ForensicsView } from "./components/ForensicsView";
 import { TechnicianDashboard } from "./components/TechnicianDashboard";
+
+const HardwareScanChart = React.lazy(() => import("./modules/triage-ai/HardwareScanChart").then(module => ({ default: module.HardwareScanChart })));
 import { CspManualView } from "./components/CspManualView";
 import { LegalView } from "./components/LegalView";
 import { SignaturePad } from "./components/SignaturePad";
 import { FormsIntegrationView } from "./components/FormsIntegrationView";
 import { GmailIntegrationView } from "./components/GmailIntegrationView";
-import { FirebaseAiWorkbenchView } from "./components/FirebaseAiWorkbenchView";
 import { GoogleWorkspaceHubView } from "./components/GoogleWorkspaceHubView";
 import { ApiGatewayDashboard } from "./components/ApiGatewayDashboard";
 import QuoteBuilderDashboard from "./components/QuoteBuilderDashboard";
 import { SmdComponentLibrary } from "./components/SmdComponentLibrary";
 import { BrandLogo } from "./components/BrandLogo";
-import { TelemetryDashboard } from "./components/TelemetryDashboard";
+import { FirebaseUserAuditor } from "./components/FirebaseUserAuditor";
+
+// Dynamically imported Triage AI Modules to reduce initial bundle size
+const ForensicsView = React.lazy(() => import("./modules/triage-ai/ForensicsView").then(module => ({ default: module.ForensicsView })));
+const FirebaseAiWorkbenchView = React.lazy(() => import("./modules/triage-ai/FirebaseAiWorkbenchView").then(module => ({ default: module.FirebaseAiWorkbenchView })));
+const TelemetryDashboard = React.lazy(() => import("./modules/triage-ai/TelemetryDashboard").then(module => ({ default: module.TelemetryDashboard })));
 import { motion, AnimatePresence } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, BarChart, Bar } from "recharts";
 import { jsPDF } from "jspdf";
@@ -153,6 +158,7 @@ export default function App() {
     }
     return "home";
   });
+
   const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [storeCart, setStoreCart] = useState<Record<number, number>>({});
@@ -298,6 +304,63 @@ export default function App() {
   });
   const [profilePhone, setProfilePhone] = useState<string>("(509) 555-0199");
   const [profilePreferredDevice, setProfilePreferredDevice] = useState<string>("iPhone 14 Pro Max");
+
+  // --- FORENSIC BACK STACK NAVIGATION STATES (NAV PRINCIPLES COMPLIANT) ---
+  const [backStack, setBackStack] = useState<string[]>(() => {
+    const start = "home";
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const initialTab = params.get("tab");
+      if (initialTab && initialTab !== start) {
+        return [start, initialTab]; // Deep linking simulates manual navigation with a synthetic back stack!
+      }
+    }
+    return [start];
+  });
+
+  // Synchronize back stack with activeTab
+  useEffect(() => {
+    const start = userRole === "customer" ? "customer-hub" : "home";
+    setBackStack(prev => {
+      if (prev.length === 0) {
+        return [start];
+      }
+      if (prev[prev.length - 1] === activeTab) {
+        return prev;
+      }
+      if (activeTab === start) {
+        return [start];
+      }
+      const index = prev.indexOf(activeTab);
+      if (index !== -1) {
+        return prev.slice(0, index + 1);
+      }
+      return [...prev, activeTab];
+    });
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("tab") !== activeTab) {
+        url.searchParams.set("tab", activeTab);
+        window.history.pushState({ tab: activeTab }, "", url.toString());
+      }
+    }
+  }, [activeTab, userRole]);
+
+  // Synchronize on browser history popstate (Back/Forward button)
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.tab) {
+        setActiveTab(event.state.tab);
+      } else {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get("tab") || (userRole === "customer" ? "customer-hub" : "home");
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [userRole]);
   
   // Custom message state for the Customer Chat Portal
   const [customerMessages, setCustomerMessages] = useState<Array<{ sender: "user" | "company" | "system"; text: string; timestamp: string }>>([
@@ -2936,6 +2999,76 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
 
       {/* CORE CONTENT ROUTING AREA */}
       <main className="flex-1 pb-16">
+        {backStack.length > 1 && (
+          <div className="bg-slate-950/60 border-b border-slate-800/80 backdrop-blur-md sticky top-16 z-30">
+            <div className="max-w-7xl mx-auto px-4 md:px-8 py-3.5 flex items-center justify-between gap-4">
+              {/* Back / Up Action */}
+              <button
+                onClick={() => {
+                  const prevStack = [...backStack];
+                  prevStack.pop();
+                  const prevTab = prevStack[prevStack.length - 1];
+                  setActiveTab(prevTab);
+                }}
+                className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-400 hover:text-teal-300 transition-colors bg-slate-900 border border-teal-500/20 px-3.5 py-2 rounded-lg cursor-pointer group"
+                id="btn-navigate-up"
+              >
+                <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform text-teal-500" />
+                <span>Up / Back</span>
+              </button>
+
+              {/* Forensic Breadcrumb Trace */}
+              <div className="hidden sm:flex items-center gap-2.5 text-xs text-slate-400 font-mono">
+                <span className="text-slate-600 uppercase tracking-widest font-sans font-bold text-[10px]">Trace Sequence:</span>
+                {backStack.map((tab, idx) => {
+                  const isLast = idx === backStack.length - 1;
+                  const label = (() => {
+                    switch (tab) {
+                      case "home": return "Home Workspace";
+                      case "services": return "Diagnostic Services";
+                      case "b2b": return "B2B Fleet Portal";
+                      case "csp": return "CSP Repair Manual";
+                      case "store": return "Supply & Inventory Store";
+                      case "lab": return "Diagnostics Forensic Lab";
+                      case "customer-hub": return "Customer Hub";
+                      case "legal": return "Legal Overview";
+                      case "privacy": return "Data Privacy Policy";
+                      case "tos": return "Service Agreement";
+                      case "compliance": return "Regulatory Compliance";
+                      case "eula": return "AI Triage EULA";
+                      default: return tab;
+                    }
+                  })();
+
+                  return (
+                    <React.Fragment key={tab}>
+                      {idx > 0 && <span className="text-slate-700">/</span>}
+                      {isLast ? (
+                        <span className="text-teal-300 font-bold bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-md">
+                          {label}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setActiveTab(tab)}
+                          className="hover:text-blue-400 hover:underline transition-colors focus:outline-none"
+                        >
+                          {label}
+                        </button>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {/* Status Indicator */}
+              <div className="flex items-center gap-2 bg-slate-900/80 border border-slate-800/80 px-3 py-1.5 rounded-full text-[10px] font-mono text-slate-400">
+                <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse"></span>
+                <span>STATE: ACTIVE_TRAVERSAL</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} onLegalClick={(tab?: string) => setActiveTab(tab || "legal")} />}
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
@@ -2986,8 +3119,8 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
             setDeviceTier={setDeviceTier}
             handleGoogleSignIn={handleGoogleSignIn}
             handleSandboxLogin={() => {}}
-            
             googleAccessToken={googleAccessToken}
+            onSignOut={handleSignOut}
           />
         )}
         
@@ -3222,11 +3355,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                                 style={{ overflow: "hidden" }}
                               >
                                 <div className="p-3 bg-slate-950/40">
-                                  <HardwareScanChart 
-                                    deviceBrand={deviceBrand}
-                                    deviceModel={deviceModel}
-                                    issueType={issueType}
-                                  />
+                                  <React.Suspense fallback={<div className="h-[250px] flex items-center justify-center text-slate-500 font-mono text-xs border border-slate-800 rounded-lg animate-pulse">Establishing Logic Analyzer Connection...</div>}>
+                                    <HardwareScanChart 
+                                      deviceBrand={deviceBrand}
+                                      deviceModel={deviceModel}
+                                      issueType={issueType}
+                                    />
+                                  </React.Suspense>
                                   
                                   {/* QR Code Synchronization Card */}
                                   <div id="diagnostic-qr-sync-panel" className="mt-3 bg-slate-900 border border-slate-800/80 rounded-lg p-3 flex flex-col sm:flex-row items-center gap-3.5 shadow-inner">
@@ -5445,95 +5580,98 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                 )}
 
                 {labTab === "telemetry" && (
-                  <TelemetryDashboard
-                    authUser={authUser}
-                    handleGoogleSignIn={handleGoogleSignIn}
-                    
-                    addToast={addToast}
-                  />
+                  <React.Suspense fallback={<div className="p-8 flex items-center justify-center text-slate-500 font-mono text-xs animate-pulse">Initializing Telemetry Subsystem...</div>}>
+                    <TelemetryDashboard
+                      authUser={authUser}
+                      handleGoogleSignIn={handleGoogleSignIn}
+                      addToast={addToast}
+                    />
+                  </React.Suspense>
                 )}
 
                 {labTab === "forensics" && (
-                  <ForensicsView
-                    forensicDevice={forensicDevice}
-                    setForensicDevice={setForensicDevice}
-                    isForensicScanning={isForensicScanning}
-                    setIsForensicScanning={setIsForensicScanning}
-                    forensicProgress={forensicProgress}
-                    setForensicProgress={setForensicProgress}
-                    forensicLogs={forensicLogs}
-                    setForensicLogs={setForensicLogs}
-                    forensicSOP={forensicSOP}
-                    setForensicSOP={setForensicSOP}
-                    mountedSources={mountedSources}
-                    setMountedSources={setMountedSources}
-                    s2cActivePathway={s2cActivePathway}
-                    setS2cActivePathway={setS2cActivePathway}
-                    s2cActiveCodeTab={s2cActiveCodeTab}
-                    setS2cActiveCodeTab={setS2cActiveCodeTab}
-                    s2cBatteryTemp={s2cBatteryTemp}
-                    setS2cBatteryTemp={setS2cBatteryTemp}
-                    s2cAmmeterReading={s2cAmmeterReading}
-                    setS2cAmmeterReading={setS2cAmmeterReading}
-                    s2cIsSimulatingCheck={s2cIsSimulatingCheck}
-                    setS2cIsSimulatingCheck={setS2cIsSimulatingCheck}
-                    s2cCheckLogs={s2cCheckLogs}
-                    setS2cCheckLogs={setS2cCheckLogs}
-                    s2cCheckStatus={s2cCheckStatus}
-                    setS2cCheckStatus={setS2cCheckStatus}
-                    s2cFeedbackRating={s2cFeedbackRating}
-                    setS2cFeedbackRating={setS2cFeedbackRating}
-                    s2cFeedbackNotes={s2cFeedbackNotes}
-                    setS2cFeedbackNotes={setS2cFeedbackNotes}
-                    s2cFeedbackSubmitted={s2cFeedbackSubmitted}
-                    setS2cFeedbackSubmitted={setS2cFeedbackSubmitted}
-                    s2cIsSubmittingFeedback={s2cIsSubmittingFeedback}
-                    setS2cIsSubmittingFeedback={setS2cIsSubmittingFeedback}
-                    covThreshold={covThreshold}
-                    setCovThreshold={setCovThreshold}
-                    covCustomDraft={covCustomDraft}
-                    setCovCustomDraft={setCovCustomDraft}
-                    isCovRunning={isCovRunning}
-                    setIsCovRunning={setIsCovRunning}
-                    covLogs={covLogs}
-                    setCovLogs={setCovLogs}
-                    covStatus={covStatus}
-                    setCovStatus={setCovStatus}
-                    covAuditResult={covAuditResult}
-                    setCovAuditResult={setCovAuditResult}
-                    isNarrowingActive={isNarrowingActive}
-                    setIsNarrowingActive={setIsNarrowingActive}
-                    narrowingLogs={narrowingLogs}
-                    setNarrowingLogs={setNarrowingLogs}
-                    narrowedAudit={narrowedAudit}
-                    setNarrowedAudit={setNarrowedAudit}
-                    selectedCovTab={selectedCovTab}
-                    setSelectedCovTab={setSelectedCovTab}
-                    telemetrySpecTab={telemetrySpecTab}
-                    setTelemetrySpecTab={setTelemetrySpecTab}
-                    activePlanTier={activePlanTier}
-                    setActivePlanTier={setActivePlanTier}
-                    referenceMode={referenceMode}
-                    setReferenceMode={setReferenceMode}
-                    hallucinationSimulatedKeyword={hallucinationSimulatedKeyword}
-                    setHallucinationSimulatedKeyword={setHallucinationSimulatedKeyword}
-                    imeiInput={imeiInput}
-                    setImeiInput={setImeiInput}
-                    isSecurityScraping={isSecurityScraping}
-                    setIsSecurityScraping={setIsSecurityScraping}
-                    securityCheckResult={securityCheckResult}
-                    setSecurityCheckResult={setSecurityCheckResult}
-                    addToast={addToast}
-                    getPathwayDraft={getPathwayDraft}
-                    runChainOfVerification={runChainOfVerification}
-                    triggerSourceNarrowing={triggerSourceNarrowing}
-                    handleS2cFeedbackSubmit={handleS2cFeedbackSubmit}
-                    copyToClipboard={copyToClipboard}
-                    keywordsList={keywordsList}
-                    calculatedFidelity={calculatedFidelity}
-                    noisePenalty={noisePenalty}
-                    pass={pass}
-                  />
+                  <React.Suspense fallback={<div className="p-8 flex items-center justify-center text-slate-500 font-mono text-xs animate-pulse">Initializing Forensics View...</div>}>
+                    <ForensicsView
+                      forensicDevice={forensicDevice}
+                      setForensicDevice={setForensicDevice}
+                      isForensicScanning={isForensicScanning}
+                      setIsForensicScanning={setIsForensicScanning}
+                      forensicProgress={forensicProgress}
+                      setForensicProgress={setForensicProgress}
+                      forensicLogs={forensicLogs}
+                      setForensicLogs={setForensicLogs}
+                      forensicSOP={forensicSOP}
+                      setForensicSOP={setForensicSOP}
+                      mountedSources={mountedSources}
+                      setMountedSources={setMountedSources}
+                      s2cActivePathway={s2cActivePathway}
+                      setS2cActivePathway={setS2cActivePathway}
+                      s2cActiveCodeTab={s2cActiveCodeTab}
+                      setS2cActiveCodeTab={setS2cActiveCodeTab}
+                      s2cBatteryTemp={s2cBatteryTemp}
+                      setS2cBatteryTemp={setS2cBatteryTemp}
+                      s2cAmmeterReading={s2cAmmeterReading}
+                      setS2cAmmeterReading={setS2cAmmeterReading}
+                      s2cIsSimulatingCheck={s2cIsSimulatingCheck}
+                      setS2cIsSimulatingCheck={setS2cIsSimulatingCheck}
+                      s2cCheckLogs={s2cCheckLogs}
+                      setS2cCheckLogs={setS2cCheckLogs}
+                      s2cCheckStatus={s2cCheckStatus}
+                      setS2cCheckStatus={setS2cCheckStatus}
+                      s2cFeedbackRating={s2cFeedbackRating}
+                      setS2cFeedbackRating={setS2cFeedbackRating}
+                      s2cFeedbackNotes={s2cFeedbackNotes}
+                      setS2cFeedbackNotes={setS2cFeedbackNotes}
+                      s2cFeedbackSubmitted={s2cFeedbackSubmitted}
+                      setS2cFeedbackSubmitted={setS2cFeedbackSubmitted}
+                      s2cIsSubmittingFeedback={s2cIsSubmittingFeedback}
+                      setS2cIsSubmittingFeedback={setS2cIsSubmittingFeedback}
+                      covThreshold={covThreshold}
+                      setCovThreshold={setCovThreshold}
+                      covCustomDraft={covCustomDraft}
+                      setCovCustomDraft={setCovCustomDraft}
+                      isCovRunning={isCovRunning}
+                      setIsCovRunning={setIsCovRunning}
+                      covLogs={covLogs}
+                      setCovLogs={setCovLogs}
+                      covStatus={covStatus}
+                      setCovStatus={setCovStatus}
+                      covAuditResult={covAuditResult}
+                      setCovAuditResult={setCovAuditResult}
+                      isNarrowingActive={isNarrowingActive}
+                      setIsNarrowingActive={setIsNarrowingActive}
+                      narrowingLogs={narrowingLogs}
+                      setNarrowingLogs={setNarrowingLogs}
+                      narrowedAudit={narrowedAudit}
+                      setNarrowedAudit={setNarrowedAudit}
+                      selectedCovTab={selectedCovTab}
+                      setSelectedCovTab={setSelectedCovTab}
+                      telemetrySpecTab={telemetrySpecTab}
+                      setTelemetrySpecTab={setTelemetrySpecTab}
+                      activePlanTier={activePlanTier}
+                      setActivePlanTier={setActivePlanTier}
+                      referenceMode={referenceMode}
+                      setReferenceMode={setReferenceMode}
+                      hallucinationSimulatedKeyword={hallucinationSimulatedKeyword}
+                      setHallucinationSimulatedKeyword={setHallucinationSimulatedKeyword}
+                      imeiInput={imeiInput}
+                      setImeiInput={setImeiInput}
+                      isSecurityScraping={isSecurityScraping}
+                      setIsSecurityScraping={setIsSecurityScraping}
+                      securityCheckResult={securityCheckResult}
+                      setSecurityCheckResult={setSecurityCheckResult}
+                      addToast={addToast}
+                      getPathwayDraft={getPathwayDraft}
+                      runChainOfVerification={runChainOfVerification}
+                      triggerSourceNarrowing={triggerSourceNarrowing}
+                      handleS2cFeedbackSubmit={handleS2cFeedbackSubmit}
+                      copyToClipboard={copyToClipboard}
+                      keywordsList={keywordsList}
+                      calculatedFidelity={calculatedFidelity}
+                      noisePenalty={noisePenalty}
+                      pass={pass}
+                    />
+                  </React.Suspense>
                 )}
 
                 {labTab === "forms" && (
@@ -5559,9 +5697,11 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                 )}
 
                 {labTab === "firebase_ai" && (
-                  <FirebaseAiWorkbenchView
-                    addToast={addToast}
-                  />
+                  <React.Suspense fallback={<div className="p-8 flex items-center justify-center text-slate-500 font-mono text-xs animate-pulse">Initializing Firebase AI Workbench...</div>}>
+                    <FirebaseAiWorkbenchView
+                      addToast={addToast}
+                    />
+                  </React.Suspense>
                 )}
 
                 {labTab === "workspace_hub" && (
@@ -9387,6 +9527,7 @@ interface CustomerHubViewProps {
   handleGoogleSignIn: () => Promise<void>;
   handleSandboxLogin: () => void;
   googleAccessToken: string | null;
+  onSignOut?: () => void;
 }
 
 function CustomerHubView({
@@ -9417,7 +9558,8 @@ function CustomerHubView({
   setDeviceTier,
   handleGoogleSignIn,
   handleSandboxLogin,
-  googleAccessToken
+  googleAccessToken,
+  onSignOut
 }: CustomerHubViewProps) {
   const [activeHubTab, setActiveHubTab] = useState<"profile" | "usb" | "quotes" | "booking" | "chat">("profile");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -10043,6 +10185,14 @@ function CustomerHubView({
                   </button>
                 </div>
               </div>
+
+              {authUser && onSignOut && (
+                <FirebaseUserAuditor 
+                  user={authUser} 
+                  addToast={addToast} 
+                  onLogout={onSignOut} 
+                />
+              )}
             </div>
           )}
 
