@@ -28,7 +28,7 @@ export default defineConfig(() => {
               if (id.includes('recharts')) return 'recharts-vendor';
               if (id.includes('jspdf')) return 'jspdf-vendor';
               if (id.includes('lucide-react')) return 'lucide-vendor';
-              if (id.includes('react-dom') || id.includes('react/')) return 'react-vendor';
+              if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) return 'react-vendor';
               if (id.includes('motion')) return 'motion-vendor';
               return 'vendor';
             }
@@ -41,17 +41,11 @@ export default defineConfig(() => {
       legalComments: 'none', // Exclude licensing text block sizes from compiled assets
     },
     server: {
-      allowedHosts: true,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-    },
-    preview: {
-      host: true,
-      port: 8080,
-      allowedHosts: true,
     },
   };
 });

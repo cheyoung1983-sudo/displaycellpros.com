@@ -21,7 +21,8 @@ import {
   Database, 
   Smartphone, 
   Activity, 
-  Send 
+  Send,
+  Users
 } from "lucide-react";
 import { RepairTicket, HighPriorityLead } from "../types";
 
@@ -59,6 +60,13 @@ interface ChatSpace {
   type?: string;
 }
 
+interface GoogleContact {
+  resourceName: string;
+  names?: Array<{ displayName: string }>;
+  emailAddresses?: Array<{ value: string }>;
+  phoneNumbers?: Array<{ value: string }>;
+}
+
 export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
   accessToken,
   authUser,
@@ -68,9 +76,14 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
   leads,
   onAddNewTicket,
 }) => {
-  const [activeTab, setActiveTab] = useState<"sheets" | "picker" | "calendar" | "docs" | "chat">("sheets");
+  const [activeTab, setActiveTab] = useState<"sheets" | "picker" | "calendar" | "docs" | "chat" | "contacts">("sheets");
   
   const [isLoading, setIsLoading] = useState(false);
+
+  // --- GOOGLE CONTACTS STATE ---
+  const [contacts, setContacts] = useState<GoogleContact[]>([]);
+  const [searchContactQuery, setSearchContactQuery] = useState("");
+
 
   // --- GOOGLE SHEETS STATE ---
   const [sheetsList, setSheetsList] = useState<Array<{ id: string; name: string; url: string; date: string }>>([]);
@@ -215,6 +228,16 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
         if (response.ok) {
           const data = await response.json();
           setCalendarEvents(data.items || []);
+        }
+      } else if (activeTab === "contacts") {
+        const response = await fetch("https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers&pageSize=50", {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setContacts(data.connections || []);
+        } else {
+          throw new Error("Failed to fetch Google Contacts");
         }
       } else if (activeTab === "chat") {
         // Retrieve space memberships
@@ -362,6 +385,12 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
   // --- ACTION: CREATE GOOGLE CALENDAR EVENT ---
   const handleCreateCalendarEvent = async () => {
     if (!eventSummary.trim()) return;
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (eventGuest.trim() && !emailRegex.test(eventGuest.trim())) {
+      window.alert("Please enter a valid email address for the attendee.");
+      return;
+    }
 
     const confirmed = window.confirm(`Schedule diagnostic event on your primary Google Calendar: "${eventSummary}"?`);
     if (!confirmed) return;
@@ -549,7 +578,7 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
       </div>
 
       {/* HORIZONTAL INTEGRATION SELECTOR TABS */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 border-b border-slate-850 pb-4 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 border-b border-slate-850 pb-4 mb-5">
         <button
           onClick={() => setActiveTab("sheets")}
           className={`py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 border ${
@@ -600,7 +629,7 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
 
         <button
           onClick={() => setActiveTab("chat")}
-          className={`py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 col-span-2 md:col-span-1 border ${
+          className={`py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 border ${
             activeTab === "chat" 
               ? "bg-rose-650 text-white border-rose-500/30 font-extrabold shadow" 
               : "bg-slate-950/60 border-slate-850 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
@@ -608,6 +637,18 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
         >
           <MessageSquare className="w-4 h-4 text-rose-400" />
           Google Chat Alerts
+        </button>
+
+        <button
+          onClick={() => setActiveTab("contacts")}
+          className={`py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 border ${
+            activeTab === "contacts" 
+              ? "bg-amber-650 text-white border-amber-500/30 font-extrabold shadow" 
+              : "bg-slate-950/60 border-slate-850 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+          }`}
+        >
+          <Users className="w-4 h-4 text-amber-400" />
+          Client Contacts
         </button>
       </div>
 
@@ -1204,6 +1245,70 @@ export const GoogleWorkspaceHubView: React.FC<GoogleWorkspaceHubViewProps> = ({
                       </p>
                     </div>
                   </div>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: GOOGLE CONTACTS */}
+          {activeTab === "contacts" && (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+              <div className="md:col-span-12 flex flex-col gap-4">
+                <section className="bg-slate-950/40 border border-slate-850 rounded-xl p-4 flex flex-col gap-4 flex-1">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-850 pb-3">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <Users className="w-4 h-4 text-amber-400" />
+                      Google Workspace Contacts
+                    </h3>
+                    <input
+                      type="text"
+                      value={searchContactQuery}
+                      onChange={(e) => setSearchContactQuery(e.target.value)}
+                      placeholder="Search contacts..."
+                      className="px-2 py-1 bg-slate-900 border border-slate-855 rounded text-[10px] text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  {contacts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center text-slate-500 border border-dashed border-slate-850 rounded-lg">
+                      <Users className="w-10 h-10 text-slate-800 mb-2" />
+                      <p className="text-xs font-semibold">No contacts found</p>
+                      <p className="text-[10px] text-slate-650">Your Google Contacts list is empty or unavailable.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto">
+                      {contacts
+                        .filter(c => {
+                          const name = c.names?.[0]?.displayName || "";
+                          const email = c.emailAddresses?.[0]?.value || "";
+                          return name.toLowerCase().includes(searchContactQuery.toLowerCase()) || email.toLowerCase().includes(searchContactQuery.toLowerCase());
+                        })
+                        .map(contact => (
+                        <div key={contact.resourceName} className="p-3 bg-slate-900/60 rounded-xl border border-slate-850 hover:border-amber-500/30 flex flex-col gap-2 transition-all">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
+                              {contact.names?.[0]?.displayName?.charAt(0) || <User className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-white truncate">
+                                {contact.names?.[0]?.displayName || "Unknown Name"}
+                              </p>
+                              {contact.emailAddresses?.[0] && (
+                                <p className="text-[10px] text-slate-400 truncate">
+                                  {contact.emailAddresses[0].value}
+                                </p>
+                              )}
+                              {contact.phoneNumbers?.[0] && (
+                                <p className="text-[10px] text-slate-400 truncate font-mono">
+                                  {contact.phoneNumbers[0].value}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </section>
               </div>
             </div>

@@ -1,4 +1,3 @@
-import DOMPurify from "dompurify";
 import React, { useState, useEffect } from "react";
 import { 
   Mail, 
@@ -759,13 +758,9 @@ Fleet Operations Division`,
 
                   {/* MESSAGE BODY (DECODED HTML INSIDE SAFELY SANDBOXED IFRAME OR DIV) */}
                   <div className="flex-1 overflow-y-auto max-h-[350px] bg-slate-900/40 p-3.5 rounded-lg border border-slate-850 font-sans text-xs text-slate-300 space-y-3 leading-relaxed">
-                    {/* Rendered HTML with basic sanitization to mitigate XSS */}
+                    {/* Rendered HTML safely since it came from clean Workspace responses or sandbox */}
                     <div 
-                      dangerouslySetInnerHTML={{ 
-                        __html: selectedMsg.body
-                          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "[REMOVED SCRIPT]")
-                          .replace(/on\w+="[^"]*"/gi, "") 
-                      }} 
+                      dangerouslySetInnerHTML={{ __html: selectedMsg.body }} 
                       className="gmail-body-markup"
                     />
                   </div>

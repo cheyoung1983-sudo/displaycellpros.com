@@ -26,5 +26,17 @@ googleProvider.addScope("https://www.googleapis.com/auth/drive");
 googleProvider.addScope("https://www.googleapis.com/auth/drive.file");
 googleProvider.addScope("https://www.googleapis.com/auth/drive.metadata.readonly");
 
+// Contacts Scopes
+googleProvider.addScope("https://www.googleapis.com/auth/contacts");
+googleProvider.addScope("https://www.googleapis.com/auth/contacts.other.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/contacts.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/directory.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/user.addresses.read");
+googleProvider.addScope("https://www.googleapis.com/auth/user.birthday.read");
+googleProvider.addScope("https://www.googleapis.com/auth/user.emails.read");
+googleProvider.addScope("https://www.googleapis.com/auth/user.gender.read");
+googleProvider.addScope("https://www.googleapis.com/auth/user.organization.read");
+googleProvider.addScope("https://www.googleapis.com/auth/user.phonenumbers.read");
+
 // Standardized Google Sign-In with popup
 googleProvider.setCustomParameters({ prompt: "select_account" });

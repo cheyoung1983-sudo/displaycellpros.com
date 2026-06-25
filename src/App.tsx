@@ -63,24 +63,25 @@ import {
   Mail,
   Lock,
   BookOpen,
-  ArrowLeft
+  ArrowLeft,
+  Printer
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
-import { TechnicianDashboard } from "./components/TechnicianDashboard";
+const TechnicianDashboard = React.lazy(() => import("./components/TechnicianDashboard").then(module => ({ default: module.TechnicianDashboard })));
 
 const HardwareScanChart = React.lazy(() => import("./modules/triage-ai/HardwareScanChart").then(module => ({ default: module.HardwareScanChart })));
-import { CspManualView } from "./components/CspManualView";
-import { LegalView } from "./components/LegalView";
-import { SignaturePad } from "./components/SignaturePad";
-import { FormsIntegrationView } from "./components/FormsIntegrationView";
-import { GmailIntegrationView } from "./components/GmailIntegrationView";
-import { GoogleWorkspaceHubView } from "./components/GoogleWorkspaceHubView";
-import { ApiGatewayDashboard } from "./components/ApiGatewayDashboard";
-import QuoteBuilderDashboard from "./components/QuoteBuilderDashboard";
-import { SmdComponentLibrary } from "./components/SmdComponentLibrary";
-import { BrandLogo } from "./components/BrandLogo";
-import { FirebaseUserAuditor } from "./components/FirebaseUserAuditor";
+const CspManualView = React.lazy(() => import("./components/CspManualView").then(module => ({ default: module.CspManualView })));
+const LegalView = React.lazy(() => import("./components/LegalView").then(module => ({ default: module.LegalView })));
+const SignaturePad = React.lazy(() => import("./components/SignaturePad").then(module => ({ default: module.SignaturePad })));
+const FormsIntegrationView = React.lazy(() => import("./components/FormsIntegrationView").then(module => ({ default: module.FormsIntegrationView })));
+const GmailIntegrationView = React.lazy(() => import("./components/GmailIntegrationView").then(module => ({ default: module.GmailIntegrationView })));
+const GoogleWorkspaceHubView = React.lazy(() => import("./components/GoogleWorkspaceHubView").then(module => ({ default: module.GoogleWorkspaceHubView })));
+const ApiGatewayDashboard = React.lazy(() => import("./components/ApiGatewayDashboard").then(module => ({ default: module.ApiGatewayDashboard })));
+const QuoteBuilderDashboard = React.lazy(() => import("./components/QuoteBuilderDashboard"));
+const SmdComponentLibrary = React.lazy(() => import("./components/SmdComponentLibrary").then(module => ({ default: module.SmdComponentLibrary })));
+const BrandLogo = React.lazy(() => import("./components/BrandLogo").then(module => ({ default: module.BrandLogo })));
+const FirebaseUserAuditor = React.lazy(() => import("./components/FirebaseUserAuditor").then(module => ({ default: module.FirebaseUserAuditor })));
 
 // Dynamically imported Triage AI Modules to reduce initial bundle size
 const ForensicsView = React.lazy(() => import("./modules/triage-ai/ForensicsView").then(module => ({ default: module.ForensicsView })));
@@ -89,7 +90,7 @@ const TelemetryDashboard = React.lazy(() => import("./modules/triage-ai/Telemetr
 import { motion, AnimatePresence } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, BarChart, Bar } from "recharts";
 import { jsPDF } from "jspdf";
-import { signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
+import { signInWithPopup, signInAnonymously, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, deleteDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "./lib/firebase";
 import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
@@ -235,6 +236,9 @@ export default function App() {
   const [s2cBatteryTemp, setS2cBatteryTemp] = useState<number>(34.2);
   const [s2cAmmeterReading, setS2cAmmeterReading] = useState<number>(1.12);
   const [s2cIsSimulatingCheck, setS2cIsSimulatingCheck] = useState<boolean>(false);
+  const [s2cDeviceInput, setS2cDeviceInput] = useState<string>("");
+  const [s2cSerialInput, setS2cSerialInput] = useState<string>("");
+  const [s2cFormValidated, setS2cFormValidated] = useState<boolean>(false);
   const [s2cCheckLogs, setS2cCheckLogs] = useState<string[]>([]);
   const [s2cCheckStatus, setS2cCheckStatus] = useState<"idle" | "testing" | "passed" | "thermal_halt">("idle");
 
@@ -487,6 +491,73 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
     addToast("Export Successful", "POS logs successfully downloaded as JSON.", "success");
+  };
+
+  const getS2cDiagnosticPayload = () => {
+    return JSON.stringify({
+      "s2c_diagnostic_payload": {
+        "device_make": s2cDeviceInput || "Unknown Device",
+        "device_serial": s2cSerialInput || "Unknown Serial",
+        "tier": "Tier 3 Board solder escalation",
+        "symptom": s2cActivePathway === "backlight" ? "Dark screen, image visible with flashlight" : s2cActivePathway === "charging" ? "BMT charging loop failure" : "Core main voltage line deadlock",
+        "circuit_mapping": {
+          "suspected_rail": s2cActivePathway === "backlight" ? "PP_LCM_BL_ANODE" : s2cActivePathway === "charging" ? "USB_VBUS / PMU_USB_BRICKID" : "VDD_MAIN",
+          "target_component": s2cActivePathway === "backlight" ? "FL1728" : s2cActivePathway === "charging" ? "1610A3 (Tristar IC)" : "C247_W",
+          "expected_behavior": s2cActivePathway === "backlight" ? "Continuity (0.1 - 0.5 Ω)" : s2cActivePathway === "charging" ? "Healthy VBUS voltage drops" : "Resistance < 0.1 Ω direct short"
+        },
+        "reconstruction_specs": {
+          "alloy_requirement": "SAC305 Lead-Free",
+          "rework_temp": "350C - 400C",
+          "jumper_spec": "0.02mm enameled copper"
+        },
+        "verification_status": "PASS (The Paragraph Test)"
+      }
+    }, null, 2);
+  };
+
+  const handleCopyTriageResults = () => {
+    navigator.clipboard.writeText(getS2cDiagnosticPayload());
+    addToast("Copied", "Diagnostic payload copied to clipboard.", "success");
+  };
+
+  const handleDownloadTriageResults = () => {
+    const blob = new Blob([getS2cDiagnosticPayload()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `S2C_Triage_${s2cSerialInput || "Report"}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    addToast("Downloaded", "Triage report successfully downloaded.", "success");
+  };
+
+  const handlePrintTriageResults = () => {
+    const printWindow = window.open('', '', 'height=600,width=800');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Diagnostic Triage Report</title>
+            <style>
+              body { font-family: monospace; padding: 20px; color: #111; line-height: 1.5; }
+              h2 { border-bottom: 2px solid #111; padding-bottom: 10px; }
+              pre { background: #f4f4f4; padding: 15px; border-radius: 5px; }
+            </style>
+          </head>
+          <body>
+            <h2>Display & Cell Pros - Forensic Triage Report</h2>
+            <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+            <pre>${getS2cDiagnosticPayload()}</pre>
+            <script>
+              window.onload = () => { window.print(); window.close(); }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
   };
 
   const handleS2cSimulate = () => {
@@ -784,6 +855,95 @@ export default function App() {
     return () => clearInterval(interval);
   }, [reminderEnabled, workdayEndTime, reminderDismissedForToday]);
 
+  // Periodic background worker effect to auto-save local ticket state to Firestore if authenticated.
+  // This ensures robust offline resilience, syncing locally modified or offline tickets.
+  const lastSyncedTicketsRef = useRef<Record<string, string>>({});
+  const ticketsRef = useRef<RepairTicket[]>([]);
+
+  useEffect(() => {
+    ticketsRef.current = tickets;
+  }, [tickets]);
+
+  useEffect(() => {
+    if (!authUser || !authUser.uid) {
+      return;
+    }
+
+    const runBackgroundSync = async () => {
+      // Skip if device is offline (offline resilience)
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        console.warn("Background Sync Worker: Device is offline. Deferring Cloud Firestore backup.");
+        return;
+      }
+
+      const currentTickets = ticketsRef.current;
+      if (currentTickets.length === 0) return;
+
+      let syncCount = 0;
+      const updatedTicketsList = [...currentTickets];
+      let stateModified = false;
+
+      for (let i = 0; i < updatedTicketsList.length; i++) {
+        const ticket = updatedTicketsList[i];
+        
+        // Ensure ticket belongs to the authenticated user if currently set to "unauthenticated" or empty
+        let updatedTicket = { ...ticket };
+        let ticketChanged = false;
+        
+        if (!updatedTicket.userId || updatedTicket.userId === "unauthenticated" || updatedTicket.userId !== authUser.uid) {
+          updatedTicket.userId = authUser.uid;
+          ticketChanged = true;
+        }
+
+        const ticketStr = JSON.stringify(updatedTicket);
+        const lastSyncedStr = lastSyncedTicketsRef.current[ticket.id];
+
+        // If the ticket has changed since last sync, or has never been synced
+        if (ticketStr !== lastSyncedStr) {
+          try {
+            const { doc, setDoc } = await import("firebase/firestore");
+            const docRef = doc(db, "tickets", ticket.id);
+            await setDoc(docRef, updatedTicket);
+            
+            // Mark as successfully synced
+            lastSyncedTicketsRef.current[ticket.id] = ticketStr;
+            syncCount++;
+
+            if (ticketChanged) {
+              updatedTicketsList[i] = updatedTicket;
+              stateModified = true;
+            }
+          } catch (err: any) {
+            console.error(`Background Sync Worker failed to backup ticket ${ticket.id}:`, err);
+          }
+        }
+      }
+
+      if (stateModified) {
+        // Sync local ticket states with newly updated userIds
+        setTickets(updatedTicketsList);
+        localStorage.setItem("dcp_sandbox_tickets", JSON.stringify(updatedTicketsList));
+      }
+
+      if (syncCount > 0) {
+        addToast(
+          "🛡️ FORENSIC AUTO-SAVE ACTIVE",
+          `NIST Forensic Engine auto-saved ${syncCount} local repair ticket(s) to cloud secure storage.`,
+          "success",
+          5000
+        );
+      }
+    };
+
+    // Run sync immediately on auth state change
+    runBackgroundSync();
+
+    // Setup periodic sync interval (every 20 seconds)
+    const syncInterval = setInterval(runBackgroundSync, 20000);
+
+    return () => clearInterval(syncInterval);
+  }, [authUser?.uid]);
+
   // Washington Preset ZIP Clicker
   const WA_ZIP_PRESETS = [
     { zip: "98101", city: "Seattle", rate: "10.35%" },
@@ -801,8 +961,17 @@ export default function App() {
     handleListNamespaces("displaycellpros", "us-central1");
 
     // Reactive subscription to Firebase Authentication state for session/badge clarity
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setAuthUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        // Fallback to anonymous auth to allow public access while maintaining best practices for Firestore rules
+        try {
+          await signInAnonymously(auth);
+        } catch (error) {
+          console.error("Anonymous sign-in failed:", error);
+        }
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -3072,12 +3241,14 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         {activeTab === "home" && <HomeView onBookClick={() => setIsAiOpen(true)} onLabClick={() => setActiveTab("lab")} onLegalClick={(tab?: string) => setActiveTab(tab || "legal")} />}
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
-        {activeTab === "csp" && <CspManualView addToast={addToast} />}
-        {activeTab === "legal" && <LegalView />}
-        {activeTab === "privacy" && <LegalView initialTab="privacy" />}
-        {activeTab === "tos" && <LegalView initialTab="tos" />}
-        {activeTab === "compliance" && <LegalView initialTab="compliance" />}
-        {activeTab === "eula" && <LegalView initialTab="eula" />}
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500 font-mono">Loading module...</div>}>
+          {activeTab === "csp" && <CspManualView addToast={addToast} />}
+          {activeTab === "legal" && <LegalView />}
+          {activeTab === "privacy" && <LegalView initialTab="privacy" />}
+          {activeTab === "tos" && <LegalView initialTab="tos" />}
+          {activeTab === "compliance" && <LegalView initialTab="compliance" />}
+          {activeTab === "eula" && <LegalView initialTab="eula" />}
+        </React.Suspense>
         {activeTab === "store" && (
           <StoreView 
             storeCart={storeCart} 
@@ -4462,11 +4633,13 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                 {/* 2. POS API SYNC MODULE */}
                 {labTab === "pos" && (
                   <div className="flex flex-col flex-1 gap-6">
-                    <TechnicianDashboard 
-                      tickets={tickets} 
-                      onAddSampleTickets={handleAddSampleTickets}
-                      isLoading={isLoadingLogs}
-                    />
+                    <React.Suspense fallback={<div className="h-32 flex items-center justify-center text-slate-500 font-mono text-xs border border-slate-800 rounded-lg animate-pulse">Loading Technician Dashboard...</div>}>
+                      <TechnicianDashboard 
+                        tickets={tickets} 
+                        onAddSampleTickets={handleAddSampleTickets}
+                        isLoading={isLoadingLogs}
+                      />
+                    </React.Suspense>
                     <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300">
                       <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
                       <div className="flex items-center gap-2">
@@ -5443,6 +5616,13 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                             const name = fd.get("leadCustomer") as string;
                             const phone = fd.get("leadPhone") as string;
                             const model = fd.get("leadModel") as string;
+                            
+                            const phoneRegex = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
+                            if (!phoneRegex.test(phone.trim())) {
+                              addToast("Validation Failed", "Please enter a valid phone number format (e.g. 509-555-1234).", "warning");
+                              return;
+                            }
+                            
                             handleCreateLead(name, phone, model);
                             form.reset();
                           }} className="space-y-4">
@@ -6256,17 +6436,45 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           </div>
 
                           <div>
-                            <button
-                              type="button"
-                              disabled={s2cIsSimulatingCheck}
-                              onClick={handleS2cSimulate}
-                              className={`w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-md font-mono transition-colors flex items-center justify-center gap-2 cursor-pointer ${
-                                s2cIsSimulatingCheck ? "opacity-60 cursor-not-allowed" : ""
-                              }`}
-                            >
-                              <Zap className="w-3.5 h-3.5 text-yellow-300" />
-                              {s2cIsSimulatingCheck ? "Running S2C Circuit Map..." : "Initiate S2C Mapping Triage"}
-                            </button>
+                            {!s2cFormValidated ? (
+                              <div className="space-y-2 mb-3 bg-slate-950/60 p-3 rounded border border-indigo-900/40">
+                                <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block mb-2 font-mono">Mandatory Triage Details</span>
+                                <input
+                                  type="text"
+                                  placeholder="Device Make & Model (e.g. iPhone 13 Pro)"
+                                  value={s2cDeviceInput}
+                                  onChange={(e) => setS2cDeviceInput(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-indigo-600 mb-2"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Serial Number / IMEI"
+                                  value={s2cSerialInput}
+                                  onChange={(e) => setS2cSerialInput(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-indigo-600"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={!s2cDeviceInput.trim() || !s2cSerialInput.trim()}
+                                  onClick={() => setS2cFormValidated(true)}
+                                  className="w-full mt-2 py-1.5 bg-indigo-900/50 hover:bg-indigo-800/80 border border-indigo-700/50 text-indigo-300 text-[10px] font-bold uppercase tracking-wider rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Validate Device Profile
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={s2cIsSimulatingCheck}
+                                onClick={handleS2cSimulate}
+                                className={`w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-md font-mono transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+                                  s2cIsSimulatingCheck ? "opacity-60 cursor-not-allowed" : ""
+                                }`}
+                              >
+                                <Zap className="w-3.5 h-3.5 text-yellow-300" />
+                                {s2cIsSimulatingCheck ? "Running S2C Circuit Map..." : "Initiate S2C Mapping Triage"}
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -6465,6 +6673,26 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                                 <p>&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-pink-400">"verification_status"</span>: <span className="text-emerald-400">"PASS (The Paragraph Test)"</span></p>
                                 <p>&nbsp;&nbsp;&#125;</p>
                                 <p>&#125;</p>
+                              </div>
+                            )}
+
+                            {s2cCheckStatus === "passed" && (
+                              <div className="mt-3 pt-3 border-t border-slate-850 space-y-2">
+                                <div className="text-[10px] text-slate-400 font-mono leading-relaxed mb-2">
+                                  <strong>Interpretation:</strong> The telemetry indicates a {s2cActivePathway === "backlight" ? "backlight circuit failure at FL1728" : s2cActivePathway === "charging" ? "charging controller fault at U2/1610A3" : "main voltage line short at C247_W"}. 
+                                  Proceed with {s2cActivePathway === "backlight" ? "continuity testing" : s2cActivePathway === "charging" ? "diode mode voltage drop checks" : "thermal isolation and resistance checks"} before authorizing component rework.
+                                </div>
+                                <div className="flex gap-2">
+                                  <button onClick={handleCopyTriageResults} className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 py-1.5 rounded flex items-center justify-center gap-1.5 transition-colors">
+                                    <Copy className="w-3 h-3" /> Copy
+                                  </button>
+                                  <button onClick={handleDownloadTriageResults} className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 py-1.5 rounded flex items-center justify-center gap-1.5 transition-colors">
+                                    <Download className="w-3 h-3" /> Save JSON
+                                  </button>
+                                  <button onClick={handlePrintTriageResults} className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 py-1.5 rounded flex items-center justify-center gap-1.5 transition-colors">
+                                    <Printer className="w-3 h-3" /> Print
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -10805,6 +11033,20 @@ function StoreView({
     e.preventDefault();
     if (!checkoutName.trim() || !checkoutPhone.trim()) {
       addToast("Validation Failed", "Please provide a valid client name and contact telephone.", "warning");
+      return;
+    }
+    
+    // Client-side phone validation (basic format: allows numbers, spaces, dashes, parens, optional +)
+    const phoneRegex = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
+    if (!phoneRegex.test(checkoutPhone.trim())) {
+      addToast("Validation Failed", "Please enter a valid phone number format (e.g. 509-555-1234).", "warning");
+      return;
+    }
+
+    // Client-side email validation (if provided)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (checkoutEmail.trim() && !emailRegex.test(checkoutEmail.trim())) {
+      addToast("Validation Failed", "Please enter a valid email address.", "warning");
       return;
     }
 
