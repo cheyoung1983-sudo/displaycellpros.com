@@ -109,6 +109,25 @@
         "userId": { "type": "string" }
       },
       "required": ["id", "timestamp", "level", "message", "source", "userId"]
+    },
+    "RecaptchaAssessment": {
+      "title": "reCAPTCHA Assessment Log",
+      "description": "Stores Google reCAPTCHA Enterprise verification outcomes and telemetry risk scores",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "token": { "type": "string" },
+        "action": { "type": "string" },
+        "score": { "type": "number" },
+        "success": { "type": "boolean" },
+        "isSimulated": { "type": "boolean" },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "token", "action", "score", "success", "createdAt"]
     }
   },
   "firestore": {
@@ -135,6 +154,10 @@
     "pos-logs/{logId}": {
       "schema": "POSLog",
       "description": "Synchronized real-time POS logs coupled with automated repair ticket creation actions"
+    },
+    "recaptcha-assessments/{assessmentId}": {
+      "schema": "RecaptchaAssessment",
+      "description": "Security log of all verified reCAPTCHA Enterprise telemetry assertions"
     }
   }
 }

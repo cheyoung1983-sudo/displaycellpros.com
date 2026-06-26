@@ -68,6 +68,7 @@ import {
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
+import { executeRecaptchaEnterprise, verifyRecaptchaTokenOnServer } from "./lib/recaptcha";
 const TechnicianDashboard = React.lazy(() => import("./components/TechnicianDashboard").then(module => ({ default: module.TechnicianDashboard })));
 
 const HardwareScanChart = React.lazy(() => import("./modules/triage-ai/HardwareScanChart").then(module => ({ default: module.HardwareScanChart })));
@@ -82,6 +83,13 @@ const QuoteBuilderDashboard = React.lazy(() => import("./components/QuoteBuilder
 const SmdComponentLibrary = React.lazy(() => import("./components/SmdComponentLibrary").then(module => ({ default: module.SmdComponentLibrary })));
 const BrandLogo = React.lazy(() => import("./components/BrandLogo").then(module => ({ default: module.BrandLogo })));
 const FirebaseUserAuditor = React.lazy(() => import("./components/FirebaseUserAuditor").then(module => ({ default: module.FirebaseUserAuditor })));
+
+const AboutView = React.lazy(() => import("./components/AboutView").then(module => ({ default: module.AboutView })));
+const ContactView = React.lazy(() => import("./components/ContactView").then(module => ({ default: module.ContactView })));
+const FaqsView = React.lazy(() => import("./components/FaqsView").then(module => ({ default: module.FaqsView })));
+const PricingView = React.lazy(() => import("./components/PricingView").then(module => ({ default: module.PricingView })));
+const TestimonialsView = React.lazy(() => import("./components/TestimonialsView").then(module => ({ default: module.TestimonialsView })));
+const BlogView = React.lazy(() => import("./components/BlogView").then(module => ({ default: module.BlogView })));
 
 // Dynamically imported Triage AI Modules to reduce initial bundle size
 const ForensicsView = React.lazy(() => import("./modules/triage-ai/ForensicsView").then(module => ({ default: module.ForensicsView })));
@@ -405,6 +413,20 @@ export default function App() {
   const [isCorporate, setIsCorporate] = useState<boolean>(true);
   const [companyName, setCompanyName] = useState<string>("AMAZON Fleet");
   const [b2bMessage, setB2bMessage] = useState<string>("VERIFICATION SUCCESS: Corporate customer identified! 20% Fast-Track fleet repair discount & zero-deposit check-in is unlocked.");
+
+  // Global reCAPTCHA Enterprise onSubmit route handler for B2B verify
+  useEffect(() => {
+    (window as any).onSubmit = async (token: string) => {
+      console.log("[reCAPTCHA B2B onSubmit Callback] Token received:", token);
+      await handleVerifyB2BWithToken(token);
+    };
+
+    return () => {
+      if ((window as any).onSubmit) {
+        // delete (window as any).onSubmit;
+      }
+    };
+  }, [emailInput]);
 
   // Washington State Destination Sales Tax Config
   const [zipInput, setZipInput] = useState<string>("98101");
@@ -1318,12 +1340,19 @@ export default function App() {
     }
   }, [activeTab, userRole, authUser]);
 
-  const handleVerifyB2B = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleVerifyB2BWithToken = async (token: string) => {
     if (!emailInput.trim()) return;
     
     setIsVerifyingEmail(true);
     try {
+      const verifyResult = await verifyRecaptchaTokenOnServer(token, "submit");
+      if (!verifyResult.success || verifyResult.score < 0.5) {
+        setB2bMessage(`SECURITY REJECTION: Risk score ${verifyResult.score} indicates probable automated bot.`);
+        addToast("Security Assessment Failed", "Your request was flagged as automated by Google reCAPTCHA.", "error");
+        setIsVerifyingEmail(false);
+        return;
+      }
+
       const res = await fetch("/api/verify-b2b", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1339,6 +1368,22 @@ export default function App() {
       console.error("B2B API lookup failed:", err);
     } finally {
       setIsVerifyingEmail(false);
+    }
+  };
+
+  const handleVerifyB2B = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!emailInput.trim()) return;
+    
+    setIsVerifyingEmail(true);
+    setB2bMessage("Executing grecaptcha.enterprise.execute via S2C protocol...");
+    try {
+      const token = await executeRecaptchaEnterprise("submit");
+      await handleVerifyB2BWithToken(token);
+    } catch (err: any) {
+      console.error("[reCAPTCHA B2B Verify Error]", err);
+      setB2bMessage(`reCAPTCHA Error: ${err.message || err}. Proceeding with offline fallback.`);
+      await handleVerifyB2BWithToken("offline_fallback_b2b_token");
     }
   };
 
@@ -2942,9 +2987,15 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
               {userRole === "technician" ? (
                 <div className="flex items-center space-x-6">
                   <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")}>Home</NavButton>
+                  <NavButton active={activeTab === "about"} onClick={() => setActiveTab("about")}>About</NavButton>
                   <NavButton active={activeTab === "services"} onClick={() => setActiveTab("services")}>Services</NavButton>
+                  <NavButton active={activeTab === "pricing"} onClick={() => setActiveTab("pricing")}>Pricing</NavButton>
                   <NavButton active={activeTab === "b2b"} onClick={() => setActiveTab("b2b")}>B2B Fleet</NavButton>
+                  <NavButton active={activeTab === "testimonials"} onClick={() => setActiveTab("testimonials")}>Testimonials</NavButton>
+                  <NavButton active={activeTab === "blog"} onClick={() => setActiveTab("blog")}>Blog</NavButton>
+                  <NavButton active={activeTab === "faqs"} onClick={() => setActiveTab("faqs")}>FAQs</NavButton>
                   <NavButton active={activeTab === "csp"} onClick={() => setActiveTab("csp")}>CSP Manual</NavButton>
+                  <NavButton active={activeTab === "contact"} onClick={() => setActiveTab("contact")}>Contact</NavButton>
                   
                   {/* Shopping Cart button */}
                   <button
@@ -3098,9 +3149,15 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
               {userRole === "technician" ? (
                 <>
                   <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("about"); setMobileMenuOpen(false); }}>About</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}>Services</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("pricing"); setMobileMenuOpen(false); }}>Pricing</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("b2b"); setMobileMenuOpen(false); }}>B2B Fleet</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("testimonials"); setMobileMenuOpen(false); }}>Testimonials</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("blog"); setMobileMenuOpen(false); }}>Blog</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("faqs"); setMobileMenuOpen(false); }}>FAQs</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("csp"); setMobileMenuOpen(false); }}>CSP Manual</MobileNavButton>
+                  <MobileNavButton onClick={() => { setActiveTab("contact"); setMobileMenuOpen(false); }}>Contact</MobileNavButton>
                   <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>
                     Store {hasLowStockHighTurnover && "⚠️ (LOW STOCK Alert!)"}
                   </MobileNavButton>
@@ -3242,6 +3299,12 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         {activeTab === "services" && <ServicesView onBookClick={() => setIsAiOpen(true)} />}
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
         <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500 font-mono">Loading module...</div>}>
+          {activeTab === "about" && <AboutView />}
+          {activeTab === "contact" && <ContactView />}
+          {activeTab === "faqs" && <FaqsView />}
+          {activeTab === "pricing" && <PricingView />}
+          {activeTab === "testimonials" && <TestimonialsView />}
+          {activeTab === "blog" && <BlogView />}
           {activeTab === "csp" && <CspManualView addToast={addToast} />}
           {activeTab === "legal" && <LegalView />}
           {activeTab === "privacy" && <LegalView initialTab="privacy" />}
@@ -4001,7 +4064,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     <button
                       type="submit"
                       disabled={isVerifyingEmail}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[10px] font-bold font-mono transition-colors"
+                      className="g-recaptcha bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[10px] font-bold font-mono transition-colors"
+                      data-sitekey="6LcgWy4tAAAAABP-_hU5ngbkKF5scb2DnI2_bscl"
+                      data-callback="onSubmit"
+                      data-action="submit"
                     >
                       {isVerifyingEmail ? "..." : "CHECK"}
                     </button>
@@ -9807,6 +9873,24 @@ function CustomerHubView({
   const [bookRemarks, setBookRemarks] = useState("");
   const [isPushingCalendarItem, setIsPushingCalendarItem] = useState(false);
 
+  // reCAPTCHA Telemetry states
+  const [bookingRecaptchaScore, setBookingRecaptchaScore] = useState<number | null>(null);
+  const [bookingRecaptchaLog, setBookingRecaptchaLog] = useState<string>("");
+
+  // Register global reCAPTCHA Enterprise handler for Booking form
+  useEffect(() => {
+    (window as any).onSubmit = async (token: string) => {
+      console.log("[reCAPTCHA Booking onSubmit Callback] Token received:", token);
+      await handleBookAppointmentWithToken(token);
+    };
+
+    return () => {
+      if ((window as any).onSubmit) {
+        // delete (window as any).onSubmit;
+      }
+    };
+  }, [bookDate, bookTime, bookRemarks, customerName, profilePhone, profilePreferredDevice, authUser, googleAccessToken]);
+
   // Requirement: block customer from accessing diagnostic features until they sign up
   if (!authUser) {
     return (
@@ -10084,14 +10168,26 @@ function CustomerHubView({
     }
   };
 
-  const handleBookAppointment = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleBookAppointmentWithToken = async (token: string) => {
     if (!bookDate) {
       addToast("Field Required", "Please choose a desired dispatch date.", "error");
       return;
     }
+
+    setBookingRecaptchaLog("reCAPTCHA Token acquired via g-recaptcha callback. Verifying assessment on laboratory server...");
     
     try {
+      const verifyResult = await verifyRecaptchaTokenOnServer(token, "submit");
+      setBookingRecaptchaScore(verifyResult.score);
+      
+      if (!verifyResult.success || verifyResult.score < 0.5) {
+        setBookingRecaptchaLog(`SECURITY REJECTION: Risk Score ${verifyResult.score} indicates high probability of automated spam.`);
+        addToast("Security Verification Failed", `Google reCAPTCHA flagged this request as suspicious (Score: ${verifyResult.score}).`, "error");
+        return;
+      }
+      
+      setBookingRecaptchaLog(`Assessment score validated: ${verifyResult.score} (LEGITIMATE). Transmitting dispatch booking...`);
+
       const newLead: HighPriorityLead = {
         id: "LEAD-" + Math.floor(100000 + Math.random() * 900000),
         customerName: customerName,
@@ -10117,7 +10213,7 @@ function CustomerHubView({
       setLeads(prev => [newLead, ...prev]);
 
       let calendarSyncSuccess = false;
-      
+
       // --- INTERACTIVE GOOGLE CALENDAR SYNC DISPATCHER ---
       if (googleAccessToken) {
         try {
@@ -10181,6 +10277,25 @@ function CustomerHubView({
       }
     } catch (err: any) {
       addToast("Booking Fault", err.message || "Could not save appointment.", "error");
+    }
+  };
+
+  const handleBookAppointment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bookDate) {
+      addToast("Field Required", "Please choose a desired dispatch date.", "error");
+      return;
+    }
+    
+    setBookingRecaptchaLog("Executing grecaptcha.enterprise.execute via S2C protocol...");
+    try {
+      const token = await executeRecaptchaEnterprise("submit");
+      setBookingRecaptchaLog("reCAPTCHA Token acquired. Submitting token assessment payload to backend...");
+      await handleBookAppointmentWithToken(token);
+    } catch (err: any) {
+      console.error("[reCAPTCHA Booking Submit Error]", err);
+      setBookingRecaptchaLog(`reCAPTCHA Error: ${err.message || err}. Proceeding with offline fallback.`);
+      await handleBookAppointmentWithToken("offline_fallback_booking_token");
     }
   };
 
@@ -10751,9 +10866,66 @@ function CustomerHubView({
                       </div>
                     </div>
 
+                    {/* reCAPTCHA Telemetry feedback log inside booking container */}
+                    {(bookingRecaptchaLog || bookingRecaptchaScore !== null) && (
+                      <div className="bg-slate-950/80 border border-slate-850 rounded-lg p-3.5 space-y-2 font-mono text-[10px] text-left">
+                        <div className="flex items-center justify-between border-b border-slate-900 pb-2">
+                          <div className="flex items-center gap-1.5 text-blue-400 font-bold uppercase tracking-wider">
+                            <ShieldCheck className="w-3.5 h-3.5" /> SECURE DISPATCH STATUS
+                          </div>
+                          <span className="text-slate-500 text-[9px] uppercase font-bold">reCAPTCHA Enterprise v3</span>
+                        </div>
+
+                        {bookingRecaptchaLog && (
+                          <p className="text-slate-400 leading-normal">
+                            <span className="text-blue-400 font-bold animate-pulse">&gt;</span> {bookingRecaptchaLog}
+                          </p>
+                        )}
+
+                        {bookingRecaptchaScore !== null && (
+                          <div className="pt-1.5 flex items-center justify-between gap-3">
+                            <div className="flex-1">
+                              <span className="text-slate-500 uppercase font-bold">Risk Assessment Rating:</span>
+                              <div className="w-full bg-slate-900 rounded-full h-1.5 mt-1 border border-slate-800 overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    bookingRecaptchaScore >= 0.7 
+                                      ? "bg-emerald-500" 
+                                      : bookingRecaptchaScore >= 0.5 
+                                        ? "bg-amber-500" 
+                                        : "bg-rose-500"
+                                  }`}
+                                  style={{ width: `${bookingRecaptchaScore * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className={`text-xs font-black ${
+                                bookingRecaptchaScore >= 0.7 
+                                  ? "text-emerald-400" 
+                                  : bookingRecaptchaScore >= 0.5 
+                                    ? "text-amber-400" 
+                                    : "text-rose-400"
+                              }`}>
+                                {(bookingRecaptchaScore).toFixed(1)} / 1.0
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="text-[10px] text-slate-500 font-mono text-center py-1 flex items-center justify-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+                      Protected by Google Cloud reCAPTCHA Enterprise.
+                    </div>
+
                     <button
                       type="submit"
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs uppercase tracking-widest transition-all shadow-md shadow-blue-500/15"
+                      className="g-recaptcha w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs uppercase tracking-widest transition-all shadow-md shadow-blue-500/15"
+                      data-sitekey="6LcgWy4tAAAAABP-_hU5ngbkKF5scb2DnI2_bscl"
+                      data-callback="onSubmit"
+                      data-action="submit"
                     >
                       Schedule Dispatch Van Booking
                     </button>

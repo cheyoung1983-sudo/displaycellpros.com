@@ -103,6 +103,19 @@ service cloud.firestore {
         && data.userId is string && data.userId.size() <= 128;
     }
 
+    function isValidRecaptchaAssessment(data) {
+      return data.keys().hasAll(['id', 'token', 'action', 'score', 'success', 'createdAt'])
+        && data.keys().size() <= 8
+        && data.id is string && data.id.size() <= 128
+        && data.token is string && data.token.size() <= 4096
+        && data.action is string && data.action.size() <= 64
+        && data.score is number
+        && data.success is bool
+        && data.createdAt is string
+        && (!data.keys().hasAny(['reasons']) || data.reasons is list)
+        && (!data.keys().hasAny(['isSimulated']) || data.isSimulated is bool);
+    }
+
     // --- COLLECTION RULES MATCHES ---
     match /users/{userId} {
       allow get: if isSignedIn() && userId == request.auth.uid;
@@ -192,6 +205,14 @@ service cloud.firestore {
         && incoming().userId == request.auth.uid;
 
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /recaptcha-assessments/{assessmentId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(assessmentId)
+        && isValidRecaptchaAssessment(incoming());
+      allow update, delete: if false;
     }
   }
 }
