@@ -64,7 +64,8 @@ import {
   Lock,
   BookOpen,
   ArrowLeft,
-  Printer
+  Printer,
+  Nfc
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
@@ -393,6 +394,14 @@ export default function App() {
   const [scanStep, setScanStep] = useState<string>("");
   const [scanProgress, setScanProgress] = useState<number>(0);
   const [forceScanTimeout, setForceScanTimeout] = useState<boolean>(false);
+  
+  // NFC-based Trigger state
+  const [isNfcScanning, setIsNfcScanning] = useState<boolean>(false);
+  const [nfcError, setNfcError] = useState<string | null>(null);
+  const [nfcLogs, setNfcLogs] = useState<string[]>([]);
+  const [selectedSimulatedTag, setSelectedSimulatedTag] = useState<string>("iphone15_screen");
+
+  const toastsRef = useRef<any>(null); // used to refer to toasts if needed
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const addToast = (title: string, message: string, type: ToastType = "info", duration = 4000) => {
@@ -416,14 +425,19 @@ export default function App() {
 
   // Global reCAPTCHA Enterprise onSubmit route handler for B2B verify
   useEffect(() => {
-    (window as any).onSubmit = async (token: string) => {
+    const callback = async (token: string) => {
       console.log("[reCAPTCHA B2B onSubmit Callback] Token received:", token);
       await handleVerifyB2BWithToken(token);
     };
+    (window as any).onSubmit = callback;
+    (window as any).onSubmitB2B = callback;
 
     return () => {
-      if ((window as any).onSubmit) {
-        // delete (window as any).onSubmit;
+      if ((window as any).onSubmit === callback) {
+        delete (window as any).onSubmit;
+      }
+      if ((window as any).onSubmitB2B === callback) {
+        delete (window as any).onSubmitB2B;
       }
     };
   }, [emailInput]);
@@ -2303,20 +2317,26 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
   };
 
   // Hardware Scan Trigger
-  const startHardwareScan = () => {
+  const startHardwareScan = (nfcPreset?: any) => {
     setIsScanning(true);
     setHasScanned(false);
     setScanProgress(0);
-    setScanStep("Initializing lab device diagnostic interface...");
+    setScanStep(nfcPreset ? "[NFC Trigger] Initializing lab device diagnostic interface..." : "Initializing lab device diagnostic interface...");
     
     addToast(
-      "Hardware Scan Initiated",
-      "Probing local USB physical bus & hardware controllers...",
+      nfcPreset ? "NFC Hardware Triggered" : "Hardware Scan Initiated",
+      nfcPreset ? `NFC connection detected for ${nfcPreset.brand} ${nfcPreset.model}` : "Probing local USB physical bus & hardware controllers...",
       "info",
       2500
     );
     
-    const steps = [
+    const steps = nfcPreset ? [
+      { progress: 20, text: "[NFC RF Field] Emitting 13.56 MHz carrier frequency..." },
+      { progress: 45, text: "[NFC Security] Authenticating target sector via cryptographic key..." },
+      { progress: 70, text: `[NFC Tag] Recognized UID: ${nfcPreset.serial}. Loading NDEF payload...` },
+      { progress: 90, text: `[NFC Payload] Parsed NDEF record: Device identified as ${nfcPreset.brand} ${nfcPreset.model}.` },
+      { progress: 100, text: "NFC Trigger Complete! Digitizing hardware specs." }
+    ] : [
       { progress: 15, text: "Searching USB physical bus and local hardware controllers..." },
       { progress: 35, text: "Handshaking with connected controller chipset... Success." },
       { progress: 55, text: "Reading hardware serial: DSC-G6TJX0L3V9X..." },
@@ -2357,7 +2377,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
           { brand: "Google", model: "Pixel 7a", tier: "midrange" as const, issue: "button" as const, customer: "David Miller", b2b: false, email: "dmiller@gmail.com", zip: "98402", city: "Tacoma", rate: 0.103 }
         ];
         
-        const selected = scanCandidates[Math.floor(Math.random() * scanCandidates.length)];
+        const selected = nfcPreset || scanCandidates[Math.floor(Math.random() * scanCandidates.length)];
         
         setDeviceBrand(selected.brand);
         setDeviceModel(selected.model);
@@ -2371,7 +2391,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         setTaxRate(selected.rate);
         
         if (selected.b2b) {
-          setCompanyName("AMAZON Fleet");
+          setCompanyName(selected.company || "AMAZON Fleet");
           setB2bMessage("VERIFICATION SUCCESS: Corporate customer identified! 20% Fast-Track fleet repair discount & zero-deposit check-in is unlocked.");
         } else {
           setCompanyName("");
@@ -2385,12 +2405,14 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
           ...prev,
           {
             role: "assistant",
-            text: `[SYSTEM DIAGNOSIS DETECTED via PHYSICAL PROBE]: Verified device ${selected.brand} ${selected.model} (Serial: DSC-G6TJX0L3V9X). Hardware parameters have been successfully digitized and pre-filled in your diagnostics side-panel. Issue identified on: ${selected.issue.toUpperCase()} Assembly.`
+            text: nfcPreset
+              ? `[SYSTEM DIAGNOSIS DETECTED via NFC TELEMETRY TAP]: Verified device ${selected.brand} ${selected.model} (Serial: ${selected.serial || "NFC-TAG-04A2B8"}). Hardware parameters have been successfully digitized via RF Field induction. Issue identified on: ${selected.issue.toUpperCase()} Assembly.`
+              : `[SYSTEM DIAGNOSIS DETECTED via PHYSICAL PROBE]: Verified device ${selected.brand} ${selected.model} (Serial: DSC-G6TJX0L3V9X). Hardware parameters have been successfully digitized and pre-filled in your diagnostics side-panel. Issue identified on: ${selected.issue.toUpperCase()} Assembly.`
           }
         ]);
 
         addToast(
-          "Hardware Scan Successful",
+          nfcPreset ? "NFC Scan Successful" : "Hardware Scan Successful",
           `Successfully connected. Digitized and pre-filled parameters for ${selected.brand} ${selected.model}.`,
           "success",
           5000
@@ -2399,7 +2421,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         setHasScanned(true);
         setIsScanning(false);
       }
-    }, 600);
+    }, nfcPreset ? 400 : 600);
   };
 
   const startPhysicalUsbScan = async () => {
@@ -2516,6 +2538,188 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
 
       setScanStep(isUserCancelled ? "Handshake cancelled by technician" : `Direct USB Fail: ${errorMsg}`);
     }
+  };
+
+  // NFC Hardware scanning and simulation trigger handlers
+  const startNfcScanning = async () => {
+    setIsNfcScanning(true);
+    setNfcError(null);
+    setNfcLogs([
+      "[NFC Reader] Initializing NDEF reader controller...",
+      "[NFC RF Field] Emitting 13.56 MHz carrier frequency...",
+      "[NFC Controller] Standby for NDEF tag RF proximity tap..."
+    ]);
+
+    addToast(
+      "NFC Receiver Active",
+      "Ready to accept hardware NDEF tag tap... (13.56 MHz active carrier)",
+      "info",
+      3000
+    );
+
+    try {
+      if (!("NDEFReader" in window)) {
+        throw new Error("Web NFC API (NDEFReader) is not supported in this browser. Android Chrome or an un-sandboxed secure domain is recommended.");
+      }
+
+      const ndef = new (window as any).NDEFReader();
+      await ndef.scan();
+      
+      setNfcLogs(prev => [
+        ...prev, 
+        "[NFC Controller] Standby for NDEF tag RF proximity tap..."
+      ]);
+
+      ndef.addEventListener("readingerror", () => {
+        setNfcLogs(prev => [
+          ...prev, 
+          "🚨 [NFC Security Error] Decoding failure. Target sector damaged or unreadable."
+        ]);
+        addToast(
+          "NFC Read Error",
+          "Failed to decode the physical NFC tag. Check tag sector alignment.",
+          "error"
+        );
+      });
+
+      ndef.addEventListener("reading", ({ message, serialNumber }: any) => {
+        const uid = serialNumber || "04:D9:A2:4E:5F:8B";
+        setNfcLogs(prev => [
+          ...prev,
+          `[NFC Tag] Proximity match! UID: ${uid}`,
+          `[NFC Payload] Parsed NDEF record. Extracted device parameters.`
+        ]);
+        
+        let decodedPayload: any = null;
+        for (const record of message.records) {
+          if (record.recordType === "text" || record.mediaType === "application/json") {
+            const decoder = new TextDecoder(record.encoding || "utf-8");
+            try {
+              decodedPayload = JSON.parse(decoder.decode(record.data));
+            } catch {
+              decodedPayload = { rawText: decoder.decode(record.data) };
+            }
+          }
+        }
+        
+        const finalPreset = decodedPayload && decodedPayload.brand ? decodedPayload : {
+          brand: "Apple",
+          model: "iPhone 15 Pro Max",
+          tier: "flagship" as const,
+          issue: "screen" as const,
+          customer: "NFC SWAP CLIENT",
+          b2b: true,
+          company: "DHL Express",
+          email: "mobile-fleet@dhl.com",
+          zip: "98101",
+          city: "Seattle",
+          rate: 0.1035,
+          serial: uid
+        };
+        
+        setIsNfcScanning(false);
+        startHardwareScan(finalPreset);
+      });
+
+    } catch (err: any) {
+      console.warn("[NFC Controller Error]", err);
+      const isSandboxError = err.name === "SecurityError" || err.message.includes("sandboxed");
+      const cleanMsg = isSandboxError 
+        ? "Iframe sandbox restrictions blocked NFC access. Click 'Open in New Tab' above to utilize physical hardware."
+        : (err.message || String(err));
+        
+      setNfcError(cleanMsg);
+      setNfcLogs(prev => [
+        ...prev,
+        `🚨 [NFC Controller Error]: ${cleanMsg}`,
+        `[NFC Fallback] Local sandboxing or browser does not support hardware NFC polling. Click 'Simulate NFC Proximity Tap' below to proceed.`
+      ]);
+    }
+  };
+
+  const stopNfcScanning = () => {
+    setIsNfcScanning(false);
+    setNfcLogs(prev => [...prev, "[NFC Controller] Polling halted by technician."]);
+  };
+
+  const simulateNfcTap = (tagType: string) => {
+    setIsNfcScanning(true);
+    setNfcError(null);
+    setNfcLogs([
+      "[NFC Reader] Activating NDEF reader simulation controller...",
+      "[NFC RF Field] Emitting 13.56 MHz carrier frequency...",
+      "[NFC Controller] Standby for simulated NDEF tag tap..."
+    ]);
+
+    addToast(
+      "NFC Field Listening",
+      "Ready for simulated NDEF tag tap... Bring device within 4cm.",
+      "info",
+      2000
+    );
+
+    let preset: any = null;
+    if (tagType === "iphone15_screen") {
+      preset = {
+        brand: "Apple",
+        model: "iPhone 15 Pro Max",
+        tier: "flagship" as const,
+        issue: "screen" as const,
+        customer: "Enterprise NFC Client (Apple)",
+        b2b: true,
+        company: "DHL Express",
+        email: "mobile-fleet@dhl.com",
+        zip: "98101",
+        city: "Seattle",
+        rate: 0.1035,
+        serial: "NFC-TAG-A42B91C"
+      };
+    } else if (tagType === "samsung24_battery") {
+      preset = {
+        brand: "Samsung",
+        model: "Galaxy S24 Ultra",
+        tier: "flagship" as const,
+        issue: "battery" as const,
+        customer: "Fleet NFC Client (Samsung)",
+        b2b: true,
+        company: "MICROSOFT Corp",
+        email: "it-fleet@microsoft.com",
+        zip: "98052",
+        city: "Redmond",
+        rate: 0.101,
+        serial: "NFC-TAG-B82E11F"
+      };
+    } else {
+      preset = {
+        brand: "Google",
+        model: "Pixel 8 Pro",
+        tier: "flagship" as const,
+        issue: "button" as const,
+        customer: "Government NFC Client (Pixel)",
+        b2b: false,
+        email: "miller.david@gsa.gov",
+        zip: "98501",
+        city: "Olympia",
+        rate: 0.094,
+        serial: "NFC-TAG-C91A00D"
+      };
+    }
+
+    setTimeout(() => {
+      setNfcLogs(prev => [...prev, `[NFC Proximity] Tap detected! Target UID: ${preset.serial}`]);
+    }, 400);
+
+    setTimeout(() => {
+      setNfcLogs(prev => [
+        ...prev, 
+        `[NFC Payload] Parsed NDEF Record 'text' payload. Mapped to ${preset.brand} ${preset.model} S2C Node schema successfully.`
+      ]);
+    }, 900);
+
+    setTimeout(() => {
+      setIsNfcScanning(false);
+      startHardwareScan(preset);
+    }, 1400);
   };
 
   const downloadPdfReport = () => {
@@ -3516,6 +3720,94 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                           {forceScanTimeout ? "TIMEOUT" : "NORMAL"}
                         </span>
                       </div>
+
+                      {/* NFC / RF PROXIMITY LINK SUB-SECTION */}
+                      <div className="pt-3.5 border-t border-slate-800/80 space-y-2.5">
+                        <div className="text-[9px] text-slate-400 font-extrabold uppercase font-mono tracking-wider flex items-center justify-between mb-1">
+                          <span>NFC / RF Telemetry Link</span>
+                          <span className="text-teal-400 animate-pulse">13.56 MHz</span>
+                        </div>
+
+                        {!isNfcScanning ? (
+                          <button
+                            type="button"
+                            id="btn-nfc-scan"
+                            disabled={isScanning}
+                            onClick={startNfcScanning}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-teal-700 to-teal-900 hover:from-teal-600 hover:to-teal-800 disabled:opacity-50 text-teal-100 font-bold text-[10.5px] uppercase tracking-wider rounded-lg transition-all border border-teal-600/30 font-mono shadow-[0_0_10px_rgba(0,128,128,0.15)]"
+                          >
+                            <Nfc className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
+                            Activate NFC Reader Hub
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            id="btn-nfc-stop"
+                            onClick={stopNfcScanning}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-950/80 hover:bg-red-900 text-red-200 font-bold text-[10.5px] uppercase tracking-wider rounded-lg transition-all border border-red-800/40 font-mono animate-pulse"
+                          >
+                            <span className="h-1.5 w-1.5 bg-red-500 rounded-full animate-ping"></span>
+                            Halt NFC Polling...
+                          </button>
+                        )}
+
+                        {isNfcScanning && (
+                          <div className="bg-slate-950 border border-teal-500/20 rounded-lg p-2.5 font-mono text-[9px] text-teal-400 space-y-2 relative overflow-hidden">
+                            {/* Animated circular ripple layers */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
+                              <div className="w-20 h-20 border-2 border-teal-400 rounded-full animate-ping"></div>
+                              <div className="w-10 h-10 border border-teal-400 rounded-full animate-ping" style={{ animationDelay: '0.4s' }}></div>
+                            </div>
+                            
+                            <div className="flex items-center justify-between relative z-10">
+                              <span className="font-extrabold uppercase tracking-widest text-teal-300 flex items-center gap-1">
+                                <Nfc className="w-3 h-3 text-teal-400 animate-spin" />
+                                RF INDUCTION ENGAGED
+                              </span>
+                              <span className="text-[#00BFFF] animate-pulse">LISTENING</span>
+                            </div>
+
+                            <div className="max-h-[85px] overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-teal-900 scrollbar-track-transparent text-[8.5px] border-t border-teal-500/10 pt-1.5 text-teal-400/80 leading-relaxed font-mono">
+                              {nfcLogs.map((log, index) => (
+                                <div key={index} className="flex gap-1 items-start">
+                                  <span className="text-teal-500 select-none">&gt;</span>
+                                  <span>{log}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-950/60 border border-slate-850/80 rounded-lg p-2 space-y-2">
+                          <div className="text-[8px] text-slate-400 font-extrabold uppercase font-mono tracking-wider flex items-center justify-between">
+                            <span>Hardware Simulation Tags</span>
+                            <span className="text-[7.5px] text-slate-500 font-normal">Select active tag type</span>
+                          </div>
+                          
+                          <select
+                            id="select-nfc-tag"
+                            value={selectedSimulatedTag}
+                            onChange={(e) => setSelectedSimulatedTag(e.target.value)}
+                            disabled={isScanning || isNfcScanning}
+                            className="w-full text-[9.5px] bg-slate-900 border border-slate-800 text-slate-300 font-mono rounded-md py-1.5 px-2 focus:ring-1 focus:ring-teal-500/50 outline-none"
+                          >
+                            <option value="iphone15_screen">Tag A: iPhone 15 Pro Max (Screen Issue)</option>
+                            <option value="samsung24_battery">Tag B: Galaxy S24 Ultra (Battery Issue)</option>
+                            <option value="pixel8_button">Tag C: Pixel 8 Pro (Port/Button Issue)</option>
+                          </select>
+
+                          <button
+                            type="button"
+                            id="btn-simulate-nfc-tap"
+                            disabled={isScanning}
+                            onClick={() => simulateNfcTap(selectedSimulatedTag)}
+                            className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-300 font-semibold text-[9.5px] uppercase tracking-wide rounded border border-slate-700/50 transition-all font-mono"
+                          >
+                            <Nfc className="w-3 h-3 text-blue-400 animate-pulse" />
+                            Simulate NFC Proximity Tap
+                          </button>
+                        </div>
+                      </div>
                       
                       <div className="bg-slate-950/70 p-2 rounded-lg border border-slate-850/60 space-y-1 text-[8.5px] text-slate-400 font-mono">
                         <div className="text-slate-300 font-extrabold uppercase text-[8px] flex items-center gap-1">
@@ -4066,7 +4358,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       disabled={isVerifyingEmail}
                       className="g-recaptcha bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[10px] font-bold font-mono transition-colors"
                       data-sitekey="6LcgWy4tAAAAABP-_hU5ngbkKF5scb2DnI2_bscl"
-                      data-callback="onSubmit"
+                      data-callback="onSubmitB2B"
                       data-action="submit"
                     >
                       {isVerifyingEmail ? "..." : "CHECK"}
@@ -9879,14 +10171,19 @@ function CustomerHubView({
 
   // Register global reCAPTCHA Enterprise handler for Booking form
   useEffect(() => {
-    (window as any).onSubmit = async (token: string) => {
+    const callback = async (token: string) => {
       console.log("[reCAPTCHA Booking onSubmit Callback] Token received:", token);
       await handleBookAppointmentWithToken(token);
     };
+    (window as any).onSubmit = callback;
+    (window as any).onSubmitBooking = callback;
 
     return () => {
-      if ((window as any).onSubmit) {
-        // delete (window as any).onSubmit;
+      if ((window as any).onSubmit === callback) {
+        delete (window as any).onSubmit;
+      }
+      if ((window as any).onSubmitBooking === callback) {
+        delete (window as any).onSubmitBooking;
       }
     };
   }, [bookDate, bookTime, bookRemarks, customerName, profilePhone, profilePreferredDevice, authUser, googleAccessToken]);
@@ -10924,7 +11221,7 @@ function CustomerHubView({
                       type="submit"
                       className="g-recaptcha w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs uppercase tracking-widest transition-all shadow-md shadow-blue-500/15"
                       data-sitekey="6LcgWy4tAAAAABP-_hU5ngbkKF5scb2DnI2_bscl"
-                      data-callback="onSubmit"
+                      data-callback="onSubmitBooking"
                       data-action="submit"
                     >
                       Schedule Dispatch Van Booking

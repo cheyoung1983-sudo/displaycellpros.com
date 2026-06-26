@@ -18,16 +18,21 @@ export function ContactView() {
     // Pre-inject reCAPTCHA script for optimal low-latency interaction
     injectRecaptchaScript();
 
-    // Register global onSubmit callback specifically for Contact form while mounted
-    (window as any).onSubmit = async (token: string) => {
+    // Register global onSubmit callbacks specifically for Contact form while mounted
+    const callback = async (token: string) => {
       console.log("[reCAPTCHA onSubmit Callback] Contact form token received:", token);
       await handleContactSubmitWithToken(token);
     };
+    (window as any).onSubmit = callback;
+    (window as any).onSubmitContact = callback;
 
     return () => {
       // Clean up global callback on unmount
-      if ((window as any).onSubmit) {
+      if ((window as any).onSubmit === callback) {
         delete (window as any).onSubmit;
+      }
+      if ((window as any).onSubmitContact === callback) {
+        delete (window as any).onSubmitContact;
       }
     };
   }, [name, email, device, message]);
@@ -341,7 +346,7 @@ export function ContactView() {
                   disabled={isSubmitting}
                   className="g-recaptcha w-full py-3.5 bg-[#008080] hover:bg-[#009a9a] disabled:bg-slate-900 text-white font-black rounded-xl text-xs font-mono uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed shadow-[0_0_15px_rgba(0,128,128,0.2)] border border-teal-500/20"
                   data-sitekey="6LcgWy4tAAAAABP-_hU5ngbkKF5scb2DnI2_bscl"
-                  data-callback="onSubmit"
+                  data-callback="onSubmitContact"
                   data-action="submit"
                 >
                   {isSubmitting ? (
