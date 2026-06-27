@@ -3,4 +3,114 @@
   <component name="AutoImportSettings">
     <option name="autoReloadType" value="NONE" />
   </component>
+  <component name="BackgroundAgentGlobalSettings">
+    <option name="selectedModelId" value="auto" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="845a8979-06b6-4f40-8ab2-d2e993593d9d" name="Changes" comment="feat: integrate Firebase AI Logic and rebrand as Display Cell Pros&#10;&#10;Initialize Firebase AI Logic using Gemini 1.5 Flash to power the hardware triage engine, replacing legacy API calls. Implement Firebase App Check with reCAPTCHA Enterprise to secure backend resources and hardware telemetry.&#10;&#10;- **Infrastructure**: Update `firebase.json` with site-specific hosting, custom MIME headers for JS/WASM, and predeploy build scripts.&#10;- **AI/Logic**: Configure `triageModel` in `firebase.ts` with a specialized forensic system instruction for S2C (Symptom-to-Circuit) mapping.&#10;- **Build Optimization**: Refine `vite.config.ts` manual chunking to separate Firebase, GenAI, and visualization vendors.&#10;- **Branding &amp; SEO**: Overhaul `index.html` with JSON-LD structured data and forensic-focused metadata; rename project to `display-cell-pros`.&#10;- **UI/UX**: Update CSS theme with a &quot;Forensic Palette&quot; and adjust component copy to emphasize silicon-layer diagnostics and NIST compliance.&#10;- **Documentation**: Update README and agent skill sets to reflect the new forensic RAG engine architecture and deployment protocols.">
+      <change afterPath="$PROJECT_DIR$/.firebaserc" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-ai-logic-basics/SKILL.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-ai-logic-basics/SKILL.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-ai-logic-basics/references/flutter_setup.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-ai-logic-basics/references/flutter_setup.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-app-hosting-basics/references/configuration.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-app-hosting-basics/references/configuration.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-auth-basics/references/client_sdk_web.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-auth-basics/references/client_sdk_web.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-basics/references/android_setup.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-basics/references/android_setup.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-basics/references/refresh/antigravity.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-basics/references/refresh/antigravity.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-basics/references/setup/antigravity.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-basics/references/setup/antigravity.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/config.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/config.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/operations.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/operations.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/realtime.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/realtime.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/security.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-data-connect/reference/security.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-firestore/SKILL.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-firestore/SKILL.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-firestore/references/enterprise/android_sdk_usage.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-firestore/references/enterprise/android_sdk_usage.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-firestore/references/enterprise/indexes.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-firestore/references/enterprise/indexes.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.agents/skills/firebase-remote-config-basics/SKILL.md" beforeDir="false" afterPath="$PROJECT_DIR$/.agents/skills/firebase-remote-config-basics/SKILL.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/AGENTS.md" beforeDir="false" afterPath="$PROJECT_DIR$/AGENTS.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/firebase.json" beforeDir="false" afterPath="$PROJECT_DIR$/firebase.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/sitemap.xml" beforeDir="false" afterPath="$PROJECT_DIR$/public/sitemap.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/generate-sitemap.js" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/generate-sitemap.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/AboutView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/AboutView.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/index.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/index.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/firebase.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/firebase.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/triage-ai/ForensicsView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/triage-ai/ForensicsView.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/triage-ai/TelemetryDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/triage-ai/TelemetryDashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vite.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/vite.config.ts" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_C:/Users/cheyo/OneDrive/Documents/GitHub/displaycellpros.com" value="3FhOLnS5bahXsdJfEUPveUJc7cI" />
+    </persistenceIdMap>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3FhOLnS5bahXsdJfEUPveUJc7cI" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "copilot.chat.legacySessionMetadata.migrated": "true",
+    "dart.analysis.tool.window.visible": "false",
+    "git-widget-placeholder": "main",
+    "ignore.virus.scanning.warn.message": "true",
+    "kotlin-language-version-configured": "true",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "show.migrate.to.gradle.popup": "false"
+  }
+}]]></component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="845a8979-06b6-4f40-8ab2-d2e993593d9d" name="Changes" comment="" />
+      <created>1782523788902</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1782523788902</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="feat: integrate Firebase AI Logic and rebrand as Display Cell Pros&#10;&#10;Initialize Firebase AI Logic using Gemini 1.5 Flash to power the hardware triage engine, replacing legacy API calls. Implement Firebase App Check with reCAPTCHA Enterprise to secure backend resources and hardware telemetry.&#10;&#10;- **Infrastructure**: Update `firebase.json` with site-specific hosting, custom MIME headers for JS/WASM, and predeploy build scripts.&#10;- **AI/Logic**: Configure `triageModel` in `firebase.ts` with a specialized forensic system instruction for S2C (Symptom-to-Circuit) mapping.&#10;- **Build Optimization**: Refine `vite.config.ts` manual chunking to separate Firebase, GenAI, and visualization vendors.&#10;- **Branding &amp; SEO**: Overhaul `index.html` with JSON-LD structured data and forensic-focused metadata; rename project to `display-cell-pros`.&#10;- **UI/UX**: Update CSS theme with a &quot;Forensic Palette&quot; and adjust component copy to emphasize silicon-layer diagnostics and NIST compliance.&#10;- **Documentation**: Update README and agent skill sets to reflect the new forensic RAG engine architecture and deployment protocols." />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: integrate Firebase AI Logic and rebrand as Display Cell Pros&#10;&#10;Initialize Firebase AI Logic using Gemini 1.5 Flash to power the hardware triage engine, replacing legacy API calls. Implement Firebase App Check with reCAPTCHA Enterprise to secure backend resources and hardware telemetry.&#10;&#10;- **Infrastructure**: Update `firebase.json` with site-specific hosting, custom MIME headers for JS/WASM, and predeploy build scripts.&#10;- **AI/Logic**: Configure `triageModel` in `firebase.ts` with a specialized forensic system instruction for S2C (Symptom-to-Circuit) mapping.&#10;- **Build Optimization**: Refine `vite.config.ts` manual chunking to separate Firebase, GenAI, and visualization vendors.&#10;- **Branding &amp; SEO**: Overhaul `index.html` with JSON-LD structured data and forensic-focused metadata; rename project to `display-cell-pros`.&#10;- **UI/UX**: Update CSS theme with a &quot;Forensic Palette&quot; and adjust component copy to emphasize silicon-layer diagnostics and NIST compliance.&#10;- **Documentation**: Update README and agent skill sets to reflect the new forensic RAG engine architecture and deployment protocols." />
+  </component>
+  <component name="ai.sanakan.fugu.FuguSessionManager">
+    <option name="sessions">
+      <list>
+        <FuguSessionState>
+          <option name="title" value="1" />
+        </FuguSessionState>
+      </list>
+    </option>
+  </component>
 </project>

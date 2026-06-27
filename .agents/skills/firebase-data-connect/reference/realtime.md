@@ -15,7 +15,7 @@ SQL Connect provides three mechanisms for live data updates. Pick the right one
 based on what you're querying:
 
 | Scenario                                                    | Mechanism                | Directive Needed?                   |
-|-------------------------------------------------------------|--------------------------|-------------------------------------|
+| ----------------------------------------------------------- | ------------------------ | ----------------------------------- |
 | Single-entity lookup by ID (e.g., `movie(id: $id)`)         | **Automatic refresh**    | No — SQL Connect handles it         |
 | List query that should update when a specific mutation runs | **Event-driven refresh** | `@refresh(onMutationExecuted: ...)` |
 | Any query that should poll at a fixed interval              | **Time-based polling**   | `@refresh(every: ...)`              |
@@ -135,7 +135,7 @@ The `condition` expression in `onMutationExecuted` has access to two contexts:
 The state of the query being subscribed to.
 
 | Binding              | Description                                                  |
-|----------------------|--------------------------------------------------------------|
+| -------------------- | ------------------------------------------------------------ |
 | `request.variables`  | Variables passed to the query (e.g., `request.variables.id`) |
 | `request.auth.uid`   | UID of the user who subscribed                               |
 | `request.auth.token` | Full auth token claims of the subscriber                     |
@@ -145,7 +145,7 @@ The state of the query being subscribed to.
 The mutation that just executed.
 
 | Binding               | Description                                                           |
-|-----------------------|-----------------------------------------------------------------------|
+| --------------------- | --------------------------------------------------------------------- |
 | `mutation.variables`  | Variables passed to the mutation (e.g., `mutation.variables.movieId`) |
 | `mutation.auth.uid`   | UID of the user who executed the mutation                             |
 | `mutation.auth.token` | Full auth token claims of the mutation executor                       |
@@ -179,10 +179,10 @@ automatically — no `@refresh` directive needed.
   `user(key: { uid: $uid })`
 - If a single-entity mutation modifies that specific entity, all active
   subscribers automatically receive the update. Supported operations include:
-    - `_insert(data)` or `_insertMany(data)`
-    - `_upsert(data)` or `_upsertMany(data)`
-    - `_update(id)` or `_update(key)`
-    - `_delete(id)` or `_delete(key)`
+  - `_insert(data)` or `_insertMany(data)`
+  - `_upsert(data)` or `_upsertMany(data)`
+  - `_update(id)` or `_update(key)`
+  - `_delete(id)` or `_delete(key)`
 - **Note**: Bulk operations like `_updateMany` and `_deleteMany` do **not**
   trigger automatic entity refreshes.
 

@@ -6,14 +6,14 @@ Flutter applications.
 > [!IMPORTANT] **Foundational Workflows & CLI-First Approach:**
 >
 > 1. **Review Foundation:** Before implementing platform-specific code, ALWAYS
-     > review the foundational `firebase-basics` skill to ensure familiarity with
-     > core workflows.
+>    review the foundational `firebase-basics` skill to ensure familiarity with
+>    core workflows.
 > 1. **Backend Provisioning via CLI:** Use the Firebase CLI for backend setup.
-     > Running `npx firebase-tools init ailogic` is MANDATORY to provision the
-     > service. `flutterfire configure` does NOT enable the AI service and will
-     > result in `PERMISSION_DENIED` if skipped.
+>    Running `npx firebase-tools init ailogic` is MANDATORY to provision the
+>    service. `flutterfire configure` does NOT enable the AI service and will
+>    result in `PERMISSION_DENIED` if skipped.
 > 1. **Client Configuration:** Use `flutterfire configure` strictly for
-     > generating `firebase_options.dart`. Avoid manual Console configuration.
+>    generating `firebase_options.dart`. Avoid manual Console configuration.
 
 > [!NOTE] `firebase_vertexai` has been replaced by `firebase_ai`. Always use
 > `firebase_ai` for new projects.

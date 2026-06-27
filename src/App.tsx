@@ -10,7 +10,6 @@ import {
   MessageSquare,
   ShoppingCart,
   Briefcase,
-  Wrench,
   Send,
   X,
   CheckCircle2,
@@ -101,7 +100,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { jsPDF } from "jspdf";
 import { signInWithPopup, signInAnonymously, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, deleteDoc } from "firebase/firestore";
-import { auth, db, googleProvider } from "./lib/firebase";
+import { auth, db, googleProvider, triageModel } from "./lib/firebase";
 import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
 
 // --- DATA MODELS ---
@@ -109,26 +108,26 @@ import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
 const SERVICES = [
   {
     tier: "Tier 1",
-    title: "Core Power & Port Restoration",
+    title: "Power Rail & Port Forensic Restoration",
     price: "$69 - $97",
-    desc: "Fixed-price minor repairs focusing on power delivery.",
-    examples: "Batteries, Charging Ports",
+    desc: "Precision restoration of primary power delivery nodes and charging telemetry interfaces.",
+    examples: "Battery Cells, USB-C/Lightning Ports",
     icon: <Battery className="w-8 h-8 text-blue-400" />
   },
   {
     tier: "Tier 2",
-    title: "Elite Display Renewal",
+    title: "Elite Display & Digitizer Renewal",
     price: "From $139",
-    desc: "Fixed-price major repairs for cracked or failing screens.",
-    examples: "iPhone 12-15, Galaxy S Series Screens",
+    desc: "Silicon-layer verification and renewal of high-fidelity OLED and digitizer assemblies.",
+    examples: "iPhone 12-15, Galaxy S Series Displays",
     icon: <Smartphone className="w-8 h-8 text-blue-400" />
   },
   {
     tier: "Tier 3",
-    title: "Specialized Diagnostics",
+    title: "Silicon-Layer Board Forensics",
     price: "Custom Quote",
-    desc: "Motherboard surgery, data recovery, and micro-soldering.",
-    examples: "Liquid Damage, Board-Level Shorts, Cameras",
+    desc: "Advanced S2C mapping, motherboard microsurgery, and NIST-compliant data recovery.",
+    examples: "Liquid Forensics, Board-Level Shorts, IC Re-balling",
     icon: <Cpu className="w-8 h-8 text-blue-400" />
   }
 ];
@@ -2125,46 +2124,35 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setIsChatSending(true);
 
     try {
-      const activeApiKey = await getActiveApiKey();
-      const res = await fetch("/api/triage", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-api-key": activeApiKey
-        },
-        body: JSON.stringify({
-          messages: updatedMessages,
-          deviceDetails: {
-            brand: deviceBrand,
-            model: deviceModel,
-            tier: deviceTier
-          }
-        })
+      const chat = triageModel.startChat({
+        history: messages.map(m => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.text }]
+        }))
       });
-      if (res.ok) {
-        const data = await res.json();
+
+      const result = await chat.sendMessage(textToSend);
+      const response = await result.response;
+      const data = JSON.parse(response.text());
+
+      if (data.text) {
         setMessages(prev => [...prev, { role: "assistant", text: data.text }]);
-        if (data.groundingSources && Array.isArray(data.groundingSources)) {
-          setGroundingSources(data.groundingSources);
-        } else {
-          setGroundingSources([]);
-        }
+      }
+
+      setGroundingSources([]);
+
+      if (data.detectedSpecs) {
+        const specs = data.detectedSpecs;
+        if (specs.brand) setDeviceBrand(specs.brand);
+        if (specs.model) setDeviceModel(specs.model);
+        if (specs.tier) setDeviceTier(specs.tier);
+        if (specs.issue) setIssueType(specs.issue);
         
-        if (data.detectedSpecs) {
-          const specs = data.detectedSpecs;
-          if (specs.brand) setDeviceBrand(specs.brand);
-          if (specs.model) setDeviceModel(specs.model);
-          if (specs.tier) setDeviceTier(specs.tier);
-          if (specs.issue) setIssueType(specs.issue);
-          
-          addToast(
-            "Triage Engine Live-Sync",
-            `State Updated: Brand to [${specs.brand || "Undetected"}], Model to [${specs.model || "Undetected"}], Damage Routed to [${specs.pricingTier || specs.issue || "Undetected"}].`,
-            "success"
-          );
-        }
-      } else {
-        throw new Error("Chat request failed");
+        addToast(
+          "Triage Engine Live-Sync",
+          `State Updated: Brand to [${specs.brand || "Undetected"}], Model to [${specs.model || "Undetected"}], Damage Routed to [${specs.issue || "Undetected"}].`,
+          "success"
+        );
       }
     } catch (err: any) {
       console.error("Chat triage error:", err);
@@ -4310,7 +4298,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     >
                       <div className="flex items-center gap-2">
                         <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        <span>[NIST Compliance] (Gateway)</span>
+                        <span>[NIST Audit Compliance]</span>
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-emerald-950 text-emerald-300 border border-emerald-850/40 font-bold">GW</span>
                     </button>
@@ -8864,14 +8852,14 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
               </div>
               
               <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight mb-6 leading-tight">
-                Spokane's Premium <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-400 to-indigo-400">
-                  Driveway Repair Lab
+                Spokane's Elite <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-blue-400 to-cyan-400">
+                  Silicon-Layer Forensic Lab
                 </span>
               </h1>
               
               <p className="text-base sm:text-lg text-slate-350 mb-8 leading-relaxed max-w-xl">
-                No waiting rooms. No device separation anxiety. We dispatch military-grade diagnostic equipment and master-level micro-soldering solutions straight to your office or driveway.
+                Zero separation anxiety. We dispatch military-grade S2C mapping equipment and silicon-layer forensic solutions straight to your high-security site or driveway.
               </p>
 
               {/* Badges */}
@@ -10035,7 +10023,7 @@ function B2BView({ onBookClick }) {
             </div>
             <h2 className="text-3xl lg:text-4xl font-extrabold text-white mb-6">Corporate IT Fleet Maintenance</h2>
             <p className="text-slate-300 mb-8 leading-relaxed text-base">
-              When a device breaks, standard retail repair shops require your employees to leave their deployment area, resulting in significant administrative downtime. D&CP brings the lab to your job site.
+              When a device fails, standard retail depots require your employees to leave their deployment area, resulting in significant administrative downtime. Display Cell Pros dispatches a high-security forensic lab directly to your job site.
             </p>
             
             <ul className="space-y-5 mb-10 text-slate-300 text-sm">
@@ -12208,40 +12196,28 @@ function AIAssistantWidget({
 
     try {
       // Structure content history from widget messages
-      // Translate sender 'user'/'ai' to role user/assistant
+      // Translate sender 'user'/'ai' to role user/model
       const history = messages
         .filter(m => m.sender !== "system")
         .map(m => ({
-          role: m.sender === "ai" ? "assistant" as const : "user" as const,
-          text: m.text
+          role: m.sender === "ai" ? "model" as const : "user" as const,
+          parts: [{ text: m.text }]
         }));
-      
-      const activeApiKey = await getActiveApiKey();
-      const res = await fetch("/api/triage", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-api-key": activeApiKey
-        },
-        body: JSON.stringify({
-          messages: [...history, { role: "user", text: userMsgText }],
-          deviceDetails: {
-            brand: deviceBrand,
-            model: deviceModel,
-            tier: deviceTier,
-            issue: issueType
-          }
-        })
+
+      const chat = triageModel.startChat({
+        history: history
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const result = await chat.sendMessage(userMsgText);
+      const response = await result.response;
+      const data = JSON.parse(response.text());
+
+      if (data.text) {
         setMessages(prev => [...prev, { sender: "ai", text: data.text }]);
-        if (data.detectedSpecs && onUpdateSpecs) {
-          onUpdateSpecs(data.detectedSpecs);
-        }
-      } else {
-        throw new Error("Triage API error response");
+      }
+
+      if (data.detectedSpecs && onUpdateSpecs) {
+        onUpdateSpecs(data.detectedSpecs);
       }
     } catch (err) {
       console.error("Widget API triage error:", err);

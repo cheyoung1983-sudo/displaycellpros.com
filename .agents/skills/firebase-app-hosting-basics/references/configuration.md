@@ -42,8 +42,8 @@ Controls the resources allocated to the Cloud Run service that serves your app.
 ### Resource Constraints
 
 - **CPU vs Memory**: Higher memory often requires higher CPU.
-    - > 4GiB RAM -> Needs >= 2 vCPU
-    - > 8GiB RAM -> Needs >= 4 vCPU
+  - > 4GiB RAM -> Needs >= 2 vCPU
+  - > 8GiB RAM -> Needs >= 4 vCPU
 
 ## `env` (Environment Variables)
 
@@ -54,6 +54,6 @@ Defines environment variables available during build and/or runtime.
 - `secret`: The name of a secret in Cloud Secret Manager. use
   `npx -y firebase-tools@latest apphosting:secrets:set` to create these.
 - `availability`: Where the variable is needed.
-    - `BUILD`: Available during the `npm run build` process.
-    - `RUNTIME`: Available when the app is serving requests.
-    - Defaults to both if not specified.
+  - `BUILD`: Available during the `npm run build` process.
+  - `RUNTIME`: Available when the app is serving requests.
+  - Defaults to both if not specified.

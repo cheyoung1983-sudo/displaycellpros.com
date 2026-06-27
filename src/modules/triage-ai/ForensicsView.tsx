@@ -1727,7 +1727,7 @@ double tempReading = IOPSGetTemperatureReading(sources[0]);
                     </thead>
                     <tbody className="divide-y divide-slate-900 text-slate-300">
                       <tr>
-                        <td className="p-2 font-bold text-white">Level 1: Modular</td>
+                        <td className="p-2 font-bold text-white">Level 1: Peripheral Exchange</td>
                         <td className="p-2">No thermal (Pure Mechanical)</td>
                         <td className="p-2">Room (Unheated)</td>
                         <td className="p-2">No thermal tip (Manual)</td>

@@ -44,7 +44,7 @@ create index entries with duplicate values.
 ## Query Support Examples
 
 | Query Type                                                 | Index Required                       |
-|:-----------------------------------------------------------|:-------------------------------------|
+| :--------------------------------------------------------- | :----------------------------------- |
 | **Simple Equality**<br>\`where("a",                        | Single-Field Index on field `a`      |
 | : "==", 1)\` : :                                           |                                      |
 | **Simple Range/Sort**<br>\`where("a",                      | Single-Field Index on field `a`      |

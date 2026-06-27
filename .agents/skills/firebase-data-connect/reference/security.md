@@ -23,7 +23,7 @@ query AdminOnly @auth(expr: "auth.token.admin == true") { ... }
 ```
 
 | Argument         | Description                                        |
-|------------------|----------------------------------------------------|
+| ---------------- | -------------------------------------------------- |
 | `level`          | Preset access level                                |
 | `expr`           | CEL expression (alternative to level)              |
 | `insecureReason` | Suppress deploy warning for PUBLIC/unfiltered USER |
@@ -33,7 +33,7 @@ ______________________________________________________________________
 ## Access Levels
 
 | Level                 | Who Can Access                               | CEL Equivalent                                                           |
-|-----------------------|----------------------------------------------|--------------------------------------------------------------------------|
+| --------------------- | -------------------------------------------- | ------------------------------------------------------------------------ |
 | `PUBLIC`              | Anyone, authenticated or not                 | `true`                                                                   |
 | `USER_ANON`           | Any authenticated user (including anonymous) | `auth.uid != nil`                                                        |
 | `USER`                | Authenticated users (excludes anonymous)     | `auth.uid != nil && auth.token.firebase.sign_in_provider != 'anonymous'` |
@@ -50,7 +50,7 @@ ______________________________________________________________________
 ### Available Bindings
 
 | Binding                 | Description                                |
-|-------------------------|--------------------------------------------|
+| ----------------------- | ------------------------------------------ |
 | `auth.uid`              | Current user's Firebase UID                |
 | `auth.token`            | Auth token claims (see below)              |
 | `vars`                  | Operation variables (e.g., `vars.movieId`) |
@@ -60,7 +60,7 @@ ______________________________________________________________________
 ### auth.token Fields
 
 | Field                       | Description                                 |
-|-----------------------------|---------------------------------------------|
+| --------------------------- | ------------------------------------------- |
 | `email`                     | User's email address                        |
 | `email_verified`            | Boolean: email verified                     |
 | `phone_number`              | User's phone                                |
@@ -124,7 +124,7 @@ Validates a field value; aborts if check fails.
 ```
 
 | Argument   | Description                                  |
-|------------|----------------------------------------------|
+| ---------- | -------------------------------------------- |
 | `expr`     | CEL expression; `this` = current field value |
 | `message`  | Error message if check fails                 |
 | `optional` | If `true`, pass when field not present       |

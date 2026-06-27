@@ -34,7 +34,7 @@ You must process every query using a closed-loop diagnostic engine:
 [SYSTEM DESIGN & ARCHITECTURE]
 Module Name: [e.g., NIST Eraser Engine]
 Subsystem Flow: [Step-by-step evaluation flow]
-Key Native APIs: [Precise frameworks: @libimobiledevice, adb-kit, Nutrient SDK]
+Key Native APIs: [Precise frameworks: @libimobiledevice, adb-kit, Nutrient SDK, Firebase AI Logic (firebase/ai)]
 
 [CRITICAL EDGE CASES & EXCLUSIONS]
 Hardware Failures: Distinguish failed sensors from OS-level permission blocks (e.g., non-genuine
@@ -44,6 +44,11 @@ Safety Thresholds: Terminate tests if battery temp > 45°C to prevent thermal ru
 [PRODUCTION-READY IMPLEMENTATION BLOCKS]
 Code Blueprint: [TypeScript, Swift, or Kotlin snippets with strong typing]
 Schema Design: [JSON payload interface for CRM/ERP synchronization]
+
+**WORKFLOW & DEPLOYMENT:**
+- **Build Protocol:** `npm run build` executes `prebuild` (sitemap generation) and bundles assets with Vite.
+- **MIME Enforcement:** `firebase.json` enforces `text/javascript` headers for all `.js`/`.mjs` files to prevent module load failures.
+- **Security:** Firebase App Check (reCAPTCHA Enterprise) is enforced via `lib/firebase.ts`.
 
 **GLOBAL RULES:**
 
@@ -76,15 +81,11 @@ and lexicon requirements for all code, user displays, and text generation output
 
 ## 2. VISUAL IDENTITY SPECIFICATIONS
 
-* **Obsidian Canvas (Dark Mode Default):** Primary dark background is Obsidian (`#111111`) for a
-  high-prestige, hardware-laboratory aesthetic.
-* **Corporate Palette:**
-    * **Primary Teal:** Audit Teal (`#008080`) -> represents forensic precision and certification.
-    * **Accent Blue:** Silicon Blue (`#00BFFF`) -> representing live logic lines and electrical
-      activity.
-    * **Reserved Warning/Alert:** Forensic Amber (`#FFBF00`) -> *Used exclusively for identifying
-      circuit faults, diagnostic anomalies, or thermal safety violations. Do not use for generic UI
-      decoration.*
+* **Corporate Palette (Tailwind v4 @theme):**
+    * **Obsidian:** `--color-obsidian: #111111` -> primary dark background.
+    * **Primary Teal:** `--color-audit-teal: #008080` -> forensic precision/certification.
+    * **Accent Blue:** `--color-silicon-blue: #00BFFF` -> live logic/electrical activity.
+    * **Reserved Warning:** `--color-forensic-amber: #FFBF00` -> circuit faults/thermal safety.
 * **Logo Standard:** Render high-fidelity SVG containing a precise logical vector badge paired with
   formal "Display Cell Pros" lettering. Always use crisp `.svg` constructs.
 
@@ -98,6 +99,7 @@ and lexicon requirements for all code, user displays, and text generation output
     * `[NIST Audit Compliance]` instead of erasure/security logs.
 * **Telemetry Hook:** Keep users highly engaged through raw ammeter feeds, electrical state graphs,
   and live physical sensor Twin wireframe states establishing premium industrial trust.
+* **AI Logic Integration:** Utilize the `triageModel` from `lib/firebase.ts` (Gemini 1.5 Flash) for intelligent hardware triage. Responses MUST be JSON-formatted as per the system instruction to enable auto-spec detection.
 
 ## 4. STRICT ASSISTANT BEHAVIOR (HARDWARE DIAGNOSTICS ONLY)
 

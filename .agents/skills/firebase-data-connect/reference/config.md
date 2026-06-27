@@ -48,7 +48,7 @@ connectorDirs: ["./connector"]
 ```
 
 | Field               | Description                                                                              |
-|---------------------|------------------------------------------------------------------------------------------|
+| ------------------- | ---------------------------------------------------------------------------------------- |
 | `specVersion`       | Always `"v1"`                                                                            |
 | `serviceId`         | Unique identifier for the service                                                        |
 | `location`          | GCP region (us-central1, us-east4, europe-west1, etc.)                                   |
@@ -90,7 +90,7 @@ generate:
 ### SDK Generation Options
 
 | SDK             | Fields                                 |
-|-----------------|----------------------------------------|
+| --------------- | -------------------------------------- |
 | `javascriptSdk` | `outputDir`, `package`                 |
 | `kotlinSdk`     | `outputDir`, `package`                 |
 | `swiftSdk`      | `outputDir`                            |

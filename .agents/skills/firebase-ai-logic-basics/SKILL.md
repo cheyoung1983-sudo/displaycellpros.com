@@ -146,7 +146,7 @@ without deploying new client code. See
 ## Initialization Code References
 
 | Language, Framework, Platform | Gemini API provider                  | Context URL                                     |
-|:------------------------------|:-------------------------------------|:------------------------------------------------|
+| :---------------------------- | :----------------------------------- | :---------------------------------------------- |
 | Web Modular API               | Gemini Developer API (Developer API) | firebase://docs/ai-logic/get-started            |
 | iOS (Swift)                   | Gemini Developer API                 | [ios_setup.md](references/ios_setup.md)         |
 | Flutter (Dart)                | Gemini Developer API                 | [flutter_setup.md](references/flutter_setup.md) |

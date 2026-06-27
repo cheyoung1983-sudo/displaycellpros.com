@@ -4,9 +4,7 @@ ______________________________________________________________________
 
 ## 📋 Prerequisites
 
-## Before running these commands, ensure you are authenticated:
-`npx -y firebase-tools@latest login` (or
-`npx -y firebase-tools@latest login --no-localhost` on remote servers)
+## Before running these commands, ensure you are authenticated: `npx -y firebase-tools@latest login` (or `npx -y firebase-tools@latest login --no-localhost` on remote servers)
 
 ## 0. Create an Android application
 
@@ -30,9 +28,7 @@ display name is passed as a positional argument at the end:
 
 ### 3. Download `google-services.json`
 
-## Fetch the configuration file using the App ID (which is printed in the output of the previous command):
-`npx -y firebase-tools@latest apps:sdkconfig ANDROID <APP_ID> --project <PROJECT_ID>` *Example
-output extraction to file:* ` # (Output must be saved as app/google-services.json)`
+## Fetch the configuration file using the App ID (which is printed in the output of the previous command): `npx -y firebase-tools@latest apps:sdkconfig ANDROID <APP_ID> --project <PROJECT_ID>` *Example output extraction to file:* ` # (Output must be saved as app/google-services.json)`
 
 ## ✅ Verification Plan
 

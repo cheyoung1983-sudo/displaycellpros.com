@@ -37,8 +37,8 @@ functionality.
 1. **Locate `mcp_config.json`**: Find the configuration file for your operating
    system:
 
-    - macOS / Linux: `~/.gemini/antigravity/mcp_config.json`
-    - Windows: `%USERPROFILE%\\.gemini\\antigravity\\mcp_config.json`
+   - macOS / Linux: `~/.gemini/antigravity/mcp_config.json`
+   - Windows: `%USERPROFILE%\\.gemini\\antigravity\\mcp_config.json`
 
    *Note: If the `.gemini/antigravity/` directory or `mcp_config.json` file does
    not exist, create them and initialize the file with `{ "mcpServers": {} }`
@@ -47,26 +47,30 @@ functionality.
 1. **Check Existing Configuration**: Open `mcp_config.json` and check the
    `mcpServers` section for a `firebase` entry.
 
-    - It is already configured if the `command` is `"firebase"` OR if the
-      `command` is `"npx"` with `"firebase-tools"` and `"mcp"` in the `args`.
-    - **Important**: If a valid `firebase` entry is found, the MCP server is
-      already configured. **Skip step 3** and proceed directly to step 4.
+   - It is already configured if the `command` is `"firebase"` OR if the
+     `command` is `"npx"` with `"firebase-tools"` and `"mcp"` in the `args`.
+   - **Important**: If a valid `firebase` entry is found, the MCP server is
+     already configured. **Skip step 3** and proceed directly to step 4.
 
    **Example valid configurations**:
 
    ```json
-   "firebase": {
-     "command": "npx",
-     "args": ["-y", "firebase-tools@latest", "mcp"]
+   {
+     "firebase": {
+       "command": "npx",
+       "args": ["-y", "firebase-tools@latest", "mcp"]
+     }
    }
    ```
 
    OR
 
    ```json
-   "firebase": {
-     "command": "firebase",
-     "args": ["mcp"]
+   {
+     "firebase": {
+       "command": "firebase",
+       "args": ["mcp"]
+     }
    }
    ```
 
@@ -74,13 +78,15 @@ functionality.
    incorrect, add it to the `mcpServers` object:
 
    ```json
-   "firebase": {
-     "command": "npx",
-     "args": [
-       "-y",
-       "firebase-tools@latest",
-       "mcp"
-     ]
+   {
+     "firebase": {
+       "command": "npx",
+       "args": [
+         "-y",
+         "firebase-tools@latest",
+         "mcp"
+       ]
+     }
    }
    ```
 

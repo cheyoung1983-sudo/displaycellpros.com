@@ -3,6 +3,12 @@
 @theme {
   --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Display Cell Pros: Forensic Palette */
+  --color-obsidian: #111111;
+  --color-audit-teal: #008080;
+  --color-silicon-blue: #00BFFF;
+  --color-forensic-amber: #FFBF00;
 }
 
 /* Custom Scrollbar styling for professional look */

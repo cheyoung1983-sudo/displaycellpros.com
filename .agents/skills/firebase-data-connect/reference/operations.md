@@ -15,7 +15,7 @@ ______________________________________________________________________
 SQL Connect auto-generates fields for each `@table` type:
 
 | Generated Field                                                                         | Purpose             | Example                                          |
-|-----------------------------------------------------------------------------------------|---------------------|--------------------------------------------------|
+| --------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------ |
 | `movie(id: UUID, key: Key, first: Row)`                                                 | Get single record   | `movie(id: $id)` or `movie(first: {where: ...})` |
 | `movies(where: ..., orderBy: ..., limit: ..., offset: ..., distinct: ..., having: ...)` | List/filter records | `movies(where: {...})`                           |
 | `movie_insert(data: ...)`                                                               | Create record       | Returns key                                      |
@@ -87,7 +87,7 @@ query ListMovies($genre: String, $minRating: Int) @auth(level: PUBLIC) {
 ### Filter Operators
 
 | Operator     | Description             | Example                                     |
-|--------------|-------------------------|---------------------------------------------|
+| ------------ | ----------------------- | ------------------------------------------- |
 | `eq`         | Equals                  | `{ title: { eq: "Matrix" }}`                |
 | `ne`         | Not equals              | `{ status: { ne: "deleted" }}`              |
 | `gt`, `ge`   | Greater than (or equal) | `{ rating: { ge: 4 }}`                      |
@@ -243,7 +243,7 @@ mutation AddTag($id: UUID!, $tag: String!) @auth(level: USER) {
 ```
 
 | Operator  | Types                       | Description               |
-|-----------|-----------------------------|---------------------------|
+| --------- | --------------------------- | ------------------------- |
 | `inc`     | Int, Float, Date, Timestamp | Increment value           |
 | `dec`     | Int, Float, Date, Timestamp | Decrement value           |
 | `add`     | Lists                       | Add items if not present  |

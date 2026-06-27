@@ -77,10 +77,10 @@ signInWithPopup(auth, provider)
 > your Firebase project.
 >
 > - **Fix**: Add your domain (e.g., `localhost` for local testing) to the
-    > Authorized Domains list in the Firebase Console (Authentication > Settings >
-    > Authorized domains) or in your `firebase.json` auth config.
+>   Authorized Domains list in the Firebase Console (Authentication > Settings >
+>   Authorized domains) or in your `firebase.json` auth config.
 > - **CRITICAL**: Do NOT include the protocol or port number when adding the
-    > domain (e.g., use `localhost`, NOT `http://localhost:9090`).
+>   domain (e.g., use `localhost`, NOT `http://localhost:9090`).
 
 ## Sign In with Facebook (Popup)
 

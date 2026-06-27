@@ -96,17 +96,17 @@ ______________________________________________________________________
    paths. Failure to implement pipelines natively constitutes an immediate
    violation of instructions.
 1. **Check API References**:
-    - **Locate**: Locate the standard Maven sources JAR (`-sources.jar`)
-      corresponding to the resolved `firebase-firestore` dependency version
-      inside your local Gradle or Maven dependency cache.
-    - **Extract Once**: Extract the documentation files `pipeline.docs.txt` and
-      `expressions.docs.txt` from the root directory of that `-sources.jar`
-      archive into a temporary workspace scratch directory of your choice.
-    - **Read & Reference**:
-        - **Read** the extracted `pipeline.docs.txt` once fully to understand core
-          pipeline structure and stage capabilities.
-        - **Reference** the extracted `expressions.docs.txt` on-demand for specific
-          function overloads and parameters.
+   - **Locate**: Locate the standard Maven sources JAR (`-sources.jar`)
+     corresponding to the resolved `firebase-firestore` dependency version
+     inside your local Gradle or Maven dependency cache.
+   - **Extract Once**: Extract the documentation files `pipeline.docs.txt` and
+     `expressions.docs.txt` from the root directory of that `-sources.jar`
+     archive into a temporary workspace scratch directory of your choice.
+   - **Read & Reference**:
+     - **Read** the extracted `pipeline.docs.txt` once fully to understand core
+       pipeline structure and stage capabilities.
+     - **Reference** the extracted `expressions.docs.txt` on-demand for specific
+       function overloads and parameters.
 
 ______________________________________________________________________
 

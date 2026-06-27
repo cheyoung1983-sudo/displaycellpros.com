@@ -23,14 +23,14 @@ export default defineConfig(() => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              if (id.includes('firebase')) return 'firebase-vendor';
+              if (id.includes('firebase') || id.includes('@firebase')) return 'firebase-vendor';
               if (id.includes('@google/genai')) return 'genai-vendor';
-              if (id.includes('recharts')) return 'recharts-vendor';
+              if (id.includes('recharts') || id.includes('d3')) return 'recharts-vendor';
               if (id.includes('jspdf')) return 'jspdf-vendor';
               if (id.includes('lucide-react')) return 'lucide-vendor';
-              if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) return 'react-vendor';
-              if (id.includes('motion')) return 'motion-vendor';
-              return 'vendor';
+              if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) return 'react-core-vendor';
+              if (id.includes('motion') || id.includes('framer-motion')) return 'motion-vendor';
+              return 'common-vendor';
             }
           },
         },
