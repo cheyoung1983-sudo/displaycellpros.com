@@ -24,7 +24,11 @@ const generateSitemap = () => {
   // Since '?tab=legal' is valid URL encoding standard, we can use it directly, but strictly speaking 
   // ampersands should be escaped if there are multiple parameters.
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd"
+>
 ${routes.map(route => `  <url>
     <loc>${baseUrl}${route.path.replace('&', '&amp;')}</loc>
     <lastmod>${today}</lastmod>
