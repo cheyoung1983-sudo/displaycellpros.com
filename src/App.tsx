@@ -10160,7 +10160,11 @@ function CustomerHubView({
   const [usbDetails, setUsbDetails] = useState<any>(null);
   
   // Appointment date/time slots state
-  const [bookDate, setBookDate] = useState("");
+  const [bookDate, setBookDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split("T")[0];
+  });
   const [bookTime, setBookTime] = useState("10:00 AM - 12:00 PM");
   const [bookRemarks, setBookRemarks] = useState("");
   const [isPushingCalendarItem, setIsPushingCalendarItem] = useState(false);
@@ -11033,13 +11037,63 @@ function CustomerHubView({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
                   {/* Form */}
                   <form onSubmit={handleBookAppointment} className="space-y-4">
+                    {/* Visual Week-View Interactive Calendar */}
+                    <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 font-mono flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                          Forensic Field-Dispatch Week-View
+                        </span>
+                        <span className="text-[8.5px] text-[#00BFFF] font-mono uppercase tracking-wider font-extrabold">
+                          Quick Select
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-7 gap-1.5">
+                        {Array.from({ length: 7 }).map((_, i) => {
+                          const date = new Date();
+                          date.setDate(date.getDate() + i);
+                          const formattedDate = date.toISOString().split("T")[0];
+                          const dayName = date.toLocaleDateString(undefined, { weekday: "short" });
+                          const dayNum = date.getDate();
+                          const isSelected = bookDate === formattedDate;
+                          
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setBookDate(formattedDate)}
+                              className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all cursor-pointer font-mono ${
+                                isSelected
+                                  ? "bg-slate-800/95 border-teal-500 shadow-[0_0_12px_rgba(0,128,128,0.3)] ring-1 ring-teal-500"
+                                  : "bg-slate-900/90 hover:bg-slate-850/90 border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              <span className={`text-[8px] uppercase font-black tracking-wider ${isSelected ? 'text-teal-400' : 'text-slate-500'}`}>
+                                {dayName}
+                              </span>
+                              <span className={`text-sm font-extrabold my-0.5 ${isSelected ? 'text-white' : 'text-slate-350'}`}>
+                                {dayNum}
+                              </span>
+                              <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-teal-400 animate-pulse' : 'bg-slate-700'}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono border-t border-slate-900/60 pt-2 bg-transparent">
+                        <span>Route Dispatcher Loop: <strong className="text-teal-400">Optimized Channel Staged</strong></span>
+                        <span className="text-slate-400 font-bold">100% Free Driveway Credits</span>
+                      </div>
+                    </div>
+
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Desire Date</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Desire Date (Manual Selector)</label>
                       <input
                         type="date"
                         value={bookDate}
                         onChange={(e) => setBookDate(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
                       />
                     </div>
 
