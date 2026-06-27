@@ -27,10 +27,10 @@ Run the following command to list current Firestore databases:
 1. Ask the user which database instance they wish to target or if they would
    prefer to create a new instance.
 1. Once the target instance is established:
-   - If the **`edition`** is `STANDARD`, follow the guides under
-     `references/standard/`.
-   - If the **`edition`** is `ENTERPRISE` or native mode, follow the guides
-     under `references/enterprise/`.
+    - If the **`edition`** is `STANDARD`, follow the guides under
+      `references/standard/`.
+    - If the **`edition`** is `ENTERPRISE` or native mode, follow the guides
+      under `references/enterprise/`.
 
 ### B. No Instance Found (or New Requested)
 
