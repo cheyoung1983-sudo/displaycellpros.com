@@ -4,12 +4,16 @@ service cloud.firestore {
     
     // Global Safety Net: Default Deny catch-all
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if isAdmin();
     }
 
     // --- REUSABLE GLOBAL UTILITIES & PRIMITIVES ---
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'cheyoung1983@gmail.com';
     }
 
     function isValidId(id) {

@@ -1,0 +1,12 @@
+name: CI Build on PR
+'on': pull_request
+jobs:
+  build:
+    if: '${{ github.event.pull_request.head.repo.full_name == github.repository }}'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: npm ci
+      - name: Build Project
+        run: npm run build
