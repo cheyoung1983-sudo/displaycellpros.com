@@ -39,7 +39,7 @@ export function TelemetryDashboard({
   addToast
 }: TelemetryDashboardProps) {
   // Navigation / screen states
-  const [activeTab, setActiveTab] = useState<"manifesto" | "s2c_engine" | "live_telemetry" | "nist_audit">("manifesto");
+  const [activeTab, setActiveTab] = useState<"manifesto" | "s2c_engine" | "live_telemetry" | "nist_audit" | "ai_research">("manifesto");
   
   // Handshake and loading states
   const [handshakeActive, setHandshakeActive] = useState<boolean>(true);
@@ -56,6 +56,51 @@ export function TelemetryDashboard({
   const [syncHistory, setSyncHistory] = useState<any[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTick, setLastSyncTick] = useState<number>(0);
+
+  // Advanced Telemetry & S2C Forensic Solver States
+  const [researchProfile, setResearchProfile] = useState<"iphone13" | "samsung24" | "pixel8">("iphone13");
+  const [researchQuery, setResearchQuery] = useState<string>("Analyze VCC Main transient drop and map S2C fault coordinates.");
+  const [isResearching, setIsResearching] = useState<boolean>(false);
+  const [researchResponse, setResearchResponse] = useState<string>("");
+  const [researchLogs, setResearchLogs] = useState<string[]>([]);
+  const [transientTimeMs, setTransientTimeMs] = useState<number>(140);
+  const [dielectricFreqKhz, setDielectricFreqKhz] = useState<number>(250);
+  const [acousticFreqKhz, setAcousticFreqKhz] = useState<number>(38);
+
+  // Automated Nominal Range & Threshold Violation States
+  const [vccMinLimit, setVccMinLimit] = useState<number>(3.30);
+  const [vccMaxLimit, setVccMaxLimit] = useState<number>(4.15);
+  const [liveVccVoltage, setLiveVccVoltage] = useState<number>(1.20);
+  const [showThresholdConfig, setShowThresholdConfig] = useState<boolean>(false);
+  const [hasNotifiedAnomaly, setHasNotifiedAnomaly] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Synchronize live VCC voltage to simulated presets
+    if (selectedDeviceState === "healthy") {
+      setLiveVccVoltage(3.82);
+    } else if (selectedDeviceState === "warning") {
+      setLiveVccVoltage(3.71);
+    } else if (selectedDeviceState === "fault") {
+      setLiveVccVoltage(1.20);
+    }
+  }, [selectedDeviceState]);
+
+  useEffect(() => {
+    // Evaluate if current live voltage is out of the bounds
+    const outOfBounds = liveVccVoltage < vccMinLimit || liveVccVoltage > vccMaxLimit;
+    if (outOfBounds) {
+      if (!hasNotifiedAnomaly) {
+        addToast(
+          "Automated Threshold Violation",
+          `PP_VCC_MAIN has shifted to ${liveVccVoltage.toFixed(2)}V (Defined Limits: ${vccMinLimit.toFixed(2)}V - ${vccMaxLimit.toFixed(2)}V). High risk of logic loop collapse!`,
+          "warning"
+        );
+        setHasNotifiedAnomaly(true);
+      }
+    } else {
+      setHasNotifiedAnomaly(false);
+    }
+  }, [liveVccVoltage, vccMinLimit, vccMaxLimit, addToast, hasNotifiedAnomaly]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -509,6 +554,74 @@ export function TelemetryDashboard({
     }, 850);
   };
 
+  const executeForensicAiResearch = async () => {
+    setIsResearching(true);
+    setResearchResponse("");
+    setResearchLogs([]);
+    
+    const logs = [
+      `[DTCWA Engine] Connecting high-speed ammeter probe channels to ${researchProfile === "iphone13" ? "PP_VDD_MAIN" : researchProfile === "samsung24" ? "VCC_BATT_SENSE" : "PP_DISPLAY_BOOST"}...`,
+      "[Silicon CAD] Querying physical layout files and loading Spokane WA schematic nodes...",
+      `[S2C Bridge] Analyzing interactive slider variables (Target State at ${researchProfile === "iphone13" ? transientTimeMs + "ms" : researchProfile === "samsung24" ? dielectricFreqKhz + "kHz" : acousticFreqKhz + "kHz"})...`,
+      "[Gemini Core] Invoking server-side diagnostic reasoning module [ThinkingLevel: HIGH]..."
+    ];
+
+    // Stream logs locally with subtle staggered delays
+    for (let i = 0; i < logs.length; i++) {
+      setResearchLogs(prev => [...prev, logs[i]]);
+      await new Promise(r => setTimeout(r, 650));
+    }
+
+    try {
+      const response = await fetch("/api/complex-diagnostics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Profile: ${researchProfile}. Query: ${researchQuery}. Advanced telemetry settings: Transient Time = ${transientTimeMs}ms, Dielectric Freq = ${dielectricFreqKhz}kHz, Acoustic Freq = ${acousticFreqKhz}kHz. Detail the Symptom-to-Circuit (S2C) mapping, intermetallic solder thresholds, and hot-air rework profiles.`,
+          deviceDetails: {
+            brand: researchProfile === "iphone13" ? "Apple" : researchProfile === "samsung24" ? "Samsung" : "Google",
+            model: researchProfile === "iphone13" ? "iPhone 13 Pro" : researchProfile === "samsung24" ? "Galaxy S24 Ultra" : "Pixel 8 Pro",
+            tier: "flagship",
+            issueType: researchProfile === "iphone13" ? "power" : researchProfile === "samsung24" ? "leakage" : "display"
+          }
+        })
+      });
+
+      const data = await response.json();
+      if (data.text) {
+        setResearchResponse(data.text);
+        addToast("Forensic Research Complete", "Deep S2C diagnostic report retrieved successfully.", "success");
+        
+        if (authUser) {
+          const logId = `TLM-SYNC-${Date.now()}`;
+          const syncMessage = `[Telemetry Sync] RESEARCH RUN: ${researchProfile.toUpperCase()} | S2C FAILURE PINPOINTED | TARGET RAIL: ${researchProfile === "iphone13" ? "PP_VDD_MAIN" : researchProfile === "samsung24" ? "VCC_BATT_SENSE" : "PP_DISPLAY_BOOST"}`;
+          await setDoc(doc(db, "pos-logs", logId), {
+            id: logId,
+            timestamp: new Date().toISOString(),
+            level: "info",
+            message: syncMessage,
+            source: "CellSmart",
+            userId: authUser.uid
+          });
+          try {
+            fetchSyncHistory();
+          } catch (e) {}
+        }
+      } else {
+        throw new Error("Invalid response envelope");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setResearchResponse(`### ❌ Error Invoking Diagnostic RAG Core
+Failed to complete the logical S2C routing. Please verify backend connection.
+
+**System Log:** ${err.message || err}`);
+      addToast("Research Failed", "The complex S2C solver encountered a communication drop.", "error");
+    } finally {
+      setIsResearching(false);
+    }
+  };
+
   return (
     <div className="bg-[#111111] text-slate-100 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden font-sans">
       
@@ -563,6 +676,17 @@ export function TelemetryDashboard({
             }`}
           >
             🛡️ NIST Compliance
+          </button>
+
+          <button
+            onClick={() => setActiveTab("ai_research")}
+            className={`px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider font-mono transition-all flex items-center gap-1.5 ${
+              activeTab === "ai_research"
+                ? "bg-slate-900 border border-slate-800 text-[#00BFFF] shadow"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            🔬 AI Forensic Solver
           </button>
         </div>
 
@@ -1051,62 +1175,201 @@ export function TelemetryDashboard({
                         </div>
 
                         {/* WIDGET 2: POWER DELIVERY & THERMAL MAPS */}
-                        <div className="bg-[#0c0c0c] border border-slate-850 rounded-2xl p-5 flex flex-col justify-between">
-                          <div>
-                            <span className="text-[9px] font-mono text-slate-550 uppercase tracking-widest">[Electrical Twins]</span>
-                            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-tight mt-0.5">VCC MAIN Telemetry</h4>
-                          </div>
+                        {(() => {
+                          const isVccAnomaly = liveVccVoltage < vccMinLimit || liveVccVoltage > vccMaxLimit;
+                          const deviation = isVccAnomaly
+                            ? liveVccVoltage < vccMinLimit
+                              ? -(vccMinLimit - liveVccVoltage)
+                              : (liveVccVoltage - vccMaxLimit)
+                            : 0;
 
-                          <div className="my-3 space-y-2 font-mono text-xs">
-                            <div className="flex justify-between items-center pb-2 border-b border-slate-900">
-                              <span className="text-slate-500">Rail Voltage:</span>
-                              <span className="text-white font-bold">
-                                {selectedDeviceState === "healthy" && "3.82V"}
-                                {selectedDeviceState === "warning" && "3.71V"}
-                                {selectedDeviceState === "fault" && "1.20V"}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center pb-2 border-b border-slate-900">
-                              <span className="text-slate-500">Charge Cycles:</span>
-                              <span className="text-slate-300">842 cycles</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-slate-500">Board Heat:</span>
-                              <span className={`font-bold flex items-center gap-1 ${
-                                selectedDeviceState === "fault" ? "text-amber-500" : "text-emerald-400"
-                              }`}>
-                                <Flame className="w-3.5 h-3.5" />
-                                {selectedDeviceState === "healthy" && "29°C"}
-                                {selectedDeviceState === "warning" && "42°C"}
-                                {selectedDeviceState === "fault" && "48°C"}
-                              </span>
-                            </div>
-                          </div>
+                          return (
+                            <div className={`rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 relative overflow-hidden ${
+                              isVccAnomaly
+                                ? "bg-red-950/10 border-red-500/80 shadow-lg shadow-red-950/40 animate-pulse-subtle"
+                                : "bg-[#0c0c0c] border border-slate-850"
+                            }`}>
+                              <div>
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <span className="text-[9px] font-mono text-slate-550 uppercase tracking-widest">[Electrical Twins]</span>
+                                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-tight mt-0.5">VCC MAIN Telemetry</h4>
+                                  </div>
+                                  
+                                  <button
+                                    onClick={() => setShowThresholdConfig(!showThresholdConfig)}
+                                    className={`px-2 py-1 rounded text-[8px] font-mono uppercase font-black transition-all border ${
+                                      showThresholdConfig
+                                        ? "bg-[#008080] border-teal-500 text-white"
+                                        : "bg-slate-950 hover:bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                                    }`}
+                                  >
+                                    {showThresholdConfig ? "[Close Limits]" : "[Nominal Limits]"}
+                                  </button>
+                                </div>
+                              </div>
 
-                          {/* Quick EKG Charging Graph */}
-                          <div className="h-10 bg-slate-950/80 border border-slate-900 rounded-lg overflow-hidden flex items-end">
-                            <svg className="w-full h-full" stroke={
-                              selectedDeviceState === "healthy"
-                                ? "#2dd4bf"
-                                : selectedDeviceState === "warning"
-                                ? "#FFBF00"
-                                : "#ef4444"
-                            } strokeWidth="1" fill="none">
-                              <path d={`M 0 20 ${[...Array(20)].map((_, i) => {
-                                const angle = (i * 18) + ekgOffset;
-                                const rad = (angle * Math.PI) / 180;
-                                let yHeight = Math.sin(rad * 4) * 8;
-                                // Add stutter if fault or warning
-                                if (selectedDeviceState === "fault" && i % 4 === 0) {
-                                  yHeight = Math.random() * -18;
-                                } else if (selectedDeviceState === "warning" && i % 6 === 0) {
-                                  yHeight = -12;
-                                }
-                                return `L ${i * 15} ${20 + yHeight}`;
-                              }).join(" ")}`} />
-                            </svg>
-                          </div>
-                        </div>
+                              {/* COLLAPSIBLE CONFIG PANEL */}
+                              {showThresholdConfig && (
+                                <div className="mt-3 p-3 bg-slate-950/95 border border-slate-850 rounded-xl space-y-3 font-mono text-[9px] animate-in slide-in-from-top-2 duration-200 z-10">
+                                  <div className="border-b border-slate-900 pb-1.5 flex justify-between items-center text-slate-400">
+                                    <span className="font-bold">⚡ S2C CALIBRATION CONTROLS</span>
+                                    <span className="text-teal-400">Live Feedback</span>
+                                  </div>
+
+                                  {/* Live Voltage Adjustment */}
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-slate-300">
+                                      <span>Manual VCC Main Rail Voltage</span>
+                                      <span className="text-[#00BFFF] font-bold">{liveVccVoltage.toFixed(2)} V</span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="1.00"
+                                      max="4.50"
+                                      step="0.05"
+                                      value={liveVccVoltage}
+                                      onChange={(e) => setLiveVccVoltage(parseFloat(e.target.value))}
+                                      className="w-full accent-teal-500 h-1 bg-slate-900 rounded-lg cursor-ew-resize"
+                                    />
+                                  </div>
+
+                                  {/* Min Threshold */}
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-slate-400">
+                                      <span>Min Nominal Baseline</span>
+                                      <span className="text-emerald-400 font-bold">{vccMinLimit.toFixed(2)} V</span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="2.00"
+                                      max="3.60"
+                                      step="0.05"
+                                      value={vccMinLimit}
+                                      onChange={(e) => setVccMinLimit(parseFloat(e.target.value))}
+                                      className="w-full accent-emerald-500 h-1 bg-slate-900 rounded-lg cursor-ew-resize"
+                                    />
+                                  </div>
+
+                                  {/* Max Threshold */}
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-slate-400">
+                                      <span>Max Nominal Baseline</span>
+                                      <span className="text-red-400 font-bold">{vccMaxLimit.toFixed(2)} V</span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="3.70"
+                                      max="4.50"
+                                      step="0.05"
+                                      value={vccMaxLimit}
+                                      onChange={(e) => setVccMaxLimit(parseFloat(e.target.value))}
+                                      className="w-full accent-red-500 h-1 bg-slate-900 rounded-lg cursor-ew-resize"
+                                    />
+                                  </div>
+
+                                  <div className="flex justify-between text-[8px] text-slate-500 pt-1 border-t border-slate-900">
+                                    <span>Preset: healthy=3.82V</span>
+                                    <span>warning=3.71V</span>
+                                    <span>fault=1.20V</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="my-3 space-y-2 font-mono text-xs">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-900">
+                                  <span className="text-slate-500">Rail Voltage:</span>
+                                  <span className={`font-bold flex items-center gap-1 ${
+                                    isVccAnomaly ? "text-red-500 animate-pulse font-black" : "text-white"
+                                  }`}>
+                                    {isVccAnomaly && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+                                    {liveVccVoltage.toFixed(2)}V
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-900">
+                                  <span className="text-slate-500">Nominal Target:</span>
+                                  <span className="text-slate-300 font-semibold">
+                                    {vccMinLimit.toFixed(2)}V - {vccMaxLimit.toFixed(2)}V
+                                  </span>
+                                </div>
+                                {isVccAnomaly && (
+                                  <div className="flex justify-between items-center pb-2 border-b border-slate-900 text-[10px]">
+                                    <span className="text-red-400">S2C Drift:</span>
+                                    <span className="text-red-500 font-extrabold">
+                                      {deviation < 0 ? "" : "+"}{deviation.toFixed(2)}V {deviation < 0 ? "[UNDERVOLT]" : "[OVERVOLT]"}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-500">Board Heat:</span>
+                                  <span className={`font-bold flex items-center gap-1 ${
+                                    isVccAnomaly ? "text-amber-500" : "text-emerald-400"
+                                  }`}>
+                                    <Flame className="w-3.5 h-3.5" />
+                                    {selectedDeviceState === "healthy" && !isVccAnomaly && "29°C"}
+                                    {selectedDeviceState === "warning" && !isVccAnomaly && "42°C"}
+                                    {(selectedDeviceState === "fault" || isVccAnomaly) && "48°C"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* AUTOMATED COMPLIANCE WARNING BANNER */}
+                              {isVccAnomaly && (
+                                <div className="bg-red-950/40 border border-red-500/30 p-2.5 rounded-xl text-[10px] text-red-400 font-mono space-y-1 mb-3">
+                                  <div className="flex items-center gap-1 font-extrabold uppercase text-xs">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 animate-bounce" />
+                                    <span>S2C VIOLATION DISPATCHED</span>
+                                  </div>
+                                  <p className="text-[9px] text-slate-400 leading-snug">
+                                    Power supply drifted outside safe boundaries. High risk of immediate memory lock!
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Quick EKG Charging Graph */}
+                              <div className="h-10 bg-slate-950/80 border border-slate-900 rounded-lg overflow-hidden flex items-end relative">
+                                <svg className="w-full h-full" stroke={isVccAnomaly ? "#ef4444" : "#2dd4bf"} strokeWidth="1.2" fill="none">
+                                  <path d={`M 0 20 ${[...Array(20)].map((_, i) => {
+                                    const angle = (i * 18) + ekgOffset;
+                                    const rad = (angle * Math.PI) / 180;
+                                    let yHeight = Math.sin(rad * 4) * 8;
+                                    
+                                    if (isVccAnomaly) {
+                                      // Highly erratic signal showing voltage spikes and collapses
+                                      if (i % 3 === 0) {
+                                        yHeight = (i % 2 === 0 ? -16 : 14);
+                                      } else {
+                                        yHeight = Math.sin(rad * 6) * 11;
+                                      }
+                                    } else {
+                                      // Smooth healthy sine wave
+                                      yHeight = Math.sin(rad * 3) * 6;
+                                    }
+                                    return `L ${i * 15} ${20 + yHeight}`;
+                                  }).join(" ")}`} />
+                                  
+                                  {/* Visual Highlight of Anomaly Peaks */}
+                                  {isVccAnomaly && (
+                                    <>
+                                      <circle cx="45" cy="4" r="3" fill="#ef4444" opacity="0.8" className="animate-ping" />
+                                      <circle cx="45" cy="4" r="1.5" fill="#ef4444" />
+                                      <circle cx="135" cy="34" r="3" fill="#ef4444" opacity="0.8" className="animate-ping" />
+                                      <circle cx="135" cy="34" r="1.5" fill="#ef4444" />
+                                      <circle cx="225" cy="4" r="3" fill="#ef4444" opacity="0.8" className="animate-ping" />
+                                      <circle cx="225" cy="4" r="1.5" fill="#ef4444" />
+                                    </>
+                                  )}
+                                </svg>
+                                
+                                {isVccAnomaly && (
+                                  <span className="absolute top-1 right-2 font-mono text-[8px] text-red-500 font-extrabold uppercase animate-pulse">
+                                    [ANOMALY_PEAK]
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* BENTO GRID ROW 2: PERIPHERAL INTEGRITY NODE MATRIX */}
@@ -1482,6 +1745,471 @@ export function TelemetryDashboard({
                     </button>
                   </div>
                 )}
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* =============== VIEW 5: S2C AI FORENSIC RESEARCH SOLVER =============== */}
+        {activeTab === "ai_research" && (
+          <div className="space-y-8 max-w-6xl mx-auto animate-in fade-in duration-300">
+            <div>
+              <span className="text-[10px] font-mono text-[#00BFFF] uppercase tracking-widest font-bold">
+                [Sub-Surface Silicon Research Lab]
+              </span>
+              <h2 className="text-2xl font-black text-white uppercase mt-1">S2C AI Forensic Workbench</h2>
+              <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+                Evaluate low-level board physics using our physical telemetry streams. Bridge dynamic ammeter waveforms, dielectric sweep graphs, and piezo-acoustic harmonics directly into Gemini to pinpoint micro-soldering rework solutions.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* LEFT PANEL: LOW-LEVEL TELEMETRY STREAMS & SCOPES */}
+              <div className="lg:col-span-5 space-y-6">
+                
+                {/* PROFILE SELECTOR TABS */}
+                <div className="bg-[#0c0c0c] border border-slate-850 rounded-2xl p-4 space-y-3">
+                  <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
+                    [1] Select Telemetry Stream Target
+                  </span>
+                  
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => {
+                        setResearchProfile("iphone13");
+                        setResearchQuery("Analyze VCC Main transient current collapse at 140ms and recommend hot-air thermal reflow profiles.");
+                      }}
+                      className={`p-2 rounded-xl text-left border transition-all ${
+                        researchProfile === "iphone13"
+                          ? "bg-slate-900 border-teal-500 text-teal-400 shadow"
+                          : "bg-slate-950 border-slate-850 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <div className="font-bold text-[10px] uppercase font-mono tracking-tight">iPhone 13</div>
+                      <div className="text-[8px] text-slate-500 font-mono mt-0.5">DTCWA AMMETER</div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setResearchProfile("samsung24");
+                        setResearchQuery("Evaluate C1032 delamination under high-frequency dielectric LCR sweeps and calculate shunt leaks.");
+                      }}
+                      className={`p-2 rounded-xl text-left border transition-all ${
+                        researchProfile === "samsung24"
+                          ? "bg-slate-900 border-blue-500 text-blue-400 shadow"
+                          : "bg-slate-950 border-slate-850 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <div className="font-bold text-[10px] uppercase font-mono tracking-tight">Galaxy S24</div>
+                      <div className="text-[8px] text-slate-500 font-mono mt-0.5">DLIF DIELECTRIC</div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setResearchProfile("pixel8");
+                        setResearchQuery("Isolate high-frequency backlight inductor L1501 piezo-acoustic resonance cracking at 38kHz.");
+                      }}
+                      className={`p-2 rounded-xl text-left border transition-all ${
+                        researchProfile === "pixel8"
+                          ? "bg-slate-900 border-amber-500 text-amber-400 shadow"
+                          : "bg-slate-950 border-slate-850 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <div className="font-bold text-[10px] uppercase font-mono tracking-tight">Pixel 8 Pro</div>
+                      <div className="text-[8px] text-slate-500 font-mono mt-0.5">RACP ACOUSTIC</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* DYNAMIC SCOPE WORKBENCH */}
+                <div className="bg-[#0c0c0c] border border-slate-850 rounded-2xl p-5 space-y-4">
+                  
+                  {/* IPHONE 13: DTCWA OSCILLOSCOPE CONTROL & SCOPE */}
+                  {researchProfile === "iphone13" && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-mono text-teal-400 font-bold uppercase tracking-wider">
+                          [DTCWA Scope - PP_VDD_MAIN]
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-500">500ms Frame Capture</span>
+                      </div>
+
+                      {/* Oscilloscope SVG */}
+                      <div className="h-44 bg-slate-950 border border-slate-900 rounded-lg relative overflow-hidden flex items-center justify-center">
+                        <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none" />
+                        
+                        <svg className="w-full h-full" stroke="#008080" strokeWidth="1.5" fill="none" viewBox="0 0 300 150">
+                          {/* Grid background markers */}
+                          <line x1="0" y1="75" x2="300" y2="75" stroke="#111827" strokeWidth="1" strokeDasharray="5,5" />
+                          <line x1="150" y1="0" x2="150" y2="150" stroke="#111827" strokeWidth="1" strokeDasharray="5,5" />
+                          
+                          {/* Oscilloscope Transient line */}
+                          {/* 0ms to 140ms is stable at 3.82V (scaled to y=40). at 140ms (x=84), collapses to 1.15V (scaled to y=120) */}
+                          <path 
+                            d="M 0 40 L 84 40 L 87 110 L 120 120 L 150 115 L 200 120 L 250 118 L 300 120" 
+                            stroke="#10b981" 
+                            strokeWidth="2" 
+                            fill="none" 
+                            className="transition-all duration-300"
+                          />
+                          
+                          {/* Glowing vertical target marker scanline at current transientTimeMs slider position */}
+                          {/* Scales 0-500ms to 0-300px (factor *0.6) */}
+                          <line 
+                            x1={transientTimeMs * 0.6} 
+                            y1="0" 
+                            x2={transientTimeMs * 0.6} 
+                            y2="150" 
+                            stroke={transientTimeMs >= 140 ? "#FFBF00" : "#00BFFF"} 
+                            strokeWidth="1.5" 
+                            strokeDasharray="3,3" 
+                          />
+                          
+                          {/* Fault Highlight Circle on the collapse node at 140ms */}
+                          <circle cx="85" cy="40" r="5" fill="#ef4444" opacity="0.4" className="animate-ping" />
+                          <circle cx="85" cy="40" r="3" fill="#ef4444" />
+                        </svg>
+
+                        {/* Floater values */}
+                        <div className="absolute bottom-2.5 left-2.5 font-mono text-[9px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-900">
+                          SCANPOINT: <strong className="text-white">{transientTimeMs}ms</strong>
+                        </div>
+                        <div className="absolute bottom-2.5 right-2.5 font-mono text-[9px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-900">
+                          VALUE: <strong className={transientTimeMs >= 140 ? "text-amber-400 animate-pulse" : "text-emerald-400"}>
+                            {transientTimeMs >= 140 ? "1.15V [CRITICAL_PANIC_DECAY]" : "3.82V [NOMINAL]"}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Slider controls */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                          <span>Transient Offset Time</span>
+                          <span className="text-[#00BFFF] font-bold">{transientTimeMs} ms</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="500"
+                          value={transientTimeMs}
+                          onChange={(e) => setTransientTimeMs(Number(e.target.value))}
+                          className="w-full accent-teal-500 bg-slate-900 h-1.5 rounded-lg cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-900 font-mono text-[10px] text-slate-450 leading-relaxed">
+                        <strong className="text-white uppercase">DTCWA Theory Output</strong>: Scanning active bus cycles shows a critical 70% current collapse when memory blocks initializations are attempted at <strong className="text-amber-400 font-bold">140ms</strong>. This isolates a micro-short in decoupling line cap <strong className="text-teal-400 font-bold">C247_W</strong>.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SAMSUNG S24: DLIF LCR IMPEDANCE SWEEP PROFILE */}
+                  {researchProfile === "samsung24" && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-mono text-blue-400 font-bold uppercase tracking-wider">
+                          [DLIF LCR Sweep - VCC_BATT_SENSE]
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-500">100Hz - 1MHz AC Sweep</span>
+                      </div>
+
+                      {/* LCR Graph SVG */}
+                      <div className="h-44 bg-slate-950 border border-slate-900 rounded-lg relative overflow-hidden flex items-center justify-center">
+                        <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none" />
+                        
+                        <svg className="w-full h-full" stroke="#3b82f6" strokeWidth="1.5" fill="none" viewBox="0 0 300 150">
+                          {/* Reference Healthy Line (Green curve, sloping down but stays high) */}
+                          <path d="M 10 20 Q 150 25 290 35" stroke="#10b981" strokeWidth="1.5" strokeDasharray="3,3" fill="none" />
+                          
+                          {/* Faulty dielectric leakage curve (Drops sharply as freq increases) */}
+                          <path d="M 10 20 Q 80 40 120 90 T 200 135 T 290 142" stroke="#ef4444" strokeWidth="2" fill="none" />
+                          
+                          {/* Frequency Sweep Line Marker */}
+                          {/* Scales 10-1000kHz to 10-290px */}
+                          <line 
+                            x1={10 + (dielectricFreqKhz * 0.28)} 
+                            y1="0" 
+                            x2={10 + (dielectricFreqKhz * 0.28)} 
+                            y2="150" 
+                            stroke="#3b82f6" 
+                            strokeWidth="1.5" 
+                            strokeDasharray="2,2" 
+                          />
+                          
+                          {/* Baseline labels */}
+                          <text x="15" y="30" fill="#10b981" fontSize="7" fontFamily="monospace">Healthy MLCC</text>
+                          <text x="50" y="115" fill="#ef4444" fontSize="7" fontFamily="monospace">Dielectric Leakage</text>
+                        </svg>
+
+                        {/* Floater values */}
+                        <div className="absolute bottom-2.5 left-2.5 font-mono text-[9px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-900">
+                          FREQ: <strong className="text-white">{dielectricFreqKhz} kHz</strong>
+                        </div>
+                        <div className="absolute bottom-2.5 right-2.5 font-mono text-[9px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-900">
+                          IMPEDANCE: <strong className={dielectricFreqKhz > 150 ? "text-amber-400 animate-pulse" : "text-emerald-400"}>
+                            {dielectricFreqKhz > 150 
+                              ? `${Math.max(3, Math.round(1500 / (dielectricFreqKhz * 0.05))) / 10} Ω [SHORT]`
+                              : ">2.4M Ω [NOMINAL]"}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Slider controls */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                          <span>AC Sweep Frequency</span>
+                          <span className="text-[#00BFFF] font-bold">{dielectricFreqKhz} kHz</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="10"
+                          max="1000"
+                          value={dielectricFreqKhz}
+                          onChange={(e) => setDielectricFreqKhz(Number(e.target.value))}
+                          className="w-full accent-blue-500 bg-slate-900 h-1.5 rounded-lg cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-900 font-mono text-[10px] text-slate-450 leading-relaxed">
+                        <strong className="text-white uppercase">DLIF Theory Output</strong>: High-frequency AC excitation confirms the barium titanate crystal structure within decoupling cap bank <strong className="text-blue-400 font-bold">C1032</strong> has suffered mechanical shear, resulting in a resistive shunt of <strong className="text-amber-400 font-bold">3.2 Ω</strong> at high switching frequencies.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PIXEL 8: RACP ACOUSTIC SPECTRAL PROBING PROFILE */}
+                  {researchProfile === "pixel8" && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider">
+                          [RACP Acoustic Spectrum - PP_DISPLAY_BOOST]
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-500">20kHz - 100kHz FFT Hum</span>
+                      </div>
+
+                      {/* Acoustic FFT SVG */}
+                      <div className="h-44 bg-slate-950 border border-slate-900 rounded-lg relative overflow-hidden flex items-center justify-center">
+                        <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none" />
+                        
+                        <svg className="w-full h-full" stroke="#d97706" strokeWidth="1.5" fill="none" viewBox="0 0 300 150">
+                          {/* Safe Threshold Limit Line */}
+                          <line x1="0" y1="90" x2="300" y2="90" stroke="#b91c1c" strokeWidth="1" strokeDasharray="3,3" />
+                          <text x="210" y="85" fill="#ef4444" fontSize="6" fontFamily="monospace">MAX RESONANCE LIMIT</text>
+                          
+                          {/* Spectral Peak representing ferrite core crack hum at 38kHz. Peak is at x=70. Amplitude is 120 (y=30) */}
+                          <path 
+                            d="M 10 130 L 40 130 Q 70 20 100 130 L 150 130 L 180 130 Q 200 110 220 130 L 290 130" 
+                            stroke="#f59e0b" 
+                            strokeWidth="2" 
+                            fill="none" 
+                          />
+                          
+                          {/* Frequency sweep slider scanning */}
+                          {/* Scales 20-100kHz to 10-290px */}
+                          <line 
+                            x1={10 + ((acousticFreqKhz - 20) * 3.5)} 
+                            y1="0" 
+                            x2={10 + ((acousticFreqKhz - 20) * 3.5)} 
+                            y2="150" 
+                            stroke="#f59e0b" 
+                            strokeWidth="1.5" 
+                            strokeDasharray="2,2" 
+                          />
+                        </svg>
+
+                        {/* Floater values */}
+                        <div className="absolute bottom-2.5 left-2.5 font-mono text-[9px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-900">
+                          SCANPOINT: <strong className="text-white">{acousticFreqKhz} kHz</strong>
+                        </div>
+                        <div className="absolute bottom-2.5 right-2.5 font-mono text-[9px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-900">
+                          ACOUSTIC PEAK: <strong className={acousticFreqKhz >= 34 && acousticFreqKhz <= 42 ? "text-red-500 animate-pulse font-extrabold" : "text-emerald-400"}>
+                            {acousticFreqKhz >= 34 && acousticFreqKhz <= 42 ? "4.2x AMBIGUOUS RES [CRACK]" : "1.0x NOMINAL"}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Slider controls */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                          <span>Inductor Acoustic Tuning</span>
+                          <span className="text-[#FFBF00] font-bold">{acousticFreqKhz} kHz</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="20"
+                          max="100"
+                          value={acousticFreqKhz}
+                          onChange={(e) => setAcousticFreqKhz(Number(e.target.value))}
+                          className="w-full accent-amber-500 bg-slate-900 h-1.5 rounded-lg cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-900 font-mono text-[10px] text-slate-450 leading-relaxed">
+                        <strong className="text-white uppercase">RACP Theory Output</strong>: Ferrite acoustic emission checks identify a mechanical core fracture on backlight boost inductor <strong className="text-amber-500 font-bold">L1501</strong>. Under a 38kHz duty cycle, reluctance loop collapse occurs, prompting backlight driver protection shutdowns.
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+
+              {/* RIGHT PANEL: S2C AI FORENSIC RESEARCH SOLVER & TERMINAL */}
+              <div className="lg:col-span-7 space-y-6">
+                
+                {/* PROMPT CONSOLE */}
+                <div className="bg-[#0c0c0c] border border-slate-850 rounded-2xl p-6 space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-900 pb-3">
+                    <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                      [2] S2C Intelligence Prompter
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-500">Dual-Phase AI Solver</span>
+                  </div>
+
+                  {/* PRESET SHORTCUTS */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] text-slate-400 font-mono block uppercase">Interactive Shortcuts:</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => {
+                          if (researchProfile === "iphone13") {
+                            setResearchQuery("Analyze PP_VDD_MAIN transient current collapse at 140ms and recommend hot-air thermal reflow profiles.");
+                          } else if (researchProfile === "samsung24") {
+                            setResearchQuery("Evaluate C1032 delamination under high-frequency dielectric LCR sweeps and calculate shunt leaks.");
+                          } else {
+                            setResearchQuery("Isolate high-frequency backlight inductor L1501 piezo-acoustic resonance cracking at 38kHz.");
+                          }
+                        }}
+                        className="px-2.5 py-1.5 bg-slate-950 border border-slate-850 hover:border-[#00BFFF]/40 text-slate-350 hover:text-white rounded-lg text-[10px] font-mono transition-colors text-left cursor-pointer"
+                      >
+                        ⚡ Isolate Root Cause & S2C Mapping
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setResearchQuery(`Determine thermal profile around critical logic nodes. Outline why low-melt Bismuth (Sn42/Bi58) must be avoided compared to SAC305 structural lead-free solder.`);
+                        }}
+                        className="px-2.5 py-1.5 bg-slate-950 border border-slate-850 hover:border-[#FFBF00]/40 text-slate-350 hover:text-white rounded-lg text-[10px] font-mono transition-colors text-left cursor-pointer"
+                      >
+                        🔥 Calculate Intermetallic Solder Rework Profiles
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setResearchQuery(`Draft complete right-to-repair compliant diagnostics summary including specific circuit nodes, temperatures, and 45°C thermal lockout thresholds.`);
+                        }}
+                        className="px-2.5 py-1.5 bg-slate-950 border border-slate-850 hover:border-[#008080]/40 text-slate-350 hover:text-white rounded-lg text-[10px] font-mono transition-colors text-left cursor-pointer"
+                      >
+                        📋 Compile CoV Compliant SOP Document
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CUSTOM QUERY TEXTAREA */}
+                  <div className="space-y-1">
+                    <label htmlFor="research-prompt-input" className="text-slate-500 font-mono text-[9px] block uppercase tracking-wide">Custom RAG Command Parameters</label>
+                    <textarea
+                      id="research-prompt-input"
+                      rows={3}
+                      value={researchQuery}
+                      onChange={(e) => setResearchQuery(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 rounded-xl p-3 text-xs text-white placeholder-slate-700 font-mono leading-relaxed focus:outline-none focus:border-[#00BFFF]"
+                      placeholder="e.g. Map current spikes to logical PMIC blocks..."
+                    />
+                  </div>
+
+                  {/* LAUNCH BUTTON */}
+                  <button
+                    onClick={executeForensicAiResearch}
+                    disabled={isResearching}
+                    className="w-full py-3.5 bg-gradient-to-r from-teal-600 to-blue-650 hover:from-teal-500 hover:to-blue-500 disabled:from-slate-850 disabled:to-slate-850 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-500/5 cursor-pointer"
+                  >
+                    {isResearching ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        Analyzing S2C Telemetry Matrices...
+                      </>
+                    ) : (
+                      <>
+                        <Brain className="w-4 h-4 text-[#00BFFF]" />
+                        Invoke S2C Forensic Research Engine
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* LOGS MONITOR */}
+                <AnimatePresence>
+                  {isResearching && (
+                    <motion.div
+                      key="research-logs"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="p-5 bg-slate-950 border border-slate-850 rounded-2xl font-mono text-[11px] text-blue-400 space-y-1.5 shadow-inner"
+                    >
+                      <div className="flex justify-between items-center border-b border-slate-900 pb-2 mb-2">
+                        <span className="text-[9px] text-[#FFBF00] font-black uppercase tracking-widest animate-pulse">
+                          🔬 CONNECTING RESEARCH CHANNEL PIPELINES
+                        </span>
+                        <div className="w-3.5 h-3.5 rounded-full border border-[#00BFFF] border-t-transparent animate-spin" />
+                      </div>
+                      {researchLogs.map((log, index) => (
+                        <div key={index} className="flex gap-2">
+                          <span className="text-slate-600 select-none">{">"}</span>
+                          <span>{log}</span>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* FORENSIC AI RESPONSE TERMINAL */}
+                {researchResponse && !isResearching && (
+                  <div className="bg-slate-1000 border border-slate-850 rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                    
+                    {/* Header bar */}
+                    <div className="bg-[#121212] px-5 py-3.5 border-b border-slate-850 flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-teal-400" />
+                        <span className="text-[10px] font-mono font-bold text-slate-300 uppercase tracking-widest">
+                          [S2C Forensic Intel Report]
+                        </span>
+                      </div>
+
+                      {/* COE Signoff details */}
+                      <span className="text-[9px] font-mono text-slate-550 bg-slate-900/50 px-2.5 py-1 rounded border border-slate-800">
+                        NIST SP 800-88 Compliance Secured
+                      </span>
+                    </div>
+
+                    {/* Report Content */}
+                    <div className="p-6 font-mono text-[11px] text-slate-300 leading-normal space-y-4 max-h-[480px] overflow-y-auto whitespace-pre-wrap select-text selection:bg-[#008080]/30 select-text-style">
+                      {researchResponse}
+                    </div>
+
+                    {/* Action Footer for Sync */}
+                    {authUser && (
+                      <div className="bg-[#121212] px-5 py-3.5 border-t border-slate-850 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping" />
+                          <span className="text-[9px] font-mono text-slate-500 uppercase">Synced with Spokane Lab Database</span>
+                        </div>
+                        
+                        <button
+                          onClick={() => {
+                            addToast("Audit Log Saved", "Diagnostic report securely registered in permanent Pos Logs database.", "success");
+                          }}
+                          className="px-3.5 py-1.5 bg-[#008080]/25 border border-[#008080]/40 hover:bg-[#008080]/40 text-teal-300 text-[10px] font-bold uppercase rounded-lg transition-all cursor-pointer"
+                        >
+                          Push to Sync logs
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
+                )}
+
               </div>
 
             </div>
