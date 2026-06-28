@@ -20,7 +20,9 @@ import {
   Check, 
   Info,
   MapPin,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 
 interface InventoryItem {
@@ -88,6 +90,12 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [isInventoryLoading, setIsInventoryLoading] = useState<boolean>(true);
   
+  // Client & Device configuration state
+  const [customerName, setCustomerName] = useState<string>("Jane Miller");
+  const [companyName, setCompanyName] = useState<string>("AMAZON Fleet");
+  const [deviceModel, setDeviceModel] = useState<string>("Apple iPhone 15 Pro");
+  const [isCorporate, setIsCorporate] = useState<boolean>(false);
+
   // Dynamic Quote configuration state
   const [selectedParts, setSelectedParts] = useState<SelectedItem[]>([]);
   const [laborHours, setLaborHours] = useState<number>(1.5);
@@ -113,6 +121,20 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
   const [syncedDocId, setSyncedDocId] = useState<string | null>(null);
   const [showCertificateModal, setShowCertificateModal] = useState<boolean>(false);
 
+  // Collapsible pricing tier states
+  const [expandedTiers, setExpandedTiers] = useState<{ materials: boolean; labor: boolean; tax: boolean }>({
+    materials: true,
+    labor: false,
+    tax: false,
+  });
+
+  const toggleTier = (tier: "materials" | "labor" | "tax") => {
+    setExpandedTiers(prev => ({
+      ...prev,
+      [tier]: !prev[tier]
+    }));
+  };
+
   // Load backend parts inventory on mount
   useEffect(() => {
     fetchInventory();
@@ -121,7 +143,7 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
   // Compute quote dynamic recalculation when inputs change
   useEffect(() => {
     triggerDeterministicRecalculation();
-  }, [selectedParts, laborHours, hourlyLaborRate, overheadPercentage, zipCode]);
+  }, [selectedParts, laborHours, hourlyLaborRate, overheadPercentage, zipCode, isCorporate, companyName, customerName, deviceModel]);
 
   const fetchInventory = async () => {
     try {
@@ -144,23 +166,37 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
   };
 
   const triggerDeterministicRecalculation = async () => {
+    const trimmedZip = zipCode.trim();
+    const isZipValid = trimmedZip.length === 5 && /^(992|990)\d{2}$/.test(trimmedZip);
+
+    if (!isZipValid) {
+      setComputationResult(null);
+      setIsComputing(false);
+      return;
+    }
+
     // Build parameters for the backend POST
     const payload = {
       parts: selectedParts.map(item => ({
         partId: item.partId || null,
-        partName: item.isCustom ? item.partName : undefined,
-        wholesaleCost: item.isCustom ? item.wholesaleCost : undefined,
-        quantity: item.quantity
+        partName: item.partName,
+        wholesaleCost: item.wholesaleCost,
+        quantity: item.quantity,
+        isCustom: item.isCustom
       })),
       laborHours,
       hourlyLaborRate,
       overheadPercentage,
-      zipCode: zipCode.trim() || undefined
+      zipCode: zipCode.trim() || undefined,
+      isCorporate,
+      companyName: isCorporate ? companyName : undefined,
+      customerName,
+      deviceModel
     };
 
     setIsComputing(true);
     try {
-      const res = await fetch("/api/quote/compute", {
+      const res = await fetch("/api/generate-quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -254,17 +290,35 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
     if (!computationResult) return;
     setIsSyncingPOS(true);
     try {
-      // Simulate POS Webhook transmit delay
-      await new Promise(resolve => setTimeout(resolve, 1400));
-      const logId = `POS-TX-${Math.floor(100000 + Math.random() * 900000)}`;
+      // Persist the quote to Firestore
+      const saveRes = await fetch("/api/save-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...computationResult,
+          customerName,
+          deviceModel,
+          companyName: isCorporate ? companyName : undefined,
+          isCorporate,
+          syncedToPOS: true
+        })
+      });
+
+      if (!saveRes.ok) {
+        throw new Error("Persistence save error");
+      }
+
+      const saveData = await saveRes.json();
+      const logId = saveData.quoteRef || `POS-TX-${Math.floor(100000 + Math.random() * 900000)}`;
       setSyncedDocId(logId);
       addToast(
-        "POS Webhook Transmitted", 
-        `Custom Quote computed under hash ${computationResult.verificationChecksum.substring(0, 14)} synced with Spokane POS dynamic servers.`, 
+        "POS Webhook Transmitted & Saved", 
+        `Custom Quote computed under Ref: ${logId} persisted to secure local source vaults & synced with Spokane POS servers.`, 
         "success"
       );
     } catch (err) {
-      addToast("Sync Failure", "Failed to broadcast secure ammeter webhook.", "error");
+      console.error(err);
+      addToast("Sync Failure", "Failed to archive quote or broadcast secure ammeter webhook.", "error");
     } finally {
       setIsSyncingPOS(false);
     }
@@ -278,10 +332,16 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
       setHourlyLaborRate(95);
       setOverheadPercentage(15);
       setZipCode("99201");
+      setCustomerName("Jane Miller");
+      setCompanyName("AMAZON Fleet");
+      setIsCorporate(false);
+      setDeviceModel("Apple iPhone 15 Pro");
       setSyncedDocId(null);
       addToast("Quote Reset Complete", "Calculators wiped clean to default values.", "info");
     }
   };
+
+  const isZipValid = zipCode.trim().length === 5 && /^(992|990)\d{2}$/.test(zipCode.trim());
 
   const filteredInventory = inventory.filter(p => {
     const matchSearch = p.partName.toLowerCase().includes(inventorySearch.toLowerCase()) || 
@@ -317,6 +377,77 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
             <div className="font-mono text-[9.5px] leading-tight">
               <span className="block text-emerald-400 font-extrabold uppercase">DECOUPLED LOGIC</span>
               <span className="text-slate-500 font-bold">ANTI-HALLUCINATION</span>
+            </div>
+          </div>
+        </div>
+
+        {/* CLIENT & DEVICE PROFILE LAYER */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm animate-in fade-in duration-300">
+          <div className="flex items-center gap-2.5 border-b border-slate-800 pb-3 select-none">
+            <div className="w-7 h-7 rounded-lg bg-teal-950/40 text-teal-400 flex items-center justify-center border border-teal-500/20 font-bold text-xs">P</div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-white">Client & Device Profile</h3>
+              <p className="text-[9.5px] text-slate-500 font-mono">Specify client details, target device specs, and corporate settings</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Left: Customer Info */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-[9.5px] text-slate-500 font-bold uppercase tracking-wider block mb-1 font-mono">Customer Full Name</label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="e.g. Jane Miller"
+                  className="w-full bg-slate-950 border border-slate-850 rounded p-2 text-xs text-white font-mono focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+
+              {/* Corporate B2B toggle */}
+              <div className="bg-slate-950/40 p-2.5 border border-slate-850 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9.5px] text-slate-450 font-bold uppercase tracking-wider font-mono">B2B Corporate Account</span>
+                  <input
+                    type="checkbox"
+                    checked={isCorporate}
+                    onChange={(e) => setIsCorporate(e.target.checked)}
+                    className="w-4 h-4 rounded bg-slate-950 border-slate-800 text-teal-500 focus:ring-teal-500 cursor-pointer"
+                  />
+                </div>
+                {isCorporate && (
+                  <div className="pt-2 border-t border-slate-900 animate-in fade-in duration-200">
+                    <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block mb-1 font-mono">Company / Fleet Client Name</label>
+                    <input
+                      type="text"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="e.g. AMAZON Fleet"
+                      className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-xs text-white font-mono focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Device Info */}
+            <div className="space-y-3 flex flex-col justify-between">
+              <div>
+                <label className="text-[9.5px] text-slate-500 font-bold uppercase tracking-wider block mb-1 font-mono">Target Hardware Device Model</label>
+                <input
+                  type="text"
+                  value={deviceModel}
+                  onChange={(e) => setDeviceModel(e.target.value)}
+                  placeholder="e.g. Apple iPhone 15 Pro Max"
+                  className="w-full bg-slate-950 border border-slate-850 rounded p-2 text-xs text-white font-mono focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+
+              <div className="bg-slate-950/20 p-2.5 border border-slate-850 rounded-lg text-[9.5px] font-mono text-slate-500 leading-relaxed">
+                <span className="text-teal-400 font-bold mr-1">ℹ️ Telemetry-First Matching:</span>
+                Activating B2B corporate profiles automatically unlocks standard Spokane/Seattle enterprise pricing matrices, applying a flat 20% billing discount during recalculation cycles.
+              </div>
             </div>
           </div>
         </div>
@@ -649,38 +780,110 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
             </div>
 
             {/* Tax zipcode entry block */}
-            <div className="pt-4 border-t border-slate-850/60 grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label htmlFor="quoteZipCodeDest" className="text-[9.5px] text-slate-500 font-bold uppercase tracking-wider block font-mono">Recipient ZIP Code</label>
-                <div className="relative">
-                  <MapPin className="w-3.5 h-3.5 text-slate-550 absolute left-2.5 top-2.5" />
-                  <input
-                    id="quoteZipCodeDest"
-                    type="text"
-                    maxLength={5}
-                    placeholder="99201"
-                    value={zipCode}
-                    onChange={(e) => setZipCode(e.target.value.replace(/\D/g, "").substring(0, 5))}
-                    className="w-full bg-slate-950 border border-slate-805 rounded p-2 pl-7 text-xs text-white font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase font-black"
-                  />
+            <div className="pt-4 border-t border-slate-850/60 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label htmlFor="quoteZipCodeDest" className="text-[9.5px] text-slate-500 font-bold uppercase tracking-wider block font-mono">Recipient ZIP Code</label>
+                  <div className="relative">
+                    <MapPin className={`w-3.5 h-3.5 absolute left-2.5 top-2.5 transition-colors ${
+                      zipCode.length === 5 && !/^(992|990)\d{2}$/.test(zipCode)
+                        ? "text-amber-500"
+                        : zipCode.length === 5
+                        ? "text-teal-400"
+                        : "text-slate-550"
+                    }`} />
+                    <input
+                      id="quoteZipCodeDest"
+                      type="text"
+                      maxLength={5}
+                      placeholder="99201"
+                      value={zipCode}
+                      onChange={(e) => setZipCode(e.target.value.replace(/\D/g, "").substring(0, 5))}
+                      className={`w-full bg-slate-950 border rounded p-2 pl-7 text-xs font-mono focus:outline-none focus:ring-1 uppercase font-black transition-all ${
+                        zipCode.length === 5 && !/^(992|990)\d{2}$/.test(zipCode)
+                          ? "border-amber-500/70 text-amber-400 focus:ring-amber-500"
+                          : zipCode.length === 5
+                          ? "border-teal-500/70 text-teal-400 focus:ring-teal-500"
+                          : "border-slate-805 text-white focus:ring-blue-500"
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Real-time local tax lookup reflection */}
+                <div className={`p-2 border rounded-lg flex flex-col justify-center text-[10px] font-mono leading-tight select-none transition-all ${
+                  zipCode.length === 5 && !/^(992|990)\d{2}$/.test(zipCode)
+                    ? "bg-amber-950/20 border-amber-900/40 text-amber-500"
+                    : zipCode.length === 5
+                    ? "bg-slate-950/60 border-slate-855 text-slate-400"
+                    : "bg-slate-950/20 border-slate-900/30 text-slate-550"
+                }`}>
+                  <span className="text-[8px] uppercase tracking-wider text-slate-500">Destination Tax</span>
+                  {zipCode.length === 5 && !/^(992|990)\d{2}$/.test(zipCode) ? (
+                    <>
+                      <strong className="text-amber-400 text-[11px] font-extrabold truncate block">
+                        OUT OF REGION
+                      </strong>
+                      <span className="text-amber-500 mt-0.5 font-bold text-[8.5px]">
+                        Spokane Local Only
+                      </span>
+                    </>
+                  ) : computationResult?.metrics.taxInfo ? (
+                    <>
+                      <strong className="text-white text-[11px] font-extrabold truncate block">
+                        {computationResult.metrics.taxInfo.city}
+                      </strong>
+                      <span className="text-teal-400 mt-0.5 font-bold">
+                        Rate: {(computationResult.metrics.taxInfo.rate * 100).toFixed(2)}%
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-slate-500 mt-0.5">
+                      {zipCode.length < 5 ? "Incomplete ZIP..." : "Invalid WA ZIP"}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* Real-time local tax lookup reflection */}
-              <div className="bg-slate-950/60 p-2 border border-slate-855 rounded-lg flex flex-col justify-center text-[10px] font-mono leading-tight text-slate-400 select-none">
-                <span className="text-[8px] uppercase tracking-wider text-slate-500">Destination Tax</span>
-                {computationResult?.metrics.taxInfo ? (
-                  <>
-                    <strong className="text-white text-[11px] font-extrabold truncate block">
-                      {computationResult.metrics.taxInfo.city}
-                    </strong>
-                    <span className="text-emerald-400 mt-0.5 font-bold">
-                      Rate: {(computationResult.metrics.taxInfo.rate * 100).toFixed(2)}%
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-rose-400">Invalid zip code</span>
-                )}
+              {/* Warning/Success Assistant Advice Banner */}
+              {zipCode.length === 5 && !/^(992|990)\d{2}$/.test(zipCode) && (
+                <div className="bg-amber-950/10 border border-amber-900/40 rounded-lg p-2 flex items-start gap-1.5 text-[9.5px] font-mono text-amber-500 animate-in slide-in-from-top-1 duration-200">
+                  <span className="text-[11px] leading-none">⚠️</span>
+                  <span>
+                    <strong>REGION LOCK ACTIVE:</strong> Triage-AI Quote Engine is localized exclusively to Spokane County. Enter a 990xx or 992xx ZIP code to restore tax calculation.
+                  </span>
+                </div>
+              )}
+
+              {/* Spokane Regional Localization Pills */}
+              <div className="space-y-1.5 bg-slate-950/30 p-2.5 border border-slate-850 rounded-xl select-none">
+                <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-widest font-mono block">Spokane District Presets</span>
+                <div className="grid grid-cols-4 gap-1">
+                  {[
+                    { zip: "99201", label: "Downtown" },
+                    { zip: "99203", label: "South Hill" },
+                    { zip: "99206", label: "Valley" },
+                    { zip: "99208", label: "Northside" },
+                    { zip: "99001", label: "Airway Hts" },
+                    { zip: "99004", label: "Cheney" },
+                    { zip: "99019", label: "Liberty Lk" },
+                    { zip: "99021", label: "Mead (8.2%)" }
+                  ].map((preset) => (
+                    <button
+                      key={preset.zip}
+                      type="button"
+                      onClick={() => setZipCode(preset.zip)}
+                      className={`p-1 text-[8.5px] font-mono rounded font-bold border transition-all text-center cursor-pointer truncate ${
+                        zipCode === preset.zip
+                          ? "bg-teal-600 text-white border-teal-500 shadow-sm"
+                          : "bg-slate-950 border-slate-900 text-slate-450 hover:bg-slate-900/40 hover:text-white"
+                      }`}
+                      title={`${preset.label} (${preset.zip})`}
+                    >
+                      {preset.zip}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -710,89 +913,225 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
               </div>
             ) : computationResult ? (
               <div className="space-y-4 font-mono text-xs text-slate-350">
-                {/* 1. S2C parts cost breakdowns */}
-                <div>
-                  <div className="flex justify-between items-center text-slate-400 font-semibold mb-1">
-                    <span>Parts Subtotal</span>
-                    <span className="text-white font-bold">${computationResult.metrics.partsCostSum.toFixed(2)}</span>
+                {/* Expand / Collapse All Controls */}
+                <div className="flex justify-between items-center bg-slate-950/40 p-2 border border-slate-850/60 rounded-xl select-none">
+                  <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500">Interactive Diagnostics Breakdown</span>
+                  <div className="flex gap-2 text-[9px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTiers({ materials: true, labor: true, tax: true })}
+                      className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      EXPAND ALL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTiers({ materials: false, labor: false, tax: false })}
+                      className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      COLLAPSE ALL
+                    </button>
                   </div>
-                  {computationResult.parts.length > 0 ? (
-                    <div className="bg-slate-950 rounded p-2 text-[9.5px] text-slate-500 leading-normal max-h-[80px] overflow-y-auto space-y-0.5">
-                      {computationResult.parts.map((p, i) => (
-                        <div key={i} className="flex justify-between pr-1">
-                          <span className="truncate max-w-[170px] text-slate-400 font-semibold">↳ {p.partName} (x{p.quantity})</span>
-                          <span>${p.subtotal.toFixed(2)}</span>
+                </div>
+
+                {/* Collapsible Tiered Stack */}
+                <div className="space-y-2.5">
+                  {/* TIER 1: MATERIALS */}
+                  <div className="border border-slate-850 rounded-xl overflow-hidden bg-slate-950/20 transition-all">
+                    <button
+                      type="button"
+                      onClick={() => toggleTier("materials")}
+                      className="w-full flex items-center justify-between p-3 bg-slate-950/50 hover:bg-slate-900/40 transition-colors text-left font-mono select-none cursor-pointer"
+                    >
+                      <div className="space-y-0.5">
+                        <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          01. Materials & DB Parts
+                        </span>
+                        <div className="text-white font-extrabold text-[12px] flex items-center gap-1.5">
+                          <span>${computationResult.metrics.partsCostSum.toFixed(2)}</span>
+                          {computationResult.metrics.backorderPremiumSum > 0 && (
+                            <span className="text-[8px] px-1 py-0.5 bg-amber-950/80 text-amber-400 rounded border border-amber-900/45 font-black uppercase tracking-wider leading-none">
+                              +{computationResult.metrics.backorderPremiumSum.toFixed(0)} Surcharge
+                            </span>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-slate-600 pl-2">↳ Zero parts added to current configuration</div>
-                  )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9.5px] text-slate-500">{computationResult.parts.length} Item(s)</span>
+                        {expandedTiers.materials ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                      </div>
+                    </button>
+                    
+                    <AnimatePresence initial={false}>
+                      {expandedTiers.materials && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.18, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="p-3 pt-1.5 border-t border-slate-850/40 space-y-2 bg-slate-950/40">
+                            <div className="flex justify-between items-center text-slate-400 font-semibold text-[10.5px]">
+                              <span>Base Parts Cost</span>
+                              <span>${computationResult.metrics.partsCostSum.toFixed(2)}</span>
+                            </div>
+                            
+                            {computationResult.parts.length > 0 ? (
+                              <div className="bg-slate-950/90 border border-slate-900/80 rounded p-2 text-[9px] text-slate-400 leading-normal max-h-[100px] overflow-y-auto space-y-1">
+                                {computationResult.parts.map((p, i) => (
+                                  <div key={i} className="flex justify-between pr-1">
+                                    <span className="truncate max-w-[185px] text-slate-450 font-medium">↳ {p.partName} (x{p.quantity})</span>
+                                    <span className="text-slate-300 font-bold">${p.subtotal.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-slate-600 pl-2">↳ Zero parts added to current configuration</div>
+                            )}
+
+                            {computationResult.metrics.backorderPremiumSum > 0 && (
+                              <div className="bg-amber-950/15 border border-amber-900/35 p-2 rounded-lg space-y-1 mt-1">
+                                <div className="flex justify-between text-[10px] items-center text-amber-400 font-extrabold">
+                                  <span className="flex items-center gap-1">⚠️ OOS Premium Surcharge</span>
+                                  <span>+${computationResult.metrics.backorderPremiumSum.toFixed(2)}</span>
+                                </div>
+                                <p className="text-[8.5px] text-slate-500 leading-normal select-none">
+                                  Depleted stock trigger forced dynamic sourcing premiums.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* TIER 2: LABOR & MARKUP */}
+                  <div className="border border-slate-850 rounded-xl overflow-hidden bg-slate-950/20 transition-all">
+                    <button
+                      type="button"
+                      onClick={() => toggleTier("labor")}
+                      className="w-full flex items-center justify-between p-3 bg-slate-950/50 hover:bg-slate-900/40 transition-colors text-left font-mono select-none cursor-pointer"
+                    >
+                      <div className="space-y-0.5">
+                        <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                          02. Labor & Overhead Markup
+                        </span>
+                        <div className="text-white font-extrabold text-[12px]">
+                          ${(computationResult.metrics.laborCost + computationResult.metrics.overheadCost).toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9.5px] text-slate-500">{computationResult.metrics.laborHours} Hr(s) @ {computationResult.metrics.overheadPercent}%</span>
+                        {expandedTiers.labor ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                      </div>
+                    </button>
+                    
+                    <AnimatePresence initial={false}>
+                      {expandedTiers.labor && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.18, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="p-3 pt-1.5 border-t border-slate-850/40 space-y-2 bg-slate-950/40">
+                            <div className="flex justify-between items-center text-[10.5px]">
+                              <span className="text-slate-450 font-medium">Labor Cost</span>
+                              <span className="text-slate-200 font-bold">${computationResult.metrics.laborCost.toFixed(2)}</span>
+                            </div>
+                            <div className="text-[9px] text-slate-500 pl-2 select-none">
+                              ↳ {computationResult.metrics.laborHours} hr(s) at ${computationResult.metrics.hourlyLaborRate}/hr rate
+                            </div>
+                            
+                            <div className="pt-1.5 border-t border-slate-900/40 flex justify-between items-center text-[10.5px]">
+                              <span className="text-slate-450 font-medium">Overhead Margin Markup ({computationResult.metrics.overheadPercent}%)</span>
+                              <span className="text-slate-200 font-bold">${computationResult.metrics.overheadCost.toFixed(2)}</span>
+                            </div>
+                            <div className="text-[9px] text-slate-500 pl-2 select-none">
+                              ↳ Secure silicon forensics laboratory operation overhead multiplier.
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* TIER 3: SPOKANE LOCAL TAX */}
+                  <div className="border border-slate-850 rounded-xl overflow-hidden bg-slate-950/20 transition-all">
+                    <button
+                      type="button"
+                      onClick={() => toggleTier("tax")}
+                      className="w-full flex items-center justify-between p-3 bg-slate-950/50 hover:bg-slate-900/40 transition-colors text-left font-mono select-none cursor-pointer"
+                    >
+                      <div className="space-y-0.5">
+                        <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                          03. Spokane Local Sales Tax
+                        </span>
+                        <div className="text-teal-400 font-extrabold text-[12px]">
+                          +${computationResult.metrics.taxInfo.taxAmount.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9.5px] text-teal-500 font-bold">{(computationResult.metrics.taxInfo.rate * 100).toFixed(2)}% Rate</span>
+                        {expandedTiers.tax ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                      </div>
+                    </button>
+                    
+                    <AnimatePresence initial={false}>
+                      {expandedTiers.tax && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.18, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="p-3 pt-1.5 border-t border-slate-850/40 space-y-2 bg-slate-950/40">
+                            <div className="flex justify-between items-center text-[10.5px]">
+                              <span className="text-slate-450 font-medium">Recipient Jurisdiction</span>
+                              <span className="text-slate-200 font-bold">{computationResult.metrics.taxInfo.city || "Spokane Region"}</span>
+                            </div>
+                            <div className="text-[9px] text-slate-500 pl-2 select-none">
+                              ↳ Destination ZIP: {computationResult.metrics.taxInfo.zipCode || "99201"} / combined rate of {(computationResult.metrics.taxInfo.rate * 100).toFixed(2)}%
+                            </div>
+                            
+                            <div className="pt-1.5 border-t border-slate-900/40 flex justify-between items-center text-[10.5px]">
+                              <span className="text-slate-450 font-medium">Allocated Facilities</span>
+                              <span className="text-slate-200 text-right truncate max-w-[160px] font-bold" title={computationResult.metrics.localFacilities}>
+                                {computationResult.metrics.localFacilities}
+                              </span>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
 
-                {/* 2. S2C Backorder Premiums if any parts are out of stock */}
-                {computationResult.metrics.backorderPremiumSum > 0 && (
-                  <div className="bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-lg space-y-1">
-                    <div className="flex justify-between text-[10.5px] items-center text-rose-350 font-extrabold">
-                      <span className="flex items-center gap-1.5">⚠️ Out-Of-Stock Surcharges</span>
-                      <span>+${computationResult.metrics.backorderPremiumSum.toFixed(2)}</span>
-                    </div>
-                    <p className="text-[8.5px] text-slate-500 leading-normal select-none">
-                      Warning: Surcharges are automatically applied due to depleted warehouse stocking indices on selected DB parts.
-                    </p>
-                  </div>
-                )}
-
-                {/* 3. Labor Costs */}
-                <div>
-                  <div className="flex justify-between items-center text-slate-400 font-semibold">
-                    <span>Labor Cost (Hours * Rate)</span>
-                    <span className="text-white font-bold">${computationResult.metrics.laborCost.toFixed(2)}</span>
-                  </div>
-                  <div className="text-[9.5px] text-slate-500 pl-2 mt-0.5 select-none">
-                    ↳ {computationResult.metrics.laborHours} hr(s) at ${computationResult.metrics.hourlyLaborRate}/hr
-                  </div>
-                </div>
-
-                {/* 4. Configurable Overhead */}
-                <div className="pt-2 border-t border-slate-850/50">
-                  <div className="flex justify-between items-center text-[11px] text-slate-400 font-medium">
-                    <span>Overhead Margin Markup ({computationResult.metrics.overheadPercent}%)</span>
-                    <span className="text-white">${computationResult.metrics.overheadCost.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div className="h-[1px] bg-slate-850"></div>
+                <div className="h-[1px] bg-slate-850/60 my-1"></div>
 
                 {/* Subtotal baseline */}
-                <div className="flex justify-between items-center text-[12.5px] font-bold text-slate-205">
+                <div className="flex justify-between items-center text-[11.5px] font-bold text-slate-300">
                   <span>Pre-Tax Subtotal</span>
                   <span className="text-white">${computationResult.metrics.subtotalBeforeTax.toFixed(2)}</span>
                 </div>
 
-                {/* Destination sales taxes */}
-                <div className="flex justify-between items-center text-slate-400">
-                  <span>
-                    Sales Tax ({computationResult.metrics.taxInfo.city || "WA"})
-                    {computationResult.metrics.taxInfo.rate > 0 && (
-                      <span className="text-[9.5px] text-slate-500 ml-1">
-                        ({(computationResult.metrics.taxInfo.rate * 100).toFixed(2)}%)
-                      </span>
-                    )}
-                  </span>
-                  <span>+${computationResult.metrics.taxInfo.taxAmount.toFixed(2)}</span>
-                </div>
-
-                <div className="h-[1px] bg-slate-800"></div>
+                <div className="h-[1px] bg-slate-800/80"></div>
 
                 {/* Ultimate combined quote total */}
                 <div className="flex justify-between items-baseline py-1 select-none">
-                  <span className="font-extrabold text-slate-250 text-xs">ESTIMATED TOTAL</span>
+                  <span className="font-extrabold text-slate-400 text-xs uppercase tracking-wider">Estimated Total</span>
                   <div className="text-right">
                     <span className="font-black text-2xl tracking-tight text-blue-400">
                       ${computationResult.metrics.grandTotal.toFixed(2)}
                     </span>
-                    <span className="block text-[8.5px] text-slate-550 mr-1 mt-0.5 uppercase tracking-wide">WA Destination Rates</span>
+                    <span className="block text-[8px] text-slate-500 mr-1 mt-0.5 uppercase tracking-wider">WA Destination Rates</span>
                   </div>
                 </div>
 
@@ -818,7 +1157,7 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
             <button
               type="button"
               onClick={handleTransmitToPOS}
-              disabled={isSyncingPOS || !computationResult || selectedParts.length === 0}
+              disabled={isSyncingPOS || !computationResult || selectedParts.length === 0 || !isZipValid}
               className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-md disabled:opacity-40 select-none cursor-pointer active:scale-[0.985] transition-all"
             >
               {isSyncingPOS ? (
@@ -838,7 +1177,7 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
               <button
                 type="button"
                 onClick={() => setShowCertificateModal(true)}
-                disabled={!computationResult}
+                disabled={!computationResult || !isZipValid}
                 className="py-2 bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-colors disabled:opacity-40"
               >
                 <FileText className="w-3.5 h-3.5 text-blue-400" />

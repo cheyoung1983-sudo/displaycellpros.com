@@ -134,8 +134,8 @@ export function ContactView() {
                 </div>
                 <div>
                   <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider font-bold">Ammeter Hot-Line</div>
-                  <a href="tel:5095550190" className="text-base font-bold text-white hover:text-teal-400 transition-colors block mt-0.5">
-                    (509) 555-0190
+                  <a href="tel:5092553852" className="text-base font-bold text-white hover:text-teal-400 transition-colors block mt-0.5">
+                    (509) 255-3852
                   </a>
                   <span className="text-slate-400 text-xs mt-0.5 block">Direct laboratory engineer queue dispatch.</span>
                 </div>

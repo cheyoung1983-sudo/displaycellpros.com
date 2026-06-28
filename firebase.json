@@ -1,38 +1,10 @@
 {
   "hosting": {
-    "site": "displaycellpros-com",
     "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
-    ],
-    "predeploy": [
-      "npm run build"
-    ],
-    "headers": [
-      {
-        "source": "**/*.@(js|mjs|wasm)",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "text/javascript"
-          },
-          {
-            "key": "X-Content-Type-Options",
-            "value": "nosniff"
-          }
-        ]
-      },
-      {
-        "source": "**/*.css",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "text/css"
-          }
-        ]
-      }
     ],
     "rewrites": [
       {
@@ -40,8 +12,5 @@
         "destination": "/index.html"
       }
     ]
-  },
-  "firestore": {
-    "rules": "firestore.rules"
   }
 }

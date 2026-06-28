@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Washington State Business License - DISPLAY & CELL PROS LLC</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Playfair+Display:ital,wght@0,600;0,800;1,600&family=Roboto+Mono:wght@400;700&family=Inter:wght@400;500;600;700;900&display=swap');
+
+    body {
+      background-color: #f0f2f5;
+      margin: 0;
+      padding: 40px 20px;
+      font-family: 'Inter', -apple-system, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Standard Letter Page Proportions for Official Look */
+    .license-container {
+      background-color: #ffffff;
+      width: 8.5in;
+      height: 11in;
+      box-sizing: border-box;
+      padding: 0.5in;
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      color: #1a202c;
+    }
+
+    /* Print styling rules */
+    @media print {
+      body {
+        background-color: #ffffff;
+        padding: 0;
+      }
+      .license-container {
+        box-shadow: none;
+        width: 100%;
+        height: 100%;
+        padding: 0.4in;
+      }
+    }
+
+    /* Ornate Outer Border representing State Certificate Scrollwork */
+    .outer-border {
+      border: 3px double #1a365d;
+      border-radius: 6px;
+      height: 100%;
+      padding: 24px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    /* Subtle State Watermark */
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 450px;
+      height: 450px;
+      opacity: 0.03;
+      background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="%23000000"/><text x="50" y="55" font-family="serif" font-size="6" fill="%23000000" text-anchor="middle">STATE OF WASHINGTON</text></svg>');
+      background-size: contain;
+      background-repeat: no-repeat;
+      pointer-events: none;
+    }
+
+    /* Header Styling */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-b: 1px solid #e2e8f0;
+      padding-bottom: 20px;
+    }
+
+    .seal-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* High Fidelity State Seal Icon */
+    .state-seal {
+      width: 70px;
+      height: 70px;
+      background-color: #0d5c3a;
+      border: 3px solid #d69e2e;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #ffffff;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .state-seal-text-top {
+      font-size: 6px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      margin-bottom: 1px;
+    }
+
+    .state-seal-text-mid {
+      font-size: 5px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      margin-bottom: 1px;
+    }
+
+    .state-seal-text-bot {
+      font-size: 6px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+    }
+
+    .state-seal-year {
+      font-family: 'Roboto Mono', monospace;
+      font-size: 7px;
+      color: #f6e05e;
+      font-weight: bold;
+      margin-top: 2px;
+    }
+
+    .title-area h2 {
+      margin: 0;
+      font-family: 'Cinzel', serif;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: #2d3748;
+      font-weight: 700;
+    }
+
+    .title-area h1 {
+      margin: 4px 0 0 0;
+      font-family: 'Inter', sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: #1a365d;
+    }
+
+    .meta-details {
+      text-align: right;
+      font-size: 11px;
+      line-height: 1.6;
+      color: #4a5568;
+    }
+
+    .meta-details strong {
+      color: #2d3748;
+    }
+
+    .meta-details .expiration-row {
+      color: #1a365d;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Content Area Layout */
+    .content-body {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 30px;
+      margin-top: 30px;
+      flex-grow: 1;
+    }
+
+    .left-column {
+      border-right: 1px solid #edf2f7;
+      padding-right: 20px;
+    }
+
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #718096;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .entity-details {
+      margin-bottom: 24px;
+    }
+
+    .entity-name {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.2px;
+    }
+
+    .entity-address {
+      font-family: 'Roboto Mono', monospace;
+      font-size: 11.5px;
+      color: #334155;
+      line-height: 1.6;
+      margin: 8px 0 0 0;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: #ecfdf5;
+      border: 1px solid #059669;
+      color: #047857;
+      font-weight: 900;
+      font-size: 11px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 6px;
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      background-color: #10b981;
+      border-radius: 50%;
+    }
+
+    .endorsements-box {
+      margin-top: 24px;
+    }
+
+    .endorsement-item {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 6px;
+    }
+
+    .trade-names-box {
+      margin-top: 24px;
+    }
+
+    .trade-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 6px;
+    }
+
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 24px;
+    }
+
+    /* License Footer */
+    .disclaimer-area {
+      border-top: 1px solid #edf2f7;
+      padding-top: 16px;
+      margin-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 30px;
+    }
+
+    .disclaimer-text {
+      font-size: 9px;
+      line-height: 1.5;
+      color: #718096;
+      max-w: 480px;
+    }
+
+    .signature-block {
+      text-align: right;
+      min-width: 180px;
+    }
+
+    .signature-line {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 20px;
+      font-style: italic;
+      font-weight: 700;
+      color: #1e293b;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 4px;
+      display: block;
+    }
+
+    .signature-title {
+      font-size: 8px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-top: 4px;
+      display: block;
+    }
+
+    /* Tear-off Section Divider */
+    .tear-off-divider {
+      border-top: 2px dashed #cbd5e1;
+      margin: 25px 0;
+      position: relative;
+    }
+
+    .tear-off-divider::before {
+      content: "✂ FOLD HERE / TEAR ALONG DOTS";
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #ffffff;
+      padding: 0 10px;
+      font-size: 8px;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 1px;
+    }
+
+    /* Tear-off slip content */
+    .tear-off-slip {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      font-size: 10px;
+      color: #4a5568;
+    }
+
+    .slip-left {
+      max-width: 300px;
+    }
+
+    .slip-mid {
+      border-left: 1px solid #edf2f7;
+      border-right: 1px solid #edf2f7;
+      padding: 0 20px;
+    }
+
+    .slip-right {
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="license-container">
+    <div class="outer-border">
+      <!-- Watermark background -->
+      <div class="watermark"></div>
+
+      <!-- Main certificate content -->
+      <div>
+        <div class="header">
+          <div class="seal-container">
+            <div class="state-seal">
+              <span class="state-seal-text-top">STATE</span>
+              <span class="state-seal-text-mid">OF</span>
+              <span class="state-seal-text-bot">WASHINGTON</span>
+              <span class="state-seal-year">1889</span>
+            </div>
+            <div class="title-area">
+              <h2>STATE OF WASHINGTON</h2>
+              <h1>BUSINESS LICENSE</h1>
+              <span style="font-size: 9px; font-weight: 700; background-color: #f7fafc; border: 1px solid #e2e8f0; padding: 2px 6px; border-radius: 3px; color: #4a5568;">
+                Limited Liability Company
+              </span>
+            </div>
+          </div>
+
+          <div class="meta-details">
+            <div><strong>Issue Date:</strong> Jun 12, 2026</div>
+            <div><strong>Unified Business ID #:</strong> 605985265</div>
+            <div><strong>Business ID #:</strong> 001</div>
+            <div><strong>Location:</strong> 0001</div>
+            <div class="expiration-row"><strong>Expires:</strong> Jun 30, 2027</div>
+          </div>
+        </div>
+
+        <div class="content-body">
+          <div class="left-column">
+            <div class="entity-details">
+              <span class="section-label">Registered Entity & Mailing Address</span>
+              <div class="entity-name">DISPLAY & CELL PROS LLC</div>
+              <pre class="entity-address">APT 48
+7007 N NEVADA ST
+SPOKANE WA 99208-5128</pre>
+            </div>
+
+            <div class="endorsements-box">
+              <span class="section-label">CITY/COUNTY ENDORSEMENTS</span>
+              <div class="endorsement-item">SPOKANE GENERAL BUSINESS - ACTIVE</div>
+            </div>
+
+            <div class="trade-names-box">
+              <span class="section-label">REGISTERED TRADE NAMES</span>
+              <div class="trade-name">↳ DISPLAY & CELL PROS LLC</div>
+            </div>
+          </div>
+
+          <div class="right-column">
+            <div>
+              <span class="section-label">TAX REGISTRATION STATUS</span>
+              <div class="status-badge">
+                <span class="status-indicator"></span>
+                TAX REGISTRATION - ACTIVE
+              </div>
+            </div>
+
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; font-size: 10px; line-height: 1.5; color: #4a5568;">
+              <strong style="color: #1a365d; display: block; margin-bottom: 4px; font-size: 10.5px;">DOR AUDIT COMPLIANT</strong>
+              This entity is active and fully registered with the Washington Department of Revenue (DOR). Tax calculations for client invoicing must be performed dynamically in compliance with destination-based municipal code guidelines.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Certificate footing -->
+      <div class="disclaimer-area">
+        <div class="disclaimer-text">
+          This document lists the registrations, endorsements, and licenses authorized for the business named above. By accepting this document, the licensee certifies the information on the application was complete, true, and accurate to the best of his or her knowledge, and that business will be conducted in compliance with all applicable Washington state, county, and city regulations.
+        </div>
+        <div class="signature-block">
+          <span class="signature-line">John Ryser</span>
+          <span class="signature-title">Director, Department of Revenue</span>
+        </div>
+      </div>
+
+      <!-- Tear-off fold line -->
+      <div class="tear-off-divider"></div>
+
+      <!-- Bottom Tear-off slip -->
+      <div class="tear-off-slip">
+        <div class="slip-left">
+          <span class="section-label" style="margin-bottom: 4px;">STATE OF WASHINGTON</span>
+          <strong style="font-size: 11px; color: #1a365d; display: block;">DISPLAY & CELL PROS LLC</strong>
+          <span style="font-size: 9px; color: #718096; display: block; margin-top: 2px;">APT 48, 7007 N NEVADA ST, SPOKANE WA 99208-5128</span>
+        </div>
+
+        <div class="slip-mid">
+          <div><strong>UBI:</strong> 605985265 001 0001</div>
+          <div style="margin-top: 4px;"><strong>TAX REGISTRATION:</strong> ACTIVE</div>
+          <div style="margin-top: 4px;"><strong>SPOKANE BUSINESS:</strong> ACTIVE</div>
+        </div>
+
+        <div class="slip-right">
+          <div><strong>Expires:</strong> Jun 30, 2027</div>
+          <div style="margin-top: 15px;">
+            <span style="font-family: 'Playfair Display', serif; font-style: italic; font-size: 13px; color: #1e293b;">John Ryser</span>
+            <span style="font-size: 6px; display: block; color: #94a3b8; text-transform: uppercase;">Director, DOR</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

@@ -214,5 +214,9 @@ service cloud.firestore {
         && isValidRecaptchaAssessment(incoming());
       allow update, delete: if false;
     }
+
+    match /quotes/{quoteId} {
+      allow read, write: if isSignedIn();
+    }
   }
 }

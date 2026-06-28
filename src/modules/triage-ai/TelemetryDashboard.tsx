@@ -632,7 +632,7 @@ export function TelemetryDashboard({
                 <div className="w-8 h-8 rounded-lg bg-red-950/30 border border-red-900/30 flex items-center justify-center text-red-500 mb-4 font-mono font-bold text-xs">
                   [X]
                 </div>
-                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider font-mono">The Component Exchange Monopoly</h3>
+                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider font-mono">The Modular Swap Monopoly</h3>
                 <p className="text-xs text-slate-550 mt-2 leading-relaxed">
                   Retail giants declare unfixable motherboard faults, coercion toward new $1,200 hardware, raw battery exchanges that prompt locking notifications, and general visual guessing. No electrical probing, high waste.
                 </p>

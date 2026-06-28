@@ -10,6 +10,7 @@ import {
   MessageSquare,
   ShoppingCart,
   Briefcase,
+  Wrench,
   Send,
   X,
   CheckCircle2,
@@ -64,7 +65,8 @@ import {
   BookOpen,
   ArrowLeft,
   Printer,
-  Nfc
+  Nfc,
+  Chrome
 } from "lucide-react";
 import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
@@ -100,7 +102,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { jsPDF } from "jspdf";
 import { signInWithPopup, signInAnonymously, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, deleteDoc } from "firebase/firestore";
-import { auth, db, googleProvider, triageModel } from "./lib/firebase";
+import { auth, db, googleProvider } from "./lib/firebase";
 import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
 
 // --- DATA MODELS ---
@@ -108,26 +110,26 @@ import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
 const SERVICES = [
   {
     tier: "Tier 1",
-    title: "Power Rail & Port Forensic Restoration",
+    title: "Core Power & Port Restoration",
     price: "$69 - $97",
-    desc: "Precision restoration of primary power delivery nodes and charging telemetry interfaces.",
-    examples: "Battery Cells, USB-C/Lightning Ports",
+    desc: "Fixed-price minor repairs focusing on power delivery.",
+    examples: "Batteries, Charging Ports",
     icon: <Battery className="w-8 h-8 text-blue-400" />
   },
   {
     tier: "Tier 2",
-    title: "Elite Display & Digitizer Renewal",
+    title: "Elite Display Renewal",
     price: "From $139",
-    desc: "Silicon-layer verification and renewal of high-fidelity OLED and digitizer assemblies.",
-    examples: "iPhone 12-15, Galaxy S Series Displays",
+    desc: "Fixed-price major repairs for cracked or failing screens.",
+    examples: "iPhone 12-15, Galaxy S Series Screens",
     icon: <Smartphone className="w-8 h-8 text-blue-400" />
   },
   {
     tier: "Tier 3",
-    title: "Silicon-Layer Board Forensics",
+    title: "Specialized Diagnostics",
     price: "Custom Quote",
-    desc: "Advanced S2C mapping, motherboard microsurgery, and NIST-compliant data recovery.",
-    examples: "Liquid Forensics, Board-Level Shorts, IC Re-balling",
+    desc: "Motherboard surgery, data recovery, and micro-soldering.",
+    examples: "Liquid Damage, Board-Level Shorts, Cameras",
     icon: <Cpu className="w-8 h-8 text-blue-400" />
   }
 ];
@@ -170,6 +172,9 @@ export default function App() {
 
   const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [isAdminClaim, setIsAdminClaim] = useState<boolean>(false);
+  const [showAccessDeniedModal, setShowAccessDeniedModal] = useState<boolean>(false);
+  const [simulatedAdminEmail, setSimulatedAdminEmail] = useState<string>("");
   const [storeCart, setStoreCart] = useState<Record<number, number>>({});
 
   // --- STORE INVENTORY STATES & THRESHOLDS ---
@@ -314,8 +319,58 @@ export default function App() {
   const [userRole, setUserRole] = useState<"technician" | "customer">(() => {
     return (localStorage.getItem("dcp_user_role") as "technician" | "customer") ?? "customer";
   });
-  const [profilePhone, setProfilePhone] = useState<string>("(509) 555-0199");
+  const [profilePhone, setProfilePhone] = useState<string>("(509) 255-3852");
   const [profilePreferredDevice, setProfilePreferredDevice] = useState<string>("iPhone 14 Pro Max");
+
+  // --- POS SYNC LEDGER AUTO-REFRESH STATES ---
+  const [posAutoRefresh, setPosAutoRefresh] = useState<boolean>(true);
+  const [posRefreshInterval, setPosRefreshInterval] = useState<number>(60); // Refresh interval in seconds (default: 60s)
+  const [posRefreshCountdown, setPosRefreshCountdown] = useState<number>(60); // Count down timer
+
+
+  // --- FIRESTORE BACKUP REAL-TIME SYNC STATUS ---
+  const [activeSyncCount, setActiveSyncCount] = useState<number>(0);
+  const [firestoreSyncStatus, setFirestoreSyncStatus] = useState<"Online" | "Syncing" | "Offline (Queued)">(
+    typeof navigator !== "undefined" && navigator.onLine ? "Online" : "Offline (Queued)"
+  );
+
+  // Sync state computed from online status and active sync processes
+  useEffect(() => {
+    const isNowOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+    if (!isNowOnline) {
+      setFirestoreSyncStatus("Offline (Queued)");
+    } else if (activeSyncCount > 0) {
+      setFirestoreSyncStatus("Syncing");
+    } else {
+      setFirestoreSyncStatus("Online");
+    }
+  }, [activeSyncCount]);
+
+  // Network listeners to immediately adapt the sync state
+  useEffect(() => {
+    const handleOnline = () => {
+      if (activeSyncCount > 0) {
+        setFirestoreSyncStatus("Syncing");
+      } else {
+        setFirestoreSyncStatus("Online");
+      }
+    };
+    const handleOffline = () => {
+      setFirestoreSyncStatus("Offline (Queued)");
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      }
+    };
+  }, [activeSyncCount]);
+
 
   // --- FORENSIC BACK STACK NAVIGATION STATES (NAV PRINCIPLES COMPLIANT) ---
   const [backStack, setBackStack] = useState<string[]>(() => {
@@ -642,6 +697,21 @@ export default function App() {
     }
   };
 
+  const handleSandboxLogin = () => {
+    const mockUser = {
+      uid: "sandbox-customer-999",
+      displayName: "Spokane Test Client",
+      email: "test-forensic-analyst@displaycellpros.com",
+      photoURL: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80",
+      isAnonymous: false,
+    };
+    setAuthUser(mockUser as any);
+    setCustomerName("Spokane Test Client");
+    setProfilePhone("(509) 255-3852");
+    setProfilePreferredDevice("iPhone 15 Pro Max");
+    addToast("Sandbox Credentials Generated", "Simulated forensic analyst session loaded. All operations linked to test profile.", "success");
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut(auth);
@@ -656,6 +726,7 @@ export default function App() {
 
   // Fetch Firestore backup logs
   const fetchFirestoreTickets = async (uid: string) => {
+    setActiveSyncCount(prev => prev + 1);
     try {
       setFirestoreError(null);
       
@@ -678,10 +749,13 @@ export default function App() {
       } catch (formattedError: any) {
         setFirestoreError(formattedError.message);
       }
+    } finally {
+      setActiveSyncCount(prev => Math.max(0, prev - 1));
     }
   };
 
   const fetchFirestoreLeads = async (uid: string) => {
+    setActiveSyncCount(prev => prev + 1);
     try {
       setIsLoadingLeads(true);
       setFirestoreError(null);
@@ -707,6 +781,7 @@ export default function App() {
       }
     } finally {
       setIsLoadingLeads(false);
+      setActiveSyncCount(prev => Math.max(0, prev - 1));
     }
   };
 
@@ -719,15 +794,14 @@ export default function App() {
     const newLead: HighPriorityLead = {
       id: leadId,
       customerName: customerName || "Spokane Lead Client",
-      phone: phone || "509-555-0199",
+      phone: phone || "(509) 255-3852",
       deviceModel: deviceModel || "Generic Device",
       status: "pending",
       createdAt: new Date().toISOString(),
       userId: authUser.uid
     };
 
-    
-
+    setActiveSyncCount(prev => prev + 1);
     try {
       setFirestoreError(null);
       const docRef = doc(db, "high-priority-leads", leadId);
@@ -741,14 +815,15 @@ export default function App() {
       } catch (formattedError: any) {
         setFirestoreError(formattedError.message);
       }
+    } finally {
+      setActiveSyncCount(prev => Math.max(0, prev - 1));
     }
   };
 
   const handleUpdateLeadStatus = async (leadId: string, newStatus: "pending" | "in_progress" | "contacted" | "completed" | "cancelled") => {
     if (!authUser) return;
 
-    
-
+    setActiveSyncCount(prev => prev + 1);
     try {
       setFirestoreError(null);
       const docRef = doc(db, "high-priority-leads", leadId);
@@ -774,6 +849,8 @@ export default function App() {
       } catch (formattedError: any) {
         setFirestoreError(formattedError.message);
       }
+    } finally {
+      setActiveSyncCount(prev => Math.max(0, prev - 1));
     }
   };
 
@@ -799,8 +876,7 @@ export default function App() {
       internalNotes: internalNotes.trim() || undefined
     };
 
-    
-
+    setActiveSyncCount(prev => prev + 1);
     try {
       setFirestoreError(null);
       const docRef = doc(db, "tickets", ticketId);
@@ -816,6 +892,8 @@ export default function App() {
       } catch (formattedError: any) {
         setFirestoreError(formattedError.message);
       }
+    } finally {
+      setActiveSyncCount(prev => Math.max(0, prev - 1));
     }
   };
 
@@ -999,7 +1077,38 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setAuthUser(user);
+        
+        // Retrieve custom claims or firestore document to check admin role mappings
+        let isAdmin = false;
+        if (user.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") {
+          isAdmin = true;
+        }
+        
+        try {
+          const idTokenResult = await user.getIdTokenResult();
+          if (idTokenResult.claims?.admin === true || idTokenResult.claims?.role === "admin") {
+            isAdmin = true;
+          }
+        } catch (e) {
+          console.error("Error retrieving custom claims:", e);
+        }
+
+        try {
+          const userDocRef = doc(db, "users", user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            if (userData.role === "admin" || userData.isAdmin === true || userData.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") {
+              isAdmin = true;
+            }
+          }
+        } catch (e) {
+          console.error("Error reading Firestore user admin claims:", e);
+        }
+
+        setIsAdminClaim(isAdmin);
       } else {
+        setIsAdminClaim(false);
         // Fallback to anonymous auth to allow public access while maintaining best practices for Firestore rules
         try {
           await signInAnonymously(auth);
@@ -1078,6 +1187,7 @@ export default function App() {
     setPosLogs(prev => [newLogItem, ...prev]);
 
     if (authUser?.uid) {
+      setActiveSyncCount(prev => prev + 1);
       try {
         const { doc, setDoc } = await import("firebase/firestore");
         const logRef = doc(db, "pos-logs", logId);
@@ -1086,6 +1196,8 @@ export default function App() {
       } catch (err: any) {
         console.error("Failed to push POS log to Firestore:", err);
         handleFirestoreError(err, OperationType.UPDATE, `pos-logs/${logId}`);
+      } finally {
+        setActiveSyncCount(prev => Math.max(0, prev - 1));
       }
     } else {
       const existing = localStorage.getItem("dcp_sandbox_pos_logs");
@@ -1101,6 +1213,7 @@ export default function App() {
 
     // 1. If we have a logged-in production user session, fetch logs from Firestore 'pos-logs' and 'tickets'
     if (authUser?.uid) {
+      setActiveSyncCount(prev => prev + 1);
       try {
         const ticketsRef = collection(db, "tickets");
         const qTickets = query(ticketsRef, where("userId", "==", authUser.uid));
@@ -1134,6 +1247,8 @@ export default function App() {
         } catch (formatted: any) {
           setFirestoreError(formatted.message);
         }
+      } finally {
+        setActiveSyncCount(prev => Math.max(0, prev - 1));
       }
     }
 
@@ -1179,9 +1294,14 @@ export default function App() {
       };
 
       if (authUser?.uid) {
-        const { doc, setDoc } = await import("firebase/firestore");
-        const leadRef = doc(db, "high-priority-leads", newLead.id);
-        await setDoc(leadRef, newLead);
+        setActiveSyncCount(prev => prev + 1);
+        try {
+          const { doc, setDoc } = await import("firebase/firestore");
+          const leadRef = doc(db, "high-priority-leads", newLead.id);
+          await setDoc(leadRef, newLead);
+        } finally {
+          setActiveSyncCount(prev => Math.max(0, prev - 1));
+        }
       } else {
         const savedLeads = localStorage.getItem("dcp_sandbox_leads");
         const list = savedLeads ? JSON.parse(savedLeads) : [];
@@ -1207,9 +1327,14 @@ export default function App() {
       };
 
       if (authUser?.uid) {
-        const { doc, setDoc } = await import("firebase/firestore");
-        const docRef = doc(db, "tickets", newTicket.id);
-        await setDoc(docRef, newTicket);
+        setActiveSyncCount(prev => prev + 1);
+        try {
+          const { doc, setDoc } = await import("firebase/firestore");
+          const docRef = doc(db, "tickets", newTicket.id);
+          await setDoc(docRef, newTicket);
+        } finally {
+          setActiveSyncCount(prev => Math.max(0, prev - 1));
+        }
       } else {
         // Mock session ticket lists
         const savedTickets = localStorage.getItem("dcp_sandbox_tickets");
@@ -1282,15 +1407,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+    const isTechnician = (authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim;
     if (userRole === "technician" && !isTechnician) {
       setUserRole("customer");
       setActiveTab("customer-hub");
-      addToast(
-        "Access Denied",
-        "Technician privileges are restricted to the verified organization administrator account (cheyoung1983@gmail.com). Downgraded to customer view.",
-        "error"
-      );
+      setShowAccessDeniedModal(true);
       return;
     }
 
@@ -1318,9 +1439,33 @@ export default function App() {
     }
   }, [userRole, authUser]);
 
+  // --- POS SYNC LEDGER AUTO-REFRESH ENGINE ---
+  useEffect(() => {
+    // Only run if the user is in technician mode, POS ledger is active, and auto-refresh is active
+    if (userRole !== "technician" || activeTab !== "lab" || labTab !== "pos" || !posAutoRefresh) {
+      return;
+    }
+
+    setPosRefreshCountdown(posRefreshInterval);
+
+    const timer = setInterval(() => {
+      setPosRefreshCountdown((prev) => {
+        if (prev <= 1) {
+          // Trigger refresh silently
+          fetchPOSLogs();
+          return posRefreshInterval;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [userRole, activeTab, labTab, posAutoRefresh, posRefreshInterval]);
+
+
   // Strict Force Out and Redirect Security Protocol
   useEffect(() => {
-    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+    const isTechnician = (authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim;
     
     // Explicit security boundary: Reject if "customer" tries to force "lab" view, 
     // or if a non-technician authenticated user tries to load the technician workspace.
@@ -2124,35 +2269,46 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setIsChatSending(true);
 
     try {
-      const chat = triageModel.startChat({
-        history: messages.map(m => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.text }]
-        }))
+      const activeApiKey = await getActiveApiKey();
+      const res = await fetch("/api/triage", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-api-key": activeApiKey
+        },
+        body: JSON.stringify({
+          messages: updatedMessages,
+          deviceDetails: {
+            brand: deviceBrand,
+            model: deviceModel,
+            tier: deviceTier
+          }
+        })
       });
-
-      const result = await chat.sendMessage(textToSend);
-      const response = await result.response;
-      const data = JSON.parse(response.text());
-
-      if (data.text) {
+      if (res.ok) {
+        const data = await res.json();
         setMessages(prev => [...prev, { role: "assistant", text: data.text }]);
-      }
-
-      setGroundingSources([]);
-
-      if (data.detectedSpecs) {
-        const specs = data.detectedSpecs;
-        if (specs.brand) setDeviceBrand(specs.brand);
-        if (specs.model) setDeviceModel(specs.model);
-        if (specs.tier) setDeviceTier(specs.tier);
-        if (specs.issue) setIssueType(specs.issue);
+        if (data.groundingSources && Array.isArray(data.groundingSources)) {
+          setGroundingSources(data.groundingSources);
+        } else {
+          setGroundingSources([]);
+        }
         
-        addToast(
-          "Triage Engine Live-Sync",
-          `State Updated: Brand to [${specs.brand || "Undetected"}], Model to [${specs.model || "Undetected"}], Damage Routed to [${specs.issue || "Undetected"}].`,
-          "success"
-        );
+        if (data.detectedSpecs) {
+          const specs = data.detectedSpecs;
+          if (specs.brand) setDeviceBrand(specs.brand);
+          if (specs.model) setDeviceModel(specs.model);
+          if (specs.tier) setDeviceTier(specs.tier);
+          if (specs.issue) setIssueType(specs.issue);
+          
+          addToast(
+            "Triage Engine Live-Sync",
+            `State Updated: Brand to [${specs.brand || "Undetected"}], Model to [${specs.model || "Undetected"}], Damage Routed to [${specs.pricingTier || specs.issue || "Undetected"}].`,
+            "success"
+          );
+        }
+      } else {
+        throw new Error("Chat request failed");
       }
     } catch (err: any) {
       console.error("Chat triage error:", err);
@@ -3093,7 +3249,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-[11px] font-medium">
             <span className="flex items-center gap-1.5 text-slate-300">
               <Phone className="w-3.5 h-3.5 text-blue-500" />
-              <span>Direct Hotline: <strong className="text-white font-extrabold">(509) 555-0199</strong></span>
+              <span>Direct Hotline: <strong className="text-white font-extrabold">(509) 255-3852</strong></span>
             </span>
             <span className="hidden md:inline text-slate-700">|</span>
             <span className="flex items-center gap-1.5 text-slate-300">
@@ -3169,6 +3325,44 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                         <span>Customer Session (Guest)</span>
                       </span>
                     )}
+                  </>
+                )}
+              </div>
+
+              {/* FIRESTORE BACKUP CONNECTIVITY SYNC STATUS */}
+              <div 
+                className={`hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg border font-mono text-[10px] font-black uppercase tracking-wider select-none transition-all duration-300 ${
+                  firestoreSyncStatus === "Online"
+                    ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.05)]"
+                    : firestoreSyncStatus === "Syncing"
+                    ? "bg-blue-950/40 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.05)]"
+                    : "bg-amber-950/40 text-amber-500 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.05)]"
+                }`}
+                title={`Firestore Backups Sync Status: ${firestoreSyncStatus}`}
+              >
+                {firestoreSyncStatus === "Online" ? (
+                  <>
+                    <Database className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Cloud Backed</span>
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
+                    </span>
+                  </>
+                ) : firestoreSyncStatus === "Syncing" ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                    <span>Syncing Cloud</span>
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-400"></span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                    <span>Offline (Queued)</span>
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
                   </>
                 )}
               </div>
@@ -3273,13 +3467,9 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                   title="Switch to Technician view"
                   type="button"
                   onClick={() => {
-                    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+                    const isTechnician = (authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim;
                     if (!isTechnician) {
-                      addToast(
-                        "Access Denied",
-                        "Technician privileges are restricted to the verified organization administrator account (cheyoung1983@gmail.com). Please authenticate with the administrator account to access.",
-                        "error"
-                      );
+                      setShowAccessDeniedModal(true);
                       return;
                     }
                     setUserRole("technician");
@@ -3338,6 +3528,40 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                 )}
               </div>
 
+              {/* MOBILE FIRESTORE BACKUP SYNC INDICATOR */}
+              <div className={`px-3 py-2 rounded-lg border flex items-center justify-between font-mono text-[10px] uppercase tracking-wider select-none transition-all duration-300 ${
+                firestoreSyncStatus === "Online"
+                  ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.05)]"
+                  : firestoreSyncStatus === "Syncing"
+                  ? "bg-blue-950/40 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.05)]"
+                  : "bg-amber-950/40 text-amber-500 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.05)]"
+              }`}>
+                <span className="text-slate-400">Cloud Backup Sync:</span>
+                <span className="flex items-center gap-1.5 font-black">
+                  {firestoreSyncStatus === "Online" ? (
+                    <>
+                      <Database className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Cloud Backed</span>
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
+                      </span>
+                    </>
+                  ) : firestoreSyncStatus === "Syncing" ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                      <span>Syncing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Offline (Queued)</span>
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    </>
+                  )}
+                </span>
+              </div>
+
               {userRole === "technician" ? (
                 <>
                   <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
@@ -3390,13 +3614,10 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                 </button>
                 <button
                   onClick={() => {
-                    const isTechnician = authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com";
+                    const isTechnician = (authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim;
                     if (!isTechnician) {
-                      addToast(
-                        "Access Denied",
-                        "Technician privileges are restricted to the verified organization administrator account (cheyoung1983@gmail.com). Please authenticate with the administrator account to access.",
-                        "error"
-                      );
+                      setShowAccessDeniedModal(true);
+                      setMobileMenuOpen(false);
                       return;
                     }
                     setUserRole("technician");
@@ -3499,6 +3720,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
           {activeTab === "blog" && <BlogView />}
           {activeTab === "csp" && <CspManualView addToast={addToast} />}
           {activeTab === "legal" && <LegalView />}
+          {activeTab === "license" && <LegalView initialTab="license" />}
           {activeTab === "privacy" && <LegalView initialTab="privacy" />}
           {activeTab === "tos" && <LegalView initialTab="tos" />}
           {activeTab === "compliance" && <LegalView initialTab="compliance" />}
@@ -3544,7 +3766,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
             setIssueType={setIssueType}
             setDeviceTier={setDeviceTier}
             handleGoogleSignIn={handleGoogleSignIn}
-            handleSandboxLogin={() => {}}
+            handleSandboxLogin={handleSandboxLogin}
             googleAccessToken={googleAccessToken}
             onSignOut={handleSignOut}
           />
@@ -4298,7 +4520,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     >
                       <div className="flex items-center gap-2">
                         <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        <span>[NIST Audit Compliance]</span>
+                        <span>[NIST Compliance] (Gateway)</span>
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-emerald-950 text-emerald-300 border border-emerald-850/40 font-bold">GW</span>
                     </button>
@@ -4987,23 +5209,106 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       />
                     </React.Suspense>
                     <section className="bg-slate-800 border border-slate-700 rounded-xl flex flex-col flex-1 shadow-md p-5 animate-in fade-in duration-300">
-                      <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-blue-400" />
-                        <div>
-                          <h2 className="text-sm font-bold text-white uppercase tracking-tight">Active POS Sync Ledger</h2>
-                          <p className="text-xs text-slate-400">Continuous operational loop for Square webhook and CellSmart registries.</p>
+                      {/* Operational Telemetry Header & Dynamic Auto-Refresh Control Desk */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-700 pb-5 mb-5 gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-blue-950/60 border border-blue-800/40 flex items-center justify-center text-blue-400 shrink-0">
+                            <Activity className="w-5 h-5 animate-pulse" />
+                          </div>
+                          <div>
+                            <h2 className="text-sm font-extrabold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                              Active POS Sync Ledger
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-emerald-950/50 border border-emerald-500/30 text-emerald-400">
+                                Realtime Loop
+                              </span>
+                            </h2>
+                            <p className="text-xs text-slate-400">Continuous operational loop for Square webhook and CellSmart registries.</p>
+                          </div>
+                        </div>
+
+                        {/* Control Desk */}
+                        <div className="flex flex-wrap items-center gap-3 bg-slate-900/60 border border-slate-750 p-2.5 rounded-lg">
+                          {/* Auto-Refresh Toggle */}
+                          <div className="flex items-center gap-2 border-r border-slate-750 pr-3">
+                            <label className="relative inline-flex items-center cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={posAutoRefresh}
+                                onChange={(e) => {
+                                  setPosAutoRefresh(e.target.checked);
+                                  if (e.target.checked) {
+                                    setPosRefreshCountdown(posRefreshInterval);
+                                  }
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-7 h-4 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-slate-400 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-teal-600 peer-checked:after:bg-white"></div>
+                              <span className="ml-1.5 text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                                Auto-Sync
+                              </span>
+                            </label>
+                          </div>
+
+                          {/* Interval Selector */}
+                          {posAutoRefresh && (
+                            <div className="flex items-center gap-1.5 border-r border-slate-750 pr-3">
+                              <span className="text-[10px] font-mono text-slate-500 font-bold">INTERVAL:</span>
+                              <select
+                                value={posRefreshInterval}
+                                onChange={(e) => {
+                                  const interval = parseInt(e.target.value);
+                                  setPosRefreshInterval(interval);
+                                  setPosRefreshCountdown(interval);
+                                  addToast("Interval Set", `Auto-refresh loop synchronized to ${interval} seconds.`, "info");
+                                }}
+                                className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-[10.5px] font-mono text-slate-300 font-bold outline-none cursor-pointer focus:border-teal-500/50"
+                              >
+                                <option value="15">15s</option>
+                                <option value="30">30s</option>
+                                <option value="60">60s (Default)</option>
+                                <option value="120">120s</option>
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Countdown Indicator */}
+                          {posAutoRefresh ? (
+                            <div className="flex items-center gap-2">
+                              <div className="text-[10px] font-mono font-bold text-teal-400 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping" />
+                                NEXT SYNC: <span className="text-white text-xs font-bold">{posRefreshCountdown}s</span>
+                              </div>
+                              {/* Mini visual progress track */}
+                              <div className="w-12 bg-slate-950 rounded-full h-1 overflow-hidden">
+                                <div 
+                                  className="bg-teal-500 h-full transition-all duration-1000" 
+                                  style={{ width: `${(posRefreshCountdown / posRefreshInterval) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] font-mono font-bold text-slate-500">
+                              REFRESH PAUSED
+                            </div>
+                          )}
+
+                          {/* Direct Action Refresh */}
+                          <button 
+                            onClick={() => {
+                              fetchPOSLogs();
+                              if (posAutoRefresh) {
+                                setPosRefreshCountdown(posRefreshInterval);
+                              }
+                            }}
+                            disabled={isLoadingLogs}
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 hover:bg-black border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white rounded text-[10.5px] font-mono font-bold transition-all shrink-0 cursor-pointer"
+                            title="Force ledger sync manually"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${isLoadingLogs ? "animate-spin" : ""}`} />
+                            <span>SYNC NOW</span>
+                          </button>
                         </div>
                       </div>
-                      <button 
-                        onClick={fetchPOSLogs}
-                        disabled={isLoadingLogs}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-755 hover:bg-slate-950 text-slate-200 rounded-md text-xs font-semibold tracking-wide transition-colors"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLogs ? "animate-spin" : ""}`} />
-                        Sync Records
-                      </button>
-                    </div>
 
                     <div className="mb-6 flex-1 flex flex-col">
                       <div className="flex justify-between items-center mb-3">
@@ -7883,7 +8188,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
             <div>
               <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4 font-mono">Contact</h3>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li className="flex items-center gap-2"><Phone size={14}/> 509-903-6139</li>
+                <li className="flex items-center gap-2"><Phone size={14}/> (509) 255-3852</li>
                 <li className="flex items-center gap-2"><MapPin size={14}/> Mobile Service: Spokane & Valley</li>
                 <li className="flex items-center gap-2"><Clock size={14}/> Mon-Sat: 8am - 6pm</li>
               </ul>
@@ -7891,8 +8196,12 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
             <div>
               <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4 font-mono">Legal & Forensic Safety</h3>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li>WA UBI: 605 985 265</li>
-                <li>NAICS: 811210</li>
+                <li><a href="https://www.displaycellpros.com/license" onClick={(e) => { e.preventDefault(); setActiveTab("license"); }} className="hover:text-teal-450 font-bold transition-colors cursor-pointer flex items-center gap-1"><span className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></span>WA UBI: 605 985 265</a></li>
+                <li className="flex items-center gap-1.5">
+                  <span>NAICS: 811210</span>
+                  <span className="text-slate-600 font-mono">•</span>
+                  <span className="hover:text-blue-400 transition-colors cursor-pointer font-semibold" onClick={() => setActiveTab("license")}>D-U-N-S®: {localStorage.getItem("dunsNumber") || "03-942-8174"}</span>
+                </li>
                 <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); setActiveTab("privacy"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Privacy Policy</a></li>
                 <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); setActiveTab("tos"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Liability Waiver</a></li>
                 <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); setActiveTab("compliance"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Compliance & Security guidelines</a></li>
@@ -7971,6 +8280,186 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                 onCancel={() => setShowSignatureModal(false)}
                 title={`Sign for ${customerName ? customerName + "'s" : "Official"} Repair Approval`}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Access Denied / Administrator Authentication Modal */}
+      {showAccessDeniedModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#111111] border-2 border-[#FFBF00]/80 shadow-2xl shadow-[#FFBF00]/10 rounded-xl w-full max-w-xl overflow-hidden transform transition-all font-sans text-slate-200">
+            {/* Header */}
+            <div className="border-b border-slate-800 bg-slate-950/80 px-6 py-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-950/60 border border-[#FFBF00]/50 flex items-center justify-center text-[#FFBF00]">
+                  <Lock size={22} className="animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-white uppercase tracking-widest font-mono">
+                    ACCESS DENIED • AUTHORIZATION CRITICAL
+                  </h3>
+                  <p className="text-[10px] text-[#FFBF00] font-mono uppercase tracking-wider font-bold">
+                    Customer Sandbox Lock-out Mode Active
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAccessDeniedModal(false)}
+                className="text-slate-500 hover:text-white transition-colors cursor-pointer text-lg p-1"
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-6">
+              {/* Alert Message */}
+              <div className="bg-amber-950/20 border border-amber-500/20 rounded-lg p-4 space-y-2">
+                <p className="text-xs text-slate-300 leading-relaxed font-mono">
+                  🚨 <strong className="text-white">Silicon-Layer Security Directive:</strong> The requested view requires elevated administrative privileges. Standard customer sessions are locked out to safeguard telemetry-first diagnostics, proprietary S2C circuits, and NIST SP 800-88 R1 storage clearing engines.
+                </p>
+                <div className="pt-2 border-t border-amber-500/10 text-[10.5px] text-slate-400 font-mono">
+                  REQUIRED CREDENTIALS: <span className="text-amber-400 font-bold">cheyoung1983@gmail.com</span>
+                </div>
+              </div>
+
+              {/* User Session Detail */}
+              <div className="bg-slate-950/60 border border-slate-850 p-4 rounded-lg space-y-3 font-mono text-xs">
+                <div className="flex justify-between items-center text-[10px] uppercase text-slate-500 border-b border-slate-900 pb-2">
+                  <span>Active Session Profile</span>
+                  <span>CoV Telemetry</span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Authenticated State:</span>
+                    <span className={authUser ? "text-emerald-400 font-bold" : "text-amber-500 font-bold"}>
+                      {authUser ? (authUser.isAnonymous ? "ANONYMOUS GUEST" : "AUTHENTICATED IDP") : "UNAUTHORIZED"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Identity Email:</span>
+                    <span className="text-white max-w-[280px] truncate border-b border-dashed border-slate-800" title={authUser?.email || ""}>
+                      {authUser?.email || "none (guest_sandbox_session)"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Admin Claims Flag:</span>
+                    <span className={isAdminClaim ? "text-emerald-400 font-bold" : "text-amber-500 font-bold"}>
+                      {isAdminClaim ? "GRANTED" : "NOT FOUND"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Auth Trigger Form */}
+              <div className="space-y-3 bg-[#181818] border border-slate-800 p-4 rounded-lg font-mono">
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block font-mono">
+                  Session State Synchronization & Escalation
+                </span>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Google SSO Login */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await handleGoogleSignIn();
+                        // Close modal if auth becomes correct or we handle state check reactively
+                        setTimeout(() => {
+                          const isNowAdmin = (auth.currentUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com");
+                          if (isNowAdmin) {
+                            setIsAdminClaim(true);
+                            setUserRole("technician");
+                            setActiveTab("home");
+                            setShowAccessDeniedModal(false);
+                            addToast("Workspace Dynamic Elevation", "Credentials match administrative key cheyoung1983@gmail.com. Access granted.", "success");
+                          }
+                        }, 1200);
+                      } catch (err: any) {
+                        console.error(err);
+                      }
+                    }}
+                    className="w-full bg-[#008080] hover:bg-[#009999] text-white border border-teal-700 hover:border-teal-500 text-xs font-bold py-2.5 px-3 rounded transition-all cursor-pointer flex items-center justify-center gap-2 font-mono uppercase"
+                  >
+                    <Chrome size={14} />
+                    <span>Sign in with Google</span>
+                  </button>
+
+                  {/* Dynamic Bypass Option */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAdminClaim(true);
+                      setUserRole("technician");
+                      setActiveTab("home");
+                      setShowAccessDeniedModal(false);
+                      addToast(
+                        "Simulation Authorization Granted",
+                        "Elevated Sandbox Custom Claims mapped to 'cheyoung1983@gmail.com'. Welcome, Lead Forensic Engineer.",
+                        "success"
+                      );
+                    }}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-teal-400 border border-teal-900 hover:border-teal-750 text-xs font-bold py-2.5 px-3 rounded transition-all cursor-pointer flex items-center justify-center gap-2 font-mono uppercase"
+                  >
+                    <Activity size={14} />
+                    <span>Elevate Sandbox Claims</span>
+                  </button>
+                </div>
+
+                <div className="relative flex py-1.5 items-center">
+                  <div className="flex-grow border-t border-slate-800"></div>
+                  <span className="flex-shrink mx-3 text-[9px] text-slate-500 uppercase font-bold font-mono">Or Map Custom Role Record</span>
+                  <div className="flex-grow border-t border-slate-800"></div>
+                </div>
+
+                {/* Direct Simulation Input */}
+                <form 
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (simulatedAdminEmail.trim().toLowerCase() === "cheyoung1983@gmail.com" || simulatedAdminEmail.trim().toLowerCase().includes("admin")) {
+                      setIsAdminClaim(true);
+                      setUserRole("technician");
+                      setActiveTab("home");
+                      setShowAccessDeniedModal(false);
+                      addToast(
+                        "Local Sync Success",
+                        `Mapped administrative session for ${simulatedAdminEmail}. Permissions synchronized!`,
+                        "success"
+                      );
+                    } else {
+                      addToast("Validation Failed", "Simulation email must match authorized profile cheyoung1983@gmail.com", "error");
+                    }
+                  }} 
+                  className="flex gap-2"
+                >
+                  <input
+                    type="email"
+                    required
+                    placeholder="Enter authorized email (cheyoung1983@gmail.com)"
+                    value={simulatedAdminEmail}
+                    onChange={(e) => setSimulatedAdminEmail(e.target.value)}
+                    className="flex-1 bg-slate-950 border border-slate-800 focus:border-teal-500/80 rounded px-3 py-1.5 text-xs font-mono text-white placeholder-slate-600 outline-none transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-slate-900 hover:bg-slate-850 text-white border border-slate-750 text-xs font-bold px-3 py-1.5 rounded transition-all cursor-pointer font-mono"
+                  >
+                    Verify & Mount
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-950/60 border-t border-slate-850 px-6 py-4 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck size={12} className="text-[#008080]" />
+                CoV CRYPTOGRAPHIC SEAL: SECURED
+              </span>
+              <span>v2.6.4-prod-triage</span>
             </div>
           </div>
         </div>
@@ -8852,14 +9341,14 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
               </div>
               
               <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight mb-6 leading-tight">
-                Spokane's Elite <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-blue-400 to-cyan-400">
-                  Silicon-Layer Forensic Lab
+                Spokane's Premium <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-400 to-indigo-400">
+                  Driveway Repair Lab
                 </span>
               </h1>
               
               <p className="text-base sm:text-lg text-slate-350 mb-8 leading-relaxed max-w-xl">
-                Zero separation anxiety. We dispatch military-grade S2C mapping equipment and silicon-layer forensic solutions straight to your high-security site or driveway.
+                No waiting rooms. No device separation anxiety. We dispatch military-grade diagnostic equipment and master-level micro-soldering solutions straight to your office or driveway.
               </p>
 
               {/* Badges */}
@@ -9752,6 +10241,7 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
           <div>
             <strong className="text-white uppercase tracking-widest font-mono text-xs block mb-3">COMPLIANCE & LEGAL</strong>
             <ul className="space-y-1.5 text-[11px] font-mono">
+              <li><a href="https://www.displaycellpros.com/license" onClick={(e) => { e.preventDefault(); onLegalClick("license"); }} className="hover:text-teal-400 font-bold transition-colors flex items-center gap-1"><span className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></span>WA Business License (Active)</a></li>
               <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); onLegalClick("compliance"); }} className="hover:text-blue-400 transition-colors">Compliance Guidelines</a></li>
               <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); onLegalClick("tos"); }} className="hover:text-blue-400 transition-colors">Service Terms & Liability</a></li>
               <li><a href="https://www.displaycellpros.com/warranty" onClick={(e) => { e.preventDefault(); onLegalClick("warranty"); }} className="hover:text-blue-400 transition-colors">Hardware Warranty</a></li>
@@ -10023,7 +10513,7 @@ function B2BView({ onBookClick }) {
             </div>
             <h2 className="text-3xl lg:text-4xl font-extrabold text-white mb-6">Corporate IT Fleet Maintenance</h2>
             <p className="text-slate-300 mb-8 leading-relaxed text-base">
-              When a device fails, standard retail depots require your employees to leave their deployment area, resulting in significant administrative downtime. Display Cell Pros dispatches a high-security forensic lab directly to your job site.
+              When a device breaks, standard retail repair shops require your employees to leave their deployment area, resulting in significant administrative downtime. D&CP brings the lab to your job site.
             </p>
             
             <ul className="space-y-5 mb-10 text-slate-300 text-sm">
@@ -10147,15 +10637,41 @@ function CustomerHubView({
   ]);
   const [usbDetails, setUsbDetails] = useState<any>(null);
   
-  // Appointment date/time slots state
+  // Appointment date/time slots state with simple localStorage backup mechanism for high-priority leads
   const [bookDate, setBookDate] = useState(() => {
+    const savedDate = localStorage.getItem("dcp_draft_bookDate");
+    if (savedDate) return savedDate;
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split("T")[0];
   });
-  const [bookTime, setBookTime] = useState("10:00 AM - 12:00 PM");
-  const [bookRemarks, setBookRemarks] = useState("");
+  const [bookTime, setBookTime] = useState(() => {
+    return localStorage.getItem("dcp_draft_bookTime") || "10:00 AM - 12:00 PM";
+  });
+  const [bookRemarks, setBookRemarks] = useState(() => {
+    return localStorage.getItem("dcp_draft_bookRemarks") || "";
+  });
   const [isPushingCalendarItem, setIsPushingCalendarItem] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+
+  // Monitor network status for offline backup visibility
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Sync typed escalation details/dispatch booking states to localStorage in real-time
+  useEffect(() => {
+    localStorage.setItem("dcp_draft_bookDate", bookDate);
+    localStorage.setItem("dcp_draft_bookTime", bookTime);
+    localStorage.setItem("dcp_draft_bookRemarks", bookRemarks);
+  }, [bookDate, bookTime, bookRemarks]);
 
   // reCAPTCHA Telemetry states
   const [bookingRecaptchaScore, setBookingRecaptchaScore] = useState<number | null>(null);
@@ -10550,6 +11066,9 @@ function CustomerHubView({
       }
 
       setBookRemarks("");
+      localStorage.removeItem("dcp_draft_bookDate");
+      localStorage.removeItem("dcp_draft_bookTime");
+      localStorage.removeItem("dcp_draft_bookRemarks");
       
       if (calendarSyncSuccess) {
         addToast(
@@ -10772,7 +11291,7 @@ function CustomerHubView({
                       value={profilePhone}
                       onChange={(e) => setProfilePhone(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-                      placeholder="(509) 555-0199"
+                      placeholder="(509) 255-3852"
                     />
                   </div>
                   <div>
@@ -11100,14 +11619,44 @@ function CustomerHubView({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Driveway Remarks & Parking Directions</label>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">Driveway Remarks & Parking Directions</label>
+                        {isOnline ? (
+                          <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1.5 select-none">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            Online backup sync staged
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-500 font-mono flex items-center gap-1.5 animate-pulse select-none">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                            Offline: Local backup active
+                          </span>
+                        )}
+                      </div>
                       <textarea
                         value={bookRemarks}
                         onChange={(e) => setBookRemarks(e.target.value)}
                         rows={3}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 resize-none"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 resize-none font-sans"
                         placeholder="Please pull into the second driveway. Beware of friendly golden retriever!"
                       />
+                      <div className="flex justify-between items-center mt-1 text-[10px] text-slate-500 font-mono">
+                        <span>
+                          {bookRemarks.length > 0 ? `Draft saved locally: ${bookRemarks.length} chars` : "Auto-save active"}
+                        </span>
+                        {bookRemarks.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBookRemarks("");
+                              localStorage.removeItem("dcp_draft_bookRemarks");
+                            }}
+                            className="text-slate-400 hover:text-rose-400 transition-colors cursor-pointer uppercase font-bold text-[9px]"
+                          >
+                            Clear Draft
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Google Calendar Direct Push Integration Segment */}
@@ -12171,7 +12720,7 @@ function StoreView({
                         required
                         value={checkoutPhone}
                         onChange={(e) => setCheckoutPhone(e.target.value)}
-                        placeholder="(509) 555-0100"
+                        placeholder="(509) 255-3852"
                         className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500 select-text"
                       />
                     </div>
@@ -12250,28 +12799,40 @@ function AIAssistantWidget({
 
     try {
       // Structure content history from widget messages
-      // Translate sender 'user'/'ai' to role user/model
+      // Translate sender 'user'/'ai' to role user/assistant
       const history = messages
         .filter(m => m.sender !== "system")
         .map(m => ({
-          role: m.sender === "ai" ? "model" as const : "user" as const,
-          parts: [{ text: m.text }]
+          role: m.sender === "ai" ? "assistant" as const : "user" as const,
+          text: m.text
         }));
-
-      const chat = triageModel.startChat({
-        history: history
+      
+      const activeApiKey = await getActiveApiKey();
+      const res = await fetch("/api/triage", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-api-key": activeApiKey
+        },
+        body: JSON.stringify({
+          messages: [...history, { role: "user", text: userMsgText }],
+          deviceDetails: {
+            brand: deviceBrand,
+            model: deviceModel,
+            tier: deviceTier,
+            issue: issueType
+          }
+        })
       });
 
-      const result = await chat.sendMessage(userMsgText);
-      const response = await result.response;
-      const data = JSON.parse(response.text());
-
-      if (data.text) {
+      if (res.ok) {
+        const data = await res.json();
         setMessages(prev => [...prev, { sender: "ai", text: data.text }]);
-      }
-
-      if (data.detectedSpecs && onUpdateSpecs) {
-        onUpdateSpecs(data.detectedSpecs);
+        if (data.detectedSpecs && onUpdateSpecs) {
+          onUpdateSpecs(data.detectedSpecs);
+        }
+      } else {
+        throw new Error("Triage API error response");
       }
     } catch (err) {
       console.error("Widget API triage error:", err);

@@ -408,9 +408,138 @@ Before probing or disassembling, ensure:
 
   // --- QUOTE ENDPOINT WITH RESILIENT FALLBACK ---
   app.post("/api/generate-quote", async (req, res) => {
-    const { issueType, deviceTier, zipCode, isCorporate } = req.body;
+    const { 
+      issueType, 
+      deviceTier, 
+      zipCode, 
+      isCorporate, 
+      parts, 
+      components, 
+      laborHours, 
+      hourlyLaborRate, 
+      overheadPercentage 
+    } = req.body;
     
-    // Define fallback calculation up front
+    const inputParts = parts || components || [];
+    
+    // Mode A: Granular quote builder flow
+    if (Array.isArray(inputParts) && inputParts.length > 0) {
+      let partsCostSum = 0;
+      let backorderPremiumSum = 0;
+      
+      const computedParts = inputParts.map((item: any, idx: number) => {
+        const cost = Number(item.wholesaleCost) || Number(item.cost) || 0;
+        const qty = Number(item.quantity) || 1;
+        const subtotal = cost * qty;
+        partsCostSum += subtotal;
+
+        const isBackordered = item.stockStatus === "OUT_OF_STOCK_BACKORDERED" || item.stockCount <= 0 || false;
+        const premium = isBackordered ? 15.00 * qty : 0;
+        backorderPremiumSum += premium;
+
+        return {
+          id: item.partId || `part-${idx}`,
+          partName: item.partName || item.name || "Custom Part",
+          category: item.category || "custom",
+          wholesaleCost: cost,
+          quantity: qty,
+          isBackordered,
+          backorderPremium: premium,
+          subtotal: subtotal + premium,
+          location: item.location || "Spokane Lab Vault"
+        };
+      });
+
+      const hours = Number(laborHours) !== undefined && !isNaN(Number(laborHours)) ? Number(laborHours) : 1.5;
+      const rate = Number(hourlyLaborRate) !== undefined && !isNaN(Number(hourlyLaborRate)) ? Number(hourlyLaborRate) : 95;
+      const laborCost = hours * rate;
+
+      const overheadPct = Number(overheadPercentage) !== undefined && !isNaN(Number(overheadPercentage)) ? Number(overheadPercentage) : 15;
+      const overheadCost = Math.round(((partsCostSum + laborCost) * overheadPct / 100) * 100) / 100;
+
+      const subtotalBeforeTax = partsCostSum + backorderPremiumSum + laborCost + overheadCost;
+
+      const discountApplied = !!isCorporate;
+      const discountPercentage = discountApplied ? 20 : 0;
+      const discountAmount = discountApplied ? Math.round((subtotalBeforeTax * 0.2) * 100) / 100 : 0;
+      const discountedSubtotal = subtotalBeforeTax - discountAmount;
+
+      const { city, taxRate, location } = resolveSpokaneTaxInfo(zipCode);
+
+      const calculatedTax = Math.round((discountedSubtotal * taxRate) * 100) / 100;
+      const grandTotal = discountedSubtotal + calculatedTax;
+
+      const quoteId = `DCP-QT-${Math.floor(10000 + Math.random() * 90000)}`;
+      const checksum = `SHA256-DCP-${Math.floor(100000 + Math.random() * 900000)}-${quoteId}`;
+
+      const responsePayload = {
+        success: true,
+        quoteRef: quoteId,
+        parts: computedParts,
+        metrics: {
+          partsCostSum,
+          backorderPremiumSum,
+          laborHours: hours,
+          hourlyLaborRate: rate,
+          laborCost,
+          overheadPercent: overheadPct,
+          overheadCost,
+          subtotalBeforeTax,
+          taxInfo: {
+            zipCode: zipCode || "99201",
+            city,
+            rate: taxRate,
+            taxAmount: calculatedTax
+          },
+          grandTotal
+        },
+        baseQuote: {
+          partsCost: partsCostSum,
+          laborCost,
+          overhead: overheadCost,
+          subtotal: subtotalBeforeTax,
+          laborHours: hours,
+          hourlyLaborRate: rate,
+          overheadPercentage: overheadPct
+        },
+        discountInfo: {
+          applied: discountApplied,
+          percentage: discountPercentage,
+          amount: discountAmount,
+          company: discountApplied ? "AMAZON Fleet" : null
+        },
+        taxInfo: {
+          zipCode: zipCode || "99201",
+          city,
+          rate: taxRate,
+          calculatedTax
+        },
+        subtotal: discountedSubtotal,
+        grandTotal,
+        baseRate: subtotalBeforeTax,
+        tax: calculatedTax,
+        total: grandTotal,
+        notes: "Silicon-layer forensic dynamic estimate.",
+        localFacilities: location,
+        verificationChecksum: checksum,
+        timestamp: new Date().toISOString()
+      };
+
+      gatewayLogs.unshift({
+        id: `LOG-${Math.floor(1000 + Math.random() * 9000)}`,
+        timestamp: new Date().toISOString(),
+        endpoint: "/api/generate-quote",
+        status: 200,
+        requestSize: JSON.stringify(req.body).length,
+        responseTime: 5,
+        keyUsed: "mock-key",
+        ipAddress: req.ip || "127.0.0.1"
+      });
+
+      return res.json(responsePayload);
+    }
+    
+    // Mode B: Standard triage-level flow
     const localQuote = calculateLocalQuote(issueType, deviceTier, zipCode, isCorporate);
 
     try {
@@ -444,13 +573,13 @@ Return JSON matching this schema exactly:
       const responseText = response.text || "{}";
       const quoteData = JSON.parse(responseText);
 
-      // Merge LLM quote with our exact required frontend fields to guarantee zero runtime failures
       const mergedQuote = {
         ...localQuote,
         quoteRef: quoteData.quoteRef || localQuote.quoteRef,
         notes: quoteData.notes || localQuote.notes,
         localFacilities: quoteData.localFacilities || localQuote.localFacilities,
-        grandTotal: quoteData.total || localQuote.grandTotal
+        grandTotal: quoteData.total || localQuote.grandTotal,
+        total: quoteData.total || localQuote.grandTotal
       };
 
       gatewayLogs.unshift({
@@ -481,6 +610,125 @@ Return JSON matching this schema exactly:
 
       res.json(localQuote);
     }
+  });
+
+  // --- SAVE QUOTE TO FIRESTORE ---
+  app.post("/api/save-quote", async (req, res) => {
+    try {
+      const quoteData = req.body;
+      const quoteId = quoteData.quoteRef || `DCP-QT-${Math.floor(10000 + Math.random() * 90000)}`;
+      
+      console.log(`[Firestore Save Quote] Saving quote to Firestore quotes collection: ${quoteId}`);
+      await adminDb.collection("quotes").doc(quoteId).set({
+        ...quoteData,
+        quoteRef: quoteId,
+        createdAt: new Date().toISOString()
+      });
+      
+      res.json({
+        success: true,
+        message: "Forensic Quote registered and archived in secure Firestore storage.",
+        quoteRef: quoteId
+      });
+    } catch (error: any) {
+      console.error("[Firestore Save Quote] Failed to save quote to Firestore:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to persist quote to local source vaults.",
+        error: error.message
+      });
+    }
+  });
+
+  // --- GET PARTS INVENTORY FOR QUOTE BUILDER ---
+  app.get("/api/quote/inventory", (req, res) => {
+    const mockInventory = [
+      {
+        id: "scr-001",
+        partName: "Fidelity-Pro OLED Display Assembly",
+        category: "screen",
+        deviceTier: "flagship",
+        compatibleModelWildcard: "iPhone 15 Pro / Max",
+        wholesaleCost: 195.00,
+        stockCount: 12,
+        location: "Spokane Downtown Vault"
+      },
+      {
+        id: "scr-002",
+        partName: "Ultra-Refurb LCD Digitizer Panel",
+        category: "screen",
+        deviceTier: "midrange",
+        compatibleModelWildcard: "Galaxy S21 FE",
+        wholesaleCost: 125.00,
+        stockCount: 4,
+        location: "Spokane Valley Vault"
+      },
+      {
+        id: "scr-003",
+        partName: "Standard Liquid Crystal Assembly",
+        category: "screen",
+        deviceTier: "budget",
+        compatibleModelWildcard: "Moto G Power",
+        wholesaleCost: 65.00,
+        stockCount: 0, // backordered
+        location: "Spokane Downtown Vault"
+      },
+      {
+        id: "bat-001",
+        partName: "AmpSentrix High-Capacity Battery Pack",
+        category: "battery",
+        deviceTier: "flagship",
+        compatibleModelWildcard: "iPhone 14 Pro",
+        wholesaleCost: 55.00,
+        stockCount: 20,
+        location: "Spokane Downtown Vault"
+      },
+      {
+        id: "bat-002",
+        partName: "SmartCell Lithium Polymer Battery Pack",
+        category: "battery",
+        deviceTier: "midrange",
+        compatibleModelWildcard: "Galaxy A54",
+        wholesaleCost: 35.00,
+        stockCount: 15,
+        location: "Spokane Valley Vault"
+      },
+      {
+        id: "bat-003",
+        partName: "EcoCell Replacement Battery Cell",
+        category: "battery",
+        deviceTier: "budget",
+        compatibleModelWildcard: "Pixel 6a",
+        wholesaleCost: 25.00,
+        stockCount: 8,
+        location: "Spokane Downtown Vault"
+      },
+      {
+        id: "btn-001",
+        partName: "Volume/Power Button Flex Ribbon Cable",
+        category: "button",
+        deviceTier: "flagship",
+        compatibleModelWildcard: "iPhone 15 Series",
+        wholesaleCost: 25.00,
+        stockCount: 30,
+        location: "Spokane Downtown Vault"
+      },
+      {
+        id: "btn-002",
+        partName: "Ambient Light Sensor Flex Assembly",
+        category: "button",
+        deviceTier: "flagship",
+        compatibleModelWildcard: "iPad Pro 11-inch",
+        wholesaleCost: 45.00,
+        stockCount: 5,
+        location: "Spokane North Satellite"
+      }
+    ];
+
+    res.json({
+      success: true,
+      inventory: mockInventory
+    });
   });
 
   // --- REASONING ENDPOINT WITH RESILIENT FALLBACK ---
@@ -979,12 +1227,98 @@ You requested deeper reasoning diagnostics on a **${brand} ${model}** exhibiting
 }
 
 // --- RESOLVE QUOTE DETERMINISTICALLY ---
+// --- SPOKANE TAX & LOCATION FORENSICS RESOLVER ---
+function resolveSpokaneTaxInfo(zipCode: string) {
+  const zip = String(zipCode || "99201").trim();
+  let city = "Spokane City";
+  let taxRate = 0.090; // Default Spokane combined sales tax rate (9.0%)
+  let location = "Spokane Main Lab (99201)";
+
+  switch (zip) {
+    case "99201":
+    case "99202":
+      city = "Spokane Downtown";
+      taxRate = 0.090;
+      location = "Spokane Main Lab (99201)";
+      break;
+    case "99203":
+    case "99223":
+      city = "Spokane South Hill";
+      taxRate = 0.090;
+      location = "Spokane Main Lab (99201)";
+      break;
+    case "99205":
+    case "99207":
+      city = "Spokane Northside";
+      taxRate = 0.090;
+      location = "Spokane North Satellite (99208)";
+      break;
+    case "99208":
+    case "99218":
+      city = "Town & Country (North Spokane)";
+      taxRate = 0.090;
+      location = "Spokane North Satellite (99208)";
+      break;
+    case "99206":
+    case "99216":
+    case "99212":
+      city = "Spokane Valley";
+      taxRate = 0.090;
+      location = "Spokane Valley Vault (99206)";
+      break;
+    case "99001":
+      city = "Airway Heights";
+      taxRate = 0.090;
+      location = "Airway Heights Depot (99001)";
+      break;
+    case "99004":
+      city = "Cheney";
+      taxRate = 0.090;
+      location = "Cheney Mobile Station (99004)";
+      break;
+    case "99019":
+      city = "Liberty Lake";
+      taxRate = 0.090;
+      location = "Liberty Lake Lab (99019)";
+      break;
+    case "99021":
+      city = "Mead (Spokane County Unincorporated)";
+      taxRate = 0.082;
+      location = "Spokane County Field Ops (Mead)";
+      break;
+    case "99026":
+      city = "Nine Mile Falls (Spokane County Unincorporated)";
+      taxRate = 0.082;
+      location = "Spokane County Field Ops (Nine Mile)";
+      break;
+    case "99025":
+      city = "Newman Lake (Spokane County Unincorporated)";
+      taxRate = 0.082;
+      location = "Spokane County Field Ops (Newman)";
+      break;
+    default:
+      if (zip.startsWith("992") || zip.startsWith("990")) {
+        city = "Spokane County Unincorporated";
+        taxRate = 0.082;
+        location = "Spokane County Field Ops (Unincorporated)";
+      } else {
+        city = "Spokane City";
+        taxRate = 0.090;
+        location = "Spokane Main Lab (99201)";
+      }
+      break;
+  }
+
+  return { city, taxRate, location };
+}
+
+// --- RESOLVE QUOTE DETERMINISTICALLY ---
 function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: string, isCorporate: boolean) {
   let partsCost = 120;
   let partName = "OEM Display Assembly";
   let stockStatus = "IN_STOCK";
   let itemInStock = true;
-  let stockLocation = "Spokane Lab Vault";
+  let stockLocation = "Spokane Downtown Vault";
   let supplyChainPremium = 0;
   let laborCost = 120;
   let laborHours = 1.5;
@@ -1001,6 +1335,7 @@ function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: str
     laborHours = 1.0;
     hourlyLaborRate = 80;
     overhead = 15;
+    stockLocation = tier === "midrange" ? "Spokane Valley Vault" : "Spokane Downtown Vault";
   } else if (issue === "button") {
     partsCost = tier === "flagship" ? 45 : 30;
     partName = "Volume/Power Button Flex Ribbon Cable";
@@ -1008,6 +1343,7 @@ function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: str
     laborHours = 1.25;
     hourlyLaborRate = 80;
     overhead = 20;
+    stockLocation = "Spokane Downtown Vault";
   } else { // screen
     partsCost = tier === "flagship" ? 195 : tier === "midrange" ? 125 : 85;
     partName = "Fidelity-Pro OLED Display Assembly";
@@ -1015,6 +1351,7 @@ function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: str
     laborHours = 1.5;
     hourlyLaborRate = 100;
     overhead = 45;
+    stockLocation = tier === "midrange" ? "Spokane Valley Vault" : "Spokane Downtown Vault";
     if (tier === "flagship") {
       stockStatus = "OUT_OF_STOCK_BACKORDERED";
       itemInStock = false;
@@ -1029,26 +1366,7 @@ function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: str
   const discountAmount = discountApplied ? Math.round((subtotalBase * 0.2) * 100) / 100 : 0;
   const discountedSubtotal = subtotalBase - discountAmount;
 
-  let city = "Spokane";
-  let taxRate = 0.090;
-  const zip = String(zipCode || "").trim();
-
-  if (zip === "98101" || zip.startsWith("981")) {
-    city = "Seattle";
-    taxRate = 0.1035;
-  } else if (zip === "98004" || zip.startsWith("980")) {
-    city = "Bellevue";
-    taxRate = 0.101;
-  } else if (zip === "98402" || zip.startsWith("984")) {
-    city = "Tacoma";
-    taxRate = 0.103;
-  } else if (zip === "98501" || zip.startsWith("985")) {
-    city = "Olympia";
-    taxRate = 0.095;
-  } else if (zip === "98201" || zip.startsWith("982")) {
-    city = "Everett";
-    taxRate = 0.099;
-  }
+  const { city, taxRate, location } = resolveSpokaneTaxInfo(zipCode);
 
   const calculatedTax = Math.round((discountedSubtotal * taxRate) * 100) / 100;
   const grandTotal = discountedSubtotal + calculatedTax;
@@ -1075,7 +1393,7 @@ function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: str
       company: discountApplied ? "AMAZON Fleet" : null
     },
     taxInfo: {
-      zipCode: zip || "99201",
+      zipCode: zipCode || "99201",
       city,
       rate: taxRate,
       calculatedTax
@@ -1086,7 +1404,7 @@ function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: str
     tax: calculatedTax,
     total: grandTotal,
     notes: "Telemetry-guided fixed repair estimation.",
-    localFacilities: city === "Seattle" ? "Seattle Lab (98101)" : "Spokane Main Lab (99201)"
+    localFacilities: location
   };
 }
 
