@@ -1,8 +1,7 @@
 {
   "projects": {
     "default": "displaycellpros-com",
-    "production": "www-displaycellpros-com",
-    "staging": "www-displaycellpros-com",
-    "legacy": "displaycellpros-com"
+    "production": "displaycellpros-com",
+    "staging": "displaycellpros-com"
   }
 }
