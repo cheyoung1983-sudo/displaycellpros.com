@@ -6,12 +6,18 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    optimizeDeps: {
+      include: ['react-is', 'recharts'],
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
     },
     build: {
+      commonjsOptions: {
+        transformMixedEsModules: true,
+      },
       outDir: 'dist',
       minify: 'esbuild',
       cssMinify: true,
