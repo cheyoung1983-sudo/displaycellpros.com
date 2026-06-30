@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { RecaptchaEnterpriseServiceClient } from "@google-cloud/recaptcha-enterprise";
 import { adminDb } from "./src/lib/firebase-admin";
+import { requireAuth } from "./src/middleware/auth";
 
 export const app = express();
 
@@ -231,11 +232,11 @@ export const app = express();
     { timestamp: new Date(Date.now() - 30000).toISOString(), source: "NIST Audit", level: "success", message: "Compliance sanitization signed: Zero non-volatile data residual trace." }
   ];
 
-  app.get("/api/gateway/settings", (req, res) => {
+  app.get("/api/gateway/settings", requireAuth, (req, res) => {
     res.json(gatewaySettings);
   });
 
-  app.post("/api/gateway/settings", (req, res) => {
+  app.post("/api/gateway/settings", requireAuth, (req, res) => {
     const data = req.body;
     
     if (data.action === "create-key") {
@@ -258,16 +259,16 @@ export const app = express();
     res.json(gatewaySettings);
   });
 
-  app.get("/api/gateway/logs", (req, res) => {
+  app.get("/api/gateway/logs", requireAuth, (req, res) => {
     res.json({ logs: gatewayLogs });
   });
 
-  app.post("/api/gateway/logs/clear", (req, res) => {
+  app.post("/api/gateway/logs/clear", requireAuth, (req, res) => {
     gatewayLogs = [];
     res.json({ status: "success", logs: [] });
   });
 
-  app.get("/api/gateway/rotation", (req, res) => {
+  app.get("/api/gateway/rotation", requireAuth, (req, res) => {
     res.json({
       rotationSchedule: `${gatewaySettings.rotationFrequencyHours} hours`,
       lastRotationTime: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
@@ -277,7 +278,7 @@ export const app = express();
     });
   });
 
-  app.post("/api/gateway/rotation", (req, res) => {
+  app.post("/api/gateway/rotation", requireAuth, (req, res) => {
     const { schedule, email } = req.body;
     if (schedule) {
       gatewaySettings.rotationFrequencyHours = parseInt(schedule) || 72;
@@ -303,7 +304,7 @@ export const app = express();
   });
 
   // --- TRIAGE ENDPOINT WITH RESILIENT FALLBACK ---
-  app.post("/api/triage", async (req, res) => {
+  app.post("/api/triage", requireAuth, async (req, res) => {
     const { messages, deviceDetails } = req.body;
     const brand = deviceDetails?.brand || "Apple";
     const model = deviceDetails?.model || "iPhone";
@@ -557,7 +558,7 @@ Before probing or disassembling, ensure:
   });
 
   // --- FORENSIC BOARD-LEVEL VS MODULAR SWAPPING EVALUATION ---
-  app.post("/api/triage/classify-repair-tier", egressLexicalFirewall, async (req, res) => {
+  app.post("/api/triage/classify-repair-tier", requireAuth, egressLexicalFirewall, async (req, res) => {
     const { batteryTempC = 25, vTerm = 3.82, bootAmperage = 1.2, lcdDiodeMode = "nominal", deviceDetails } = req.body;
     const brand = deviceDetails?.brand || "Apple";
     const model = deviceDetails?.model || "iPhone";
@@ -630,7 +631,7 @@ Before probing or disassembling, ensure:
   });
 
   // --- IMMUTABLE DIAGNOSTIC TELEMETRY FILE (DTF) & COMPLIANCE ENGINE ---
-  app.post("/api/compliance/generate-dtf", egressLexicalFirewall, async (req, res) => {
+  app.post("/api/compliance/generate-dtf", requireAuth, egressLexicalFirewall, async (req, res) => {
     try {
       const {
         technicianId = "TECH_ANONYMOUS",
@@ -748,7 +749,7 @@ Before probing or disassembling, ensure:
     }
   });
 
-  app.post("/api/compliance/validate-dtf", egressLexicalFirewall, (req, res) => {
+  app.post("/api/compliance/validate-dtf", requireAuth, egressLexicalFirewall, (req, res) => {
     try {
       const dtf = req.body;
       const errors: string[] = [];
@@ -826,7 +827,7 @@ Before probing or disassembling, ensure:
   });
 
   // --- QUOTE ENDPOINT WITH RESILIENT FALLBACK ---
-  app.post("/api/generate-quote", async (req, res) => {
+  app.post("/api/generate-quote", requireAuth, async (req, res) => {
     const { 
       issueType, 
       deviceTier, 
@@ -1032,7 +1033,7 @@ Return JSON matching this schema exactly:
   });
 
   // --- SAVE QUOTE TO FIRESTORE ---
-  app.post("/api/save-quote", async (req, res) => {
+  app.post("/api/save-quote", requireAuth, async (req, res) => {
     try {
       const quoteData = req.body;
       const quoteId = quoteData.quoteRef || `DCP-QT-${Math.floor(10000 + Math.random() * 90000)}`;
@@ -1060,7 +1061,7 @@ Return JSON matching this schema exactly:
   });
 
   // --- GET PARTS INVENTORY FOR QUOTE BUILDER ---
-  app.get("/api/quote/inventory", (req, res) => {
+  app.get("/api/quote/inventory", requireAuth, (req, res) => {
     const mockInventory = [
       {
         id: "scr-001",
@@ -1151,7 +1152,7 @@ Return JSON matching this schema exactly:
   });
 
   // --- REASONING ENDPOINT WITH RESILIENT FALLBACK ---
-  app.post("/api/complex-diagnostics", async (req, res) => {
+  app.post("/api/complex-diagnostics", requireAuth, async (req, res) => {
     const { prompt: userPrompt, deviceDetails } = req.body;
     const brand = deviceDetails?.brand || "Apple";
     const model = deviceDetails?.model || "iPhone";
@@ -1356,7 +1357,7 @@ You requested deeper reasoning diagnostics on a **${brand} ${model}** exhibiting
   });
 
   // --- COMPUTER VISION ENDPOINT WITH RESILIENT FALLBACK ---
-  app.post("/api/analyze-image", async (req, res) => {
+  app.post("/api/analyze-image", requireAuth, async (req, res) => {
     const { prompt: userPrompt } = req.body;
     
     try {
@@ -1401,7 +1402,7 @@ You requested deeper reasoning diagnostics on a **${brand} ${model}** exhibiting
   });
 
   // --- DNS PROPAGATION CHECK ENDPOINT ---
-  app.get("/api/dns-check", (req, res) => {
+  app.get("/api/dns-check", requireAuth, (req, res) => {
     const domain = req.query.domain || "triage.displaycellpros.com";
     res.json({
       status: "propagated",
@@ -1658,7 +1659,7 @@ You requested deeper reasoning diagnostics on a **${brand} ${model}** exhibiting
   });
 
   // --- WASHINGTON TAX LOOKUP ENDPOINT ---
-  app.post("/api/tax-lookup", (req, res) => {
+  app.post("/api/tax-lookup", requireAuth, (req, res) => {
     const { zipCode } = req.body;
     const zip = String(zipCode || "").trim();
     
@@ -1691,7 +1692,7 @@ You requested deeper reasoning diagnostics on a **${brand} ${model}** exhibiting
   });
 
   // --- POS SYNC & TICKETS INITIAL LOAD ENDPOINT ---
-  app.get("/api/pos-sync-logs", (req, res) => {
+  app.get("/api/pos-sync-logs", requireAuth, (req, res) => {
     res.json({
       tickets: initialMockTickets,
       logs: initialMockLogs
@@ -1699,7 +1700,7 @@ You requested deeper reasoning diagnostics on a **${brand} ${model}** exhibiting
   });
 
   // --- CREATE TICKET SIMULATOR ---
-  app.post("/api/create-ticket", (req, res) => {
+  app.post("/api/create-ticket", requireAuth, (req, res) => {
     const ticketData = req.body;
     const ticketId = "DCP-" + Math.floor(100000 + Math.random() * 900000);
     
@@ -1725,7 +1726,7 @@ You requested deeper reasoning diagnostics on a **${brand} ${model}** exhibiting
   });
 
   // --- B2B PORTAL FRONT-TO-BACK TELEMETRY & RAG BINDING ENDPOINT ---
-  app.post("/api/b2b/quote", async (req, res) => {
+  app.post("/api/b2b/quote", requireAuth, async (req, res) => {
     const { deviceModel, reportedSymptom, isLiquidDamage, hasMeasurements, diodeModeReading, ammeterReading } = req.body;
     
     const partnerId = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : "TECH_ANONYMOUS";
@@ -1906,7 +1907,7 @@ You act as a secure hardware diagnostics engine. Your sole purpose is to analyze
   });
 
   // Catch-all for other unimplemented API routes to prevent crash/timeouts
-  app.all("/api/*", (req, res) => {
+  app.all("/api/*", requireAuth, (req, res) => {
     res.json({ message: "Mock endpoint", status: "OK", data: [] });
   });
 
@@ -1931,7 +1932,7 @@ You act as a secure hardware diagnostics engine. Your sole purpose is to analyze
   // Start local server if not running in a Cloud Function environment
   if (!process.env.FIREBASE_CONFIG) {
     configureVite().then(() => {
-      const PORT = process.env.PORT || 3000;
+      const PORT = Number(process.env.PORT) || 3000;
       app.listen(PORT, "0.0.0.0", () => {
         console.log(`Server running on http://localhost:${PORT}`);
       });

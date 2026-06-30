@@ -30,7 +30,6 @@ import {
   Info,
   FileText,
   Check,
-  ArrowRight,
   Database,
   Upload,
   Zap,
@@ -38,7 +37,6 @@ import {
   Thermometer,
   Trash2,
   Globe,
-  Settings,
   Search,
   ChevronDown,
   ChevronUp,
@@ -49,7 +47,6 @@ import {
   FileDown,
   Calendar,
   Loader2,
-  UserCheck,
   Sparkles,
   CheckCircle,
   ThumbsUp,
@@ -66,10 +63,9 @@ import {
   BookOpen,
   ArrowLeft,
   Printer,
-  Nfc,
-  Chrome
+  Nfc
 } from "lucide-react";
-import { RepairTicket, POSLog, QuoteResponse, HighPriorityLead } from "./types";
+import { RepairTicket, QuoteResponse, HighPriorityLead } from "./types";
 import { Toast, ToastContainer, ToastType } from "./components/ToastNotification";
 import { executeRecaptchaEnterprise, verifyRecaptchaTokenOnServer } from "./lib/recaptcha";
 const TechnicianDashboard = React.lazy(() => import("./components/TechnicianDashboard").then(module => ({ default: module.TechnicianDashboard })));
@@ -85,7 +81,6 @@ const ApiGatewayDashboard = React.lazy(() => import("./components/ApiGatewayDash
 const QuoteBuilderDashboard = React.lazy(() => import("./components/QuoteBuilderDashboard"));
 const SmdComponentLibrary = React.lazy(() => import("./components/SmdComponentLibrary").then(module => ({ default: module.SmdComponentLibrary })));
 const BrandLogo = React.lazy(() => import("./components/BrandLogo").then(module => ({ default: module.BrandLogo })));
-const FirebaseUserAuditor = React.lazy(() => import("./components/FirebaseUserAuditor").then(module => ({ default: module.FirebaseUserAuditor })));
 const ProfileDashboard = React.lazy(() => import("./components/ProfileDashboard"));
 const AdminMasterPanel = React.lazy(() => import("./components/AdminMasterPanel").then(module => ({ default: module.default })));
 const AdminRouteGuard = React.lazy(() => import("./components/AdminMasterPanel").then(module => ({ default: module.AdminRouteGuard })));
@@ -105,10 +100,10 @@ const ForensicsView = React.lazy(() => import("./modules/triage-ai/ForensicsView
 const FirebaseAiWorkbenchView = React.lazy(() => import("./modules/triage-ai/FirebaseAiWorkbenchView").then(module => ({ default: module.FirebaseAiWorkbenchView })));
 const TelemetryDashboard = React.lazy(() => import("./modules/triage-ai/TelemetryDashboard").then(module => ({ default: module.TelemetryDashboard })));
 import { motion, AnimatePresence } from "motion/react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, BarChart, Bar } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { jsPDF } from "jspdf";
 import { signInWithPopup, signInAnonymously, onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { auth, db, googleProvider } from "./lib/firebase";
 import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
 import { MarketingFirewall } from "./components/MarketingFirewall";
@@ -153,7 +148,12 @@ const STORE_PRODUCTS = [
 
 export const getActiveApiKey = async (): Promise<string> => {
   try {
-    const res = await fetch("/api/gateway/settings");
+    const token = await auth.currentUser?.getIdToken();
+    const res = await fetch("/api/gateway/settings", {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     if (res.ok) {
       const data = await res.json();
       const activeKeyObj = data.activeKeys?.find((k: any) => k.status === "ACTIVE");
@@ -396,7 +396,7 @@ export default function App() {
   // Synchronize back stack with activeTab
   useEffect(() => {
     const start = userRole === "customer" ? "customer-hub" : "home";
-    setBackStack(prev => {
+    setBackStack((prev: string[]) => {
       if (prev.length === 0) {
         return [start];
       }
@@ -468,14 +468,14 @@ export default function App() {
 
   const addToast = (title: string, message: string, type: ToastType = "info", duration = 4000) => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, title, message, type, duration }]);
+    setToasts((prev: any[]) => [...prev, { id, title, message, type, duration }]);
     setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
+      setToasts((prev: any[]) => prev.filter((t: any) => t.id !== id));
     }, duration);
   };
 
   const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
+    setToasts((prev: any[]) => prev.filter((t: any) => t.id !== id));
   };
 
   // B2B Customer Verification
@@ -534,7 +534,7 @@ export default function App() {
   const [deepDiagnosticResult, setDeepDiagnosticResult] = useState<string>("");
   const [isDeepDiagnosing, setIsDeepDiagnosing] = useState<boolean>(false);
   const [groundingSources, setGroundingSources] = useState<Array<{ title: string; url: string }>>([]);
-  const [posLogs, setPosLogs] = useState<any[]>([]);
+  const [posLogs, setPosLogs] = useState<POSLog[]>([]);
   const [reminderEnabled, setReminderEnabled] = useState<boolean>(true);
   const [workdayEndTime, setWorkdayEndTime] = useState<string>("17:00");
   const [reminderDismissedForToday, setReminderDismissedForToday] = useState<boolean>(false);
@@ -550,18 +550,14 @@ export default function App() {
   const [isChatSending, setIsChatSending] = useState<boolean>(false);
 
   const [draftSessionLabel, setDraftSessionLabel] = useState<string>("Triage Session");
-  const [draftSessionId, setDraftSessionId] = useState<string>("DRAFT-1234");
-  const [draftAutoSyncStatus, setDraftAutoSyncStatus] = useState<string>("idle");
   const [inputSessionIdToResume, setInputSessionIdToResume] = useState<string>("");
-  const [isLoadingDraft, setIsLoadingDraft] = useState<boolean>(false);
-  const [draftSessionsList, setDraftSessionsList] = useState<any[]>([]);
   const [tickets, setTickets] = useState<RepairTicket[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
 
   const filteredTickets = useMemo(() => {
     if (!posSearchQuery) return tickets;
     const query = posSearchQuery.toLowerCase().trim();
-    return tickets.filter(t => 
+    return tickets.filter((t: RepairTicket) =>
       t.id.toLowerCase().includes(query) ||
       t.customerName.toLowerCase().includes(query) ||
       t.device.toLowerCase().includes(query) ||
@@ -718,10 +714,10 @@ export default function App() {
     setS2cCheckStatus("testing");
     setS2cCheckLogs(["Initiating diagnostic telemetry scan..."]);
     setTimeout(() => {
-      setS2cCheckLogs(prev => [...prev, "Probing logic board test points..."]);
+      setS2cCheckLogs((prev: string[]) => [...prev, "Probing logic board test points..."]);
       setTimeout(() => {
         setS2cCheckStatus("passed");
-        setS2cCheckLogs(prev => [...prev, "Check completed. Voltages nominal."]);
+        setS2cCheckLogs((prev: string[]) => [...prev, "Check completed. Voltages nominal."]);
         setS2cIsSimulatingCheck(false);
       }, 1000);
     }, 1000);
@@ -730,7 +726,7 @@ export default function App() {
   const handleS2cFeedbackSubmit = (pathway: string) => {
     setS2cIsSubmittingFeedback(true);
     setTimeout(() => {
-      setS2cFeedbackSubmitted(prev => ({ ...prev, [pathway]: true }));
+      setS2cFeedbackSubmitted((prev: Record<string, boolean>) => ({ ...prev, [pathway]: true }));
       setS2cIsSubmittingFeedback(false);
       addToast("Feedback Sent", "Forensic tuning logic successfully captured.", "success");
     }, 800);
@@ -739,6 +735,10 @@ export default function App() {
   const handleGoogleSignIn = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+      }
       addToast("Authentication Success", `Signed in as ${result.user.displayName}`, "success");
     } catch (err: any) {
       console.warn("Authentication Error/Notice:", err);
@@ -789,7 +789,7 @@ export default function App() {
 
   // Fetch Firestore backup logs
   const fetchFirestoreTickets = async (uid: string) => {
-    setActiveSyncCount(prev => prev + 1);
+    setActiveSyncCount((prev: number) => prev + 1);
     try {
       setFirestoreError(null);
       
@@ -813,12 +813,12 @@ export default function App() {
         setFirestoreError(formattedError.message);
       }
     } finally {
-      setActiveSyncCount(prev => Math.max(0, prev - 1));
+      setActiveSyncCount((prev: number) => Math.max(0, prev - 1));
     }
   };
 
   const fetchFirestoreLeads = async (uid: string) => {
-    setActiveSyncCount(prev => prev + 1);
+    setActiveSyncCount((prev: number) => prev + 1);
     try {
       setIsLoadingLeads(true);
       setFirestoreError(null);
@@ -864,7 +864,7 @@ export default function App() {
       userId: authUser.uid
     };
 
-    setActiveSyncCount(prev => prev + 1);
+    setActiveSyncCount((prev: number) => prev + 1);
     try {
       setFirestoreError(null);
       const docRef = doc(db, "high-priority-leads", leadId);
@@ -879,14 +879,14 @@ export default function App() {
         setFirestoreError(formattedError.message);
       }
     } finally {
-      setActiveSyncCount(prev => Math.max(0, prev - 1));
+      setActiveSyncCount((prev: number) => Math.max(0, prev - 1));
     }
   };
 
   const handleUpdateLeadStatus = async (leadId: string, newStatus: "pending" | "in_progress" | "contacted" | "completed" | "cancelled") => {
     if (!authUser) return;
 
-    setActiveSyncCount(prev => prev + 1);
+    setActiveSyncCount((prev: number) => prev + 1);
     try {
       setFirestoreError(null);
       const docRef = doc(db, "high-priority-leads", leadId);
@@ -913,7 +913,7 @@ export default function App() {
         setFirestoreError(formattedError.message);
       }
     } finally {
-      setActiveSyncCount(prev => Math.max(0, prev - 1));
+      setActiveSyncCount((prev: number) => Math.max(0, prev - 1));
     }
   };
 
@@ -939,7 +939,7 @@ export default function App() {
       internalNotes: internalNotes.trim() || undefined
     };
 
-    setActiveSyncCount(prev => prev + 1);
+    setActiveSyncCount((prev: number) => prev + 1);
     try {
       setFirestoreError(null);
       const docRef = doc(db, "tickets", ticketId);
@@ -956,7 +956,7 @@ export default function App() {
         setFirestoreError(formattedError.message);
       }
     } finally {
-      setActiveSyncCount(prev => Math.max(0, prev - 1));
+      setActiveSyncCount((prev: number) => Math.max(0, prev - 1));
     }
   };
 
@@ -1228,7 +1228,12 @@ export default function App() {
     setDnsPropagationStatus("checking");
 
     try {
-      const response = await fetch(`/api/dns-check?domain=${encodeURIComponent(domainName)}`);
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/dns-check?domain=${encodeURIComponent(domainName)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -1286,10 +1291,10 @@ export default function App() {
       userId: authUser?.uid || "unauthenticated"
     };
 
-    setPosLogs(prev => [newLogItem, ...prev]);
+    setPosLogs((prev: POSLog[]) => [newLogItem, ...prev]);
 
     if (authUser?.uid) {
-      setActiveSyncCount(prev => prev + 1);
+      setActiveSyncCount((prev: number) => prev + 1);
       try {
         const { doc, setDoc } = await import("firebase/firestore");
         const logRef = doc(db, "pos-logs", logId);
@@ -1299,7 +1304,7 @@ export default function App() {
         console.error("Failed to push POS log to Firestore:", err);
         handleFirestoreError(err, OperationType.UPDATE, `pos-logs/${logId}`);
       } finally {
-        setActiveSyncCount(prev => Math.max(0, prev - 1));
+        setActiveSyncCount((prev: number) => Math.max(0, prev - 1));
       }
     } else {
       const existing = localStorage.getItem("dcp_sandbox_pos_logs");
@@ -1315,7 +1320,7 @@ export default function App() {
 
     // 1. If we have a logged-in production user session, fetch logs from Firestore 'pos-logs' and 'tickets'
     if (authUser?.uid) {
-      setActiveSyncCount(prev => prev + 1);
+      setActiveSyncCount((prev: number) => prev + 1);
       try {
         const ticketsRef = collection(db, "tickets");
         const qTickets = query(ticketsRef, where("userId", "==", authUser.uid));
@@ -1350,13 +1355,18 @@ export default function App() {
           setFirestoreError(formatted.message);
         }
       } finally {
-        setActiveSyncCount(prev => Math.max(0, prev - 1));
+        setActiveSyncCount((prev: number) => Math.max(0, prev - 1));
       }
     }
 
     // 2. Fetch from default mock endpoint and merge with sandbox local storage if sandbox or error occurred
     try {
-      const res = await fetch("/api/pos-sync-logs");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/pos-sync-logs", {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         const serverTickets = data.tickets || [];
@@ -1396,7 +1406,7 @@ export default function App() {
       };
 
       if (authUser?.uid) {
-        setActiveSyncCount(prev => prev + 1);
+        setActiveSyncCount((prev: number) => prev + 1);
         try {
           const { doc, setDoc } = await import("firebase/firestore");
           const leadRef = doc(db, "high-priority-leads", newLead.id);
@@ -1429,7 +1439,7 @@ export default function App() {
       };
 
       if (authUser?.uid) {
-        setActiveSyncCount(prev => prev + 1);
+        setActiveSyncCount((prev: number) => prev + 1);
         try {
           const { doc, setDoc } = await import("firebase/firestore");
           const docRef = doc(db, "tickets", newTicket.id);
@@ -1613,9 +1623,13 @@ export default function App() {
         return;
       }
 
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/verify-b2b", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ email: emailInput })
       });
       if (res.ok) {
@@ -1651,9 +1665,13 @@ export default function App() {
     const targetZip = zip.trim();
     if (!targetZip) return;
     try {
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/tax-lookup", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ zipCode: targetZip })
       });
       if (res.ok) {
@@ -1969,7 +1987,12 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
   // Fetch Service Directory Authentication Status
   const fetchSdStatus = async () => {
     try {
-      const res = await fetch("/api/service-directory/status");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/service-directory/status", {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setSdStatus(data);
@@ -2330,11 +2353,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setIsCalculatingQuote(true);
     try {
       const activeApiKey = await getActiveApiKey();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/generate-quote", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-api-key": activeApiKey
+          "x-api-key": activeApiKey,
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           issueType,
@@ -2372,11 +2397,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
 
     try {
       const activeApiKey = await getActiveApiKey();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/triage", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-api-key": activeApiKey
+          "x-api-key": activeApiKey,
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           messages: updatedMessages,
@@ -2389,7 +2416,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
       });
       if (res.ok) {
         const data = await res.json();
-        setMessages(prev => [...prev, { role: "assistant", text: data.text }]);
+        setMessages((prev: any[]) => [...prev, { role: "assistant", text: data.text }]);
         if (data.groundingSources && Array.isArray(data.groundingSources)) {
           setGroundingSources(data.groundingSources);
         } else {
@@ -8502,7 +8529,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
           <div className="bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl w-full max-w-lg overflow-hidden transform transition-all">
             <div className="p-6">
               <SignaturePad 
-                onSign={(signatureDataUrl) => {
+                onSign={(_) => {
                   createOfficialTicket();
                   setShowSignatureModal(false);
                 }} 
@@ -8613,7 +8640,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                     }}
                     className="w-full bg-[#008080] hover:bg-[#009999] text-white border border-teal-700 hover:border-teal-500 text-xs font-bold py-2.5 px-3 rounded transition-all cursor-pointer flex items-center justify-center gap-2 font-mono uppercase"
                   >
-                    <Chrome size={14} />
+                    <Globe size={14} />
                     <span>Sign in with Google</span>
                   </button>
 
@@ -11028,7 +11055,7 @@ function CustomerHubView({
     );
   }
   // Filter quotes belonging to this customer
-  const clientTickets = tickets.filter(t => 
+  const clientTickets = tickets.filter((t: RepairTicket) =>
     t.userId === authUser?.uid || 
     t.customerName.toLowerCase() === customerName.toLowerCase()
   );
@@ -11133,7 +11160,7 @@ function CustomerHubView({
       const nextStatus = approve ? "parts_assigned" : "completed";
       
       // Update tickets inside local state
-      const updatedTickets = tickets.map(t => {
+      const updatedTickets = tickets.map((t: RepairTicket) => {
         if (t.id === ticketId) {
           return { 
             ...t, 
@@ -11384,15 +11411,17 @@ function CustomerHubView({
     setIsCustomerChatSending(true);
 
     const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setCustomerMessages(p => [...p, { sender: "user", text: userMsg, timestamp: currentTimeStr }]);
+    setCustomerMessages((p: any[]) => [...p, { sender: "user", text: userMsg, timestamp: currentTimeStr }]);
 
     try {
       const activeApiKey = await getActiveApiKey();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/triage", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-api-key": activeApiKey
+          "x-api-key": activeApiKey,
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           messages: customerMessages
@@ -11688,7 +11717,7 @@ function CustomerHubView({
                           signingTicketId === ticket.id ? (
                             <div className="w-full mt-4 sm:min-w-[400px]">
                               <SignaturePad 
-                                onSign={(signatureDataUrl) => {
+                                onSign={(_) => {
                                   // Include signature logic here if needed (e.g. attaching to ticket)
                                   handleQuoteDecision(ticket.id, true);
                                   setSigningTicketId(null);
@@ -12993,7 +13022,7 @@ function AIAssistantWidget({
     if (!input.trim() || isSending) return;
     
     const userMsgText = input.trim();
-    setMessages(prev => [...prev, { sender: "user", text: userMsgText }]);
+    setMessages((prev: any[]) => [...prev, { sender: "user", text: userMsgText }]);
     setInput("");
     setIsSending(true);
 
@@ -13027,7 +13056,7 @@ function AIAssistantWidget({
 
       if (res.ok) {
         const data = await res.json();
-        setMessages(prev => [...prev, { sender: "ai", text: data.text }]);
+        setMessages((prev: any[]) => [...prev, { sender: "ai", text: data.text }]);
         if (data.detectedSpecs && onUpdateSpecs) {
           onUpdateSpecs(data.detectedSpecs);
         }
@@ -13038,7 +13067,7 @@ function AIAssistantWidget({
       console.error("Widget API triage error:", err);
       // fallback simulation response
       setTimeout(() => {
-        setMessages(prev => [
+        setMessages((prev: any[]) => [
           ...prev, 
           { 
             sender: "ai", 

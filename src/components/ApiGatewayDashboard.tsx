@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { RepairTicket } from "../types";
 import { BrandLogo } from "./BrandLogo";
+import { auth } from "../lib/firebase";
 
 export interface GatewayKey {
   name: string;
@@ -102,7 +103,12 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
   const fetchGatewayData = async () => {
     setIsLoading(true);
     try {
-      const resSettings = await fetch("/api/gateway/settings");
+      const token = await auth.currentUser?.getIdToken();
+      const resSettings = await fetch("/api/gateway/settings", {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (resSettings.ok) {
         const settings = await resSettings.json();
         setEnforceGateway(settings.enforceGateway);
@@ -121,7 +127,12 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
 
   const fetchRotationMetrics = async () => {
     try {
-      const res = await fetch("/api/gateway/rotation");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/gateway/rotation", {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setRotationSchedule(data.rotationSchedule);
@@ -138,7 +149,12 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
   const refreshLogs = async () => {
     setIsRefreshingLogs(true);
     try {
-      const resLogs = await fetch("/api/gateway/logs");
+      const token = await auth.currentUser?.getIdToken();
+      const resLogs = await fetch("/api/gateway/logs", {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (resLogs.ok) {
         const data = await resLogs.json();
         setLogs(data.logs || []);
