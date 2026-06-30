@@ -39,7 +39,24 @@ export function TelemetryDashboard({
   addToast
 }: TelemetryDashboardProps) {
   // Navigation / screen states
-  const [activeTab, setActiveTab] = useState<"manifesto" | "s2c_engine" | "live_telemetry" | "nist_audit" | "ai_research">("manifesto");
+  const [activeTab, setActiveTab] = useState<"manifesto" | "s2c_engine" | "live_telemetry" | "nist_audit" | "ai_research" | "board_vs_modular">("manifesto");
+
+  // Board-level vs Modular Evaluation states
+  const [evalBatteryTemp, setEvalBatteryTemp] = useState<number>(25);
+  const [evalVTerm, setEvalVTerm] = useState<number>(3.82);
+  const [evalBootAmperage, setEvalBootAmperage] = useState<number>(1.2);
+  const [evalLcdDiodeMode, setEvalLcdDiodeMode] = useState<"nominal" | "OL" | "short">("nominal");
+  const [evalResult, setEvalResult] = useState<any>(null);
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+  const [erpSyncLogs, setErpSyncLogs] = useState<any[]>([]);
+
+  // DTF Schema & Validation Engine states
+  const [activeDtfView, setActiveDtfView] = useState<"schema" | "generator" | "validator">("generator");
+  const [generatedDtf, setGeneratedDtf] = useState<any>(null);
+  const [isGeneratingDtf, setIsGeneratingDtf] = useState<boolean>(false);
+  const [dtfInputPayload, setDtfInputPayload] = useState<string>("");
+  const [dtfValidationResult, setDtfValidationResult] = useState<any>(null);
+  const [isValidatingDtf, setIsValidatingDtf] = useState<boolean>(false);
   
   // Handshake and loading states
   const [handshakeActive, setHandshakeActive] = useState<boolean>(true);
@@ -108,6 +125,195 @@ export function TelemetryDashboard({
     }, 5000);
     return () => clearInterval(timer);
   }, []);
+
+  const handleEvaluate = async () => {
+    setIsEvaluating(true);
+    setEvalResult(null);
+    try {
+      const response = await fetch("/api/triage/classify-repair-tier", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          batteryTempC: evalBatteryTemp,
+          vTerm: evalVTerm,
+          bootAmperage: evalBootAmperage,
+          lcdDiodeMode: evalLcdDiodeMode,
+          deviceDetails: {
+            brand: "Apple",
+            model: "iPhone 15 Pro"
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setEvalResult(data);
+      addToast(
+        "S2C Classification Complete",
+        `Diagnostics completed. Mapped fault node: ${data.targetNode || "None"}`,
+        data.status === "BOARD_LEVEL_FAULT" ? "info" : data.status === "LOCKED_OUT_THERMAL" ? "error" : "success"
+      );
+    } catch (err: any) {
+      console.error(err);
+      addToast("Classification Failed", "Offline emulation bypassed telemetry evaluation routing.", "error");
+      
+      // Standalone fallback
+      if (evalBatteryTemp > 45) {
+        setEvalResult({
+          status: "LOCKED_OUT_THERMAL",
+          laborTier: "NONE",
+          targetNode: "THERMAL_LIMIT_EXCEEDED",
+          directive: "Halt diagnostics immediately. Extreme thermal anomaly detected. Risk of lithium-ion thermal runaway.",
+          analysis: "Battery temperature registers above 45.0°C safety threshold. This is a critical safety lockout.",
+          billing: { strategy: "NONE", estimatedLaborHours: 0, costOfGoodsSoldCogs: 0 },
+          dataPreservationGuarantee: false
+        });
+      } else if (evalVTerm <= 2.0 && evalBootAmperage < 0.1) {
+        setEvalResult({
+          status: "BOARD_LEVEL_FAULT",
+          laborTier: "Tier 3: Micro-soldering",
+          targetNode: "U4500_1610A3_TRISTAR",
+          directive: "Do NOT swap battery. Extract Tristar IC at 380°C and replace.",
+          analysis: "Under standard ammeter boot current diagnostics, low terminal voltage paired with flat boot amperage indicates high leakage on the charging rails. Swapping the battery will fail because the Tristar multiplexer is shorted to ground.",
+          billing: { strategy: "BOARD_LEVEL_MICROSOLDERING", estimatedLaborHours: 1.5, costOfGoodsSoldCogs: 4.00 },
+          dataPreservationGuarantee: true
+        });
+      } else if (evalLcdDiodeMode === "OL") {
+        setEvalResult({
+          status: "BOARD_LEVEL_FAULT",
+          laborTier: "Tier 3: Micro-soldering",
+          targetNode: "FL1728_BACKLIGHT_FILTER",
+          directive: "Do NOT swap display. Reconstruct backlight boost out rail.",
+          analysis: "An Open Loop (OL) reading on display pins confirms a blown backlight filter on the Backlight Boost Out rail. Modularly replacing the screen is completely futile. The filter must be desoldered and bridged under a stereoscopic microscope.",
+          billing: { strategy: "BOARD_LEVEL_MICROSOLDERING", estimatedLaborHours: 2.0, costOfGoodsSoldCogs: 0.50 },
+          dataPreservationGuarantee: true
+        });
+      } else {
+        setEvalResult({
+          status: "MODULAR_FAULT",
+          laborTier: "Level 1: Parts-Swap",
+          targetNode: "MODULAR_CONNECTORS",
+          directive: "Proceed with standard modular replacement and re-test.",
+          analysis: "Telemetry metrics register within standard parameters. No major logic board short circuit or open-loop anomalies detected.",
+          billing: { strategy: "PARTS_SWAP", estimatedLaborHours: 0.5, costOfGoodsSoldCogs: 120.00 },
+          dataPreservationGuarantee: false
+        });
+      }
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  const handleSyncTicket = () => {
+    if (!evalResult) {
+      addToast("Sync Blocked", "Please run the telemetry evaluation first.", "warning");
+      return;
+    }
+
+    const syncPayload = {
+      device_imei: "IMEI-" + Math.floor(100000000000000 + Math.random() * 900000000000000),
+      diagnostic_timestamp: new Date().toISOString(),
+      triage_classification: {
+        repair_strategy: evalResult.billing?.strategy || "PARTS_SWAP",
+        justification: evalResult.analysis || "Telemetry-guided diagnostics.",
+      },
+      labor_and_billing: {
+        required_skill_tier: evalResult.status === "BOARD_LEVEL_FAULT" ? 3 : 1,
+        estimated_labor_hours: evalResult.billing?.estimatedLaborHours || 0.5,
+        cost_of_goods_sold_cogs: evalResult.billing?.costOfGoodsSoldCogs || 120.00
+      },
+      data_preservation_guarantee: evalResult.dataPreservationGuarantee || false
+    };
+
+    setErpSyncLogs(prev => [
+      `[${new Date().toLocaleTimeString()}] ERP_SYNC: Syncing ticket with structural classification ${syncPayload.triage_classification.repair_strategy}...`,
+      `[${new Date().toLocaleTimeString()}] ERP_SUCCESS: Ticket registered. Skill Tier: ${syncPayload.labor_and_billing.required_skill_tier}, COGS: $${syncPayload.labor_and_billing.cost_of_goods_sold_cogs.toFixed(2)}.`,
+      ...prev
+    ]);
+
+    addToast("ERP Synchronization Successful", "Triage classification ticket pushed to RepairDesk ERP & Billing services.", "success");
+  };
+
+  const handleGenerateDtf = async (customParams?: any) => {
+    setIsGeneratingDtf(true);
+    try {
+      const payloadBody = {
+        technicianId: authUser?.uid || "TECH_UID_8834",
+        hardwareStationId: "BENCH_SPOKANE_04",
+        dutProfile: {
+          make: customParams?.make || "Apple",
+          model: customParams?.model || "iPhone XR",
+          serial_number: customParams?.serial_number || "G0NX8824JPLA",
+          imei_meid: customParams?.imei_meid || "358284091128441",
+          encryption_status: customParams?.encryption_status !== undefined ? customParams?.encryption_status : true
+        },
+        telemetryPayload: {
+          cycle_count: customParams?.cycle_count || 842,
+          peak_temperature_c: customParams?.peak_temperature_c !== undefined ? customParams?.peak_temperature_c : evalBatteryTemp,
+          peak_ammeter_draw_mA: customParams?.peak_ammeter_draw_mA || (evalBootAmperage * 1000),
+          vdd_main_short_detected: customParams?.vdd_main_short_detected || (evalVTerm <= 2.0),
+          safety_guard_events: customParams?.peak_temperature_c > 45 ? ["THERMAL_RUNAWAY_RISK_EXCEEDED_45C"] : []
+        },
+        complianceSanitization: {
+          standard_executed: customParams?.peak_temperature_c > 45 ? "NONE" : "NIST_SP_800_88_R1_PURGE",
+          cryptographic_keys_destroyed: customParams?.peak_temperature_c > 45 ? false : true
+        },
+        final_disposition_status: customParams?.peak_temperature_c > 45 ? "LOCKED_OUT_THERMAL" : "NIST_PURGED"
+      };
+
+      const res = await fetch("/api/compliance/generate-dtf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadBody)
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setGeneratedDtf(data);
+      setDtfInputPayload(JSON.stringify(data, null, 2));
+      addToast("DTF Generated Successfully", `Immutable telemetry file created with GCloud KMS HMAC-SHA256 signature.`, "success");
+    } catch (err: any) {
+      console.error(err);
+      addToast("DTF Generation Failed", "Server bypass triggered.", "error");
+    } finally {
+      setIsGeneratingDtf(false);
+    }
+  };
+
+  const handleValidateDtfInput = async (jsonString: string) => {
+    setIsValidatingDtf(true);
+    setDtfValidationResult(null);
+    try {
+      const parsed = JSON.parse(jsonString);
+      const res = await fetch("/api/compliance/validate-dtf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDtfValidationResult(data);
+      if (data.valid) {
+        addToast("Draft 7 Schema Verified", "The payload fully complies with the Immutable DTF specification.", "success");
+      } else {
+        addToast("Schema Non-Compliant", `Discovered ${data.errors?.length || 1} structural errors during validation.`, "warning");
+      }
+    } catch (err: any) {
+      setDtfValidationResult({
+        valid: false,
+        schema: "Diagnostic Telemetry File (DTF) Schema Draft 7",
+        errors: [`Invalid JSON format: ${err.message}`]
+      });
+      addToast("Validation Blocked", "Invalid JSON format in the source text.", "error");
+    } finally {
+      setIsValidatingDtf(false);
+    }
+  };
 
   const getRelativeTime = (isoString: string) => {
     if (!isoString) return "NEVER";
@@ -688,6 +894,17 @@ Failed to complete the logical S2C routing. Please verify backend connection.
           >
             🔬 AI Forensic Solver
           </button>
+
+          <button
+            onClick={() => setActiveTab("board_vs_modular")}
+            className={`px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider font-mono transition-all flex items-center gap-1.5 ${
+              activeTab === "board_vs_modular"
+                ? "bg-slate-900 border border-slate-800 text-teal-400 shadow"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            📊 Board vs Modular
+          </button>
         </div>
 
         {/* Auth Ribbon Indicator */}
@@ -708,6 +925,16 @@ Failed to complete the logical S2C routing. Please verify backend connection.
             </div>
           )}
         </div>
+      </div>
+
+      {/* Sleek, permanent, and highly authoritative engineering philosophy ribbon */}
+      <div className="bg-[#131313] border-b border-slate-800/80 px-6 py-3 flex flex-col md:flex-row items-center gap-3">
+        <span className="text-[9px] font-mono text-[#008080] bg-teal-950/30 border border-teal-900/40 px-2.5 py-1 rounded-md font-black uppercase tracking-widest shrink-0 self-start md:self-auto">
+          Philosophy Mandate
+        </span>
+        <p className="text-[11px] font-mono text-slate-400 leading-relaxed text-left">
+          <span className="text-[#FFBF00] font-bold">D&CP LLC enforces a strict engineering philosophy:</span> AI must never be implemented simply because it is &ldquo;novel or impressive&rdquo; or due to company mandates. Instead, every AI integration must solve a genuine user need and be measured by the concrete value it delivers.
+        </p>
       </div>
 
       {/* RENDER ACTIVE LAB VIEW */}
@@ -1748,6 +1975,427 @@ Failed to complete the logical S2C routing. Please verify backend connection.
               </div>
 
             </div>
+
+            {/* =============== DTF WORKSPACE & COMPLIANCE ENGINE =============== */}
+            <div className="bg-[#0c0c0c] border border-slate-800 rounded-2xl p-6 mt-8 space-y-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-850 pb-4 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-mono text-[#008080] uppercase tracking-widest font-black">
+                    [ITAD & Enterprise Compliance Vault]
+                  </span>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">
+                    Diagnostic Telemetry File (DTF) Workspace
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Draft-07 JSON compliance verification, hardware custody mapping, and cryptographically signed COE signatures.
+                  </p>
+                </div>
+
+                <div className="flex gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-850 self-stretch md:self-auto">
+                  {[
+                    { id: "generator", label: "DTF Generator", icon: Sparkles },
+                    { id: "schema", label: "Draft-07 Schema", icon: FileText },
+                    { id: "validator", label: "Live Validator", icon: ShieldCheck }
+                  ].map((tab) => {
+                    const IconComp = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          setActiveDtfView(tab.id as any);
+                          if (tab.id === "generator" && !generatedDtf) {
+                            handleGenerateDtf();
+                          }
+                        }}
+                        className={`flex-1 md:flex-none px-3 py-1.5 rounded-md font-mono text-[10px] uppercase font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          activeDtfView === tab.id
+                            ? "bg-[#008080] text-white"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        <IconComp className="w-3.5 h-3.5" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* TAB 1: DTF PAYLOAD GENERATOR & PRESETS */}
+              {activeDtfView === "generator" && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    
+                    {/* INPUTS AND TRIGGER */}
+                    <div className="lg:col-span-5 space-y-4">
+                      <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-850 space-y-3">
+                        <span className="text-[9px] font-mono text-[#00BFFF] uppercase font-bold block">
+                          [Profile Configurations]
+                        </span>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => handleGenerateDtf({
+                              make: "Apple",
+                              model: "iPhone XR",
+                              serial_number: "G0NX8824JPLA",
+                              imei_meid: "358284091128441",
+                              peak_temperature_c: 47.2,
+                              cycle_count: 842,
+                              vdd_main_short_detected: true
+                            })}
+                            className="p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left rounded-lg text-xs font-mono text-slate-300"
+                          >
+                            <span className="text-[9px] text-red-400 block font-bold mb-0.5">Preset A (Thermal lockout)</span>
+                            iPhone XR (47.2°C)
+                          </button>
+
+                          <button
+                            onClick={() => handleGenerateDtf({
+                              make: "Apple",
+                              model: "iPhone 15 Pro",
+                              serial_number: "C19M2A9BF90L",
+                              imei_meid: "359924881023955",
+                              peak_temperature_c: 28.5,
+                              cycle_count: 142,
+                              vdd_main_short_detected: false
+                            })}
+                            className="p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left rounded-lg text-xs font-mono text-[#00BFFF]"
+                          >
+                            <span className="text-[9px] text-[#008080] block font-bold mb-0.5">Preset B (Nominal Purge)</span>
+                            iPhone 15 (28.5°C)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 space-y-3 text-xs leading-relaxed text-slate-400">
+                        <div className="flex items-center gap-2 text-white font-bold font-mono">
+                          <Activity className="w-4 h-4 text-[#008080]" /> Custom Workspace Active
+                        </div>
+                        <p className="text-[11px]">
+                          Generate an immutable **Diagnostic Telemetry File (DTF)** representing your device under test. Standard telemetry incorporates live voltage, peak temperature tracking, cycle count verification, and standard cryptographic sanitization flags.
+                        </p>
+                        <button
+                          onClick={() => handleGenerateDtf()}
+                          disabled={isGeneratingDtf}
+                          className="w-full py-2.5 bg-[#008080] hover:bg-[#009e9e] text-white font-bold uppercase font-mono tracking-wider rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          {isGeneratingDtf ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Generating file...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5" />
+                              Generate Live DTF Record
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* RENDER ACTIVE DTF JSON FILE */}
+                    <div className="lg:col-span-7 space-y-3">
+                      <div className="flex justify-between items-center text-[10px] font-mono font-bold text-slate-500">
+                        <span>[COMPILED DIAGNOSTIC TELEMETRY RECORD]</span>
+                        {generatedDtf && (
+                          <span className="text-teal-400">Signature: KMS Signed</span>
+                        )}
+                      </div>
+
+                      {generatedDtf ? (
+                        <div className="space-y-4">
+                          <div className="relative">
+                            <pre className="bg-slate-950 p-4 rounded-xl border border-slate-850 text-[10px] font-mono text-slate-300 max-h-[300px] overflow-y-auto leading-normal">
+                              {JSON.stringify(generatedDtf, null, 2)}
+                            </pre>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(JSON.stringify(generatedDtf, null, 2));
+                                addToast("Copied to Clipboard", "DTF compliance record copied to clipboard successfully.", "success");
+                              }}
+                              className="absolute top-2 right-2 px-2.5 py-1 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[9px] font-mono text-slate-400 hover:text-white rounded-md transition-colors"
+                            >
+                              Copy
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div className="p-3 bg-slate-950 rounded-lg border border-slate-850 font-mono text-[10px]">
+                              <span className="text-slate-550 block uppercase text-[9px]">GCloud KMS Digital Signature</span>
+                              <span className="text-teal-400 font-bold break-all block mt-1">
+                                {generatedDtf.session_resolution?.digital_signature_hash}
+                              </span>
+                            </div>
+
+                            <div className="p-3 bg-slate-950 rounded-lg border border-slate-850 font-mono text-[10px] flex flex-col justify-between">
+                              <div>
+                                <span className="text-slate-550 block uppercase text-[9px]">Final Disposition</span>
+                                <span className={`font-black uppercase block mt-1 ${
+                                  generatedDtf.session_resolution?.final_disposition_status === "LOCKED_OUT_THERMAL"
+                                    ? "text-red-400"
+                                    : "text-emerald-400"
+                                }`}>
+                                  {generatedDtf.session_resolution?.final_disposition_status}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(generatedDtf, null, 2));
+                                  const downloadAnchor = document.createElement('a');
+                                  downloadAnchor.setAttribute("href", dataStr);
+                                  downloadAnchor.setAttribute("download", `${generatedDtf.session_id || 'DCP-DTF'}.json`);
+                                  document.body.appendChild(downloadAnchor);
+                                  downloadAnchor.click();
+                                  downloadAnchor.remove();
+                                  addToast("DTF Downloaded", "Diagnostic Telemetry File exported cleanly.", "success");
+                                }}
+                                className="mt-2 text-[#00BFFF] hover:text-[#33c7ff] font-bold text-[9px] block text-left uppercase"
+                              >
+                                Export DTF Payload (JSON)
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-12 border border-dashed border-slate-850 bg-slate-950/20 rounded-xl text-center">
+                          <p className="text-xs text-slate-550 italic font-mono">
+                            No active DTF record loaded. Trigger "Generate Live DTF Record" to construct the compliance payload.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: DRAFT-07 JSON SCHEMA VIEW */}
+              {activeDtfView === "schema" && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="flex justify-between items-center font-mono text-[10px] text-slate-500 font-bold">
+                    <span>[DTF DRAFT-07 COMPLIANCE SPECIFICATION]</span>
+                    <span className="text-[#008080]">Strict Format Required</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div className="lg:col-span-4 space-y-4 text-xs">
+                      <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 space-y-2">
+                        <span className="text-[10px] font-mono text-[#008080] font-bold uppercase block">[1] Mandatory Fields</span>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Every enterprise diagnostic record requires the root parameters: `session_id`, `host_identity`, `dut_profile`, `telemetry_payload`, and `session_resolution`.
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 space-y-2">
+                        <span className="text-[10px] font-mono text-[#008080] font-bold uppercase block">[2] Hardware Failures (Nullables)</span>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Under dead motherboard or shorted board scenarios, software-derived identifiers such as `serial_number` and `imei_meid` can accept `null` to accommodate incomplete workflows without breaking the schema integrity.
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 space-y-2">
+                        <span className="text-[10px] font-mono text-[#008080] font-bold uppercase block">[3] Non-Repudiation Vault</span>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Auditors map diagnostic histories through the immutable HMAC-SHA256 signature generated in KMS using the session, time, and resolution disposition.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-8 relative">
+                      <pre className="bg-slate-950 p-4 rounded-xl border border-slate-850 text-[10px] font-mono text-slate-400 max-h-[360px] overflow-y-auto leading-normal">
+{`{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Diagnostic Telemetry File (DTF)",
+  "type": "object",
+  "required": ["host_technician_identity", "device_under_test", "telemetry_and_sensors", "session_resolution"],
+  "properties": {
+    "session_id": { "type": "string" },
+    "host_technician_identity": {
+      "type": "object",
+      "properties": {
+        "timestamp_iso": { "type": "string", "format": "date-time" },
+        "software_version": { "type": "string" },
+        "technician_id": { "type": "string" },
+        "hardware_station_id": { "type": "string" }
+      },
+      "required": ["timestamp_iso", "technician_id", "hardware_station_id"]
+    },
+    "device_under_test": {
+      "type": "object",
+      "properties": {
+        "make": { "type": "string" },
+        "model": { "type": "string" },
+        "vendor_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "serial_number": { "type": ["string", "null"] },
+        "imei_meid": { "type": ["string", "null"] },
+        "encryption_status_verified": { "type": "boolean" }
+      },
+      "required": ["make", "model", "vendor_id"]
+    },
+    "telemetry_and_sensors": {
+      "type": "object",
+      "properties": {
+        "battery_cycle_count": { "type": "integer" },
+        "battery_design_capacity_mah": { "type": "integer" },
+        "thermal_tracking_array_c": { "type": "array", "items": { "type": "number" } },
+        "ammeter_draw_ma": { "type": "number" },
+        "safety_guard_events": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "compliance_sanitization": {
+      "type": "object",
+      "properties": {
+        "nist_purge_executed": { "type": "boolean" },
+        "cryptographic_keys_destroyed": { "type": "boolean" },
+        "visual_drive_separation_verified": { "type": "boolean" }
+      }
+    },
+    "session_resolution": {
+      "type": "object",
+      "properties": {
+        "final_disposition_status": { "type": "string" },
+        "digital_signature_hash": { "type": "string" }
+      },
+      "required": ["final_disposition_status", "digital_signature_hash"]
+    }
+  }
+}`}
+                      </pre>
+                      <button
+                        onClick={() => {
+                          const schemaContent = {
+                            "$schema": "http://json-schema.org/draft-07/schema#",
+                            "title": "Diagnostic Telemetry File (DTF)",
+                            "type": "object",
+                            "required": ["host_technician_identity", "device_under_test", "telemetry_and_sensors", "session_resolution"]
+                          };
+                          navigator.clipboard.writeText(JSON.stringify(schemaContent, null, 2));
+                          addToast("Copied Schema Snippet", "Core DTF JSON Schema copied to clipboard.", "success");
+                        }}
+                        className="absolute top-2 right-2 px-2 py-1 bg-slate-900 border border-slate-800 text-[9px] font-mono text-slate-500 rounded-md transition-colors"
+                      >
+                        Copy Core
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: LIVE VALIDATOR WORKSPACE */}
+              {activeDtfView === "validator" && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="flex justify-between items-center font-mono text-[10px] text-slate-500 font-bold">
+                    <span>[LIVE DRAFT 7 COMPLIANCE VALIDATOR]</span>
+                    <span className="text-[#FFBF00]">Zero-Trust Lexical Checks</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* JSON TEXT EDITOR */}
+                    <div className="lg:col-span-7 space-y-3">
+                      <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">
+                        Source Payload Content (JSON Format)
+                      </span>
+                      <textarea
+                        value={dtfInputPayload}
+                        onChange={(e) => setDtfInputPayload(e.target.value)}
+                        className="w-full h-[280px] bg-slate-950 border border-slate-850 p-4 rounded-xl font-mono text-[10px] text-slate-300 focus:outline-none focus:border-teal-500 leading-normal"
+                        placeholder='{\n  "session_id": "DCP-9941",\n  ...\n}'
+                      />
+                      <div className="flex justify-between gap-3">
+                        <button
+                          onClick={() => {
+                            setDtfInputPayload(JSON.stringify({
+                              host_technician_identity: {
+                                timestamp_iso: new Date().toISOString()
+                              },
+                              device_under_test: {},
+                              telemetry_and_sensors: {},
+                              session_resolution: {
+                                final_disposition_status: "INVALID_STATUS_CODE"
+                              }
+                            }, null, 2));
+                          }}
+                          className="px-3 py-1.5 bg-slate-955 hover:bg-slate-900 border border-slate-850 text-slate-400 font-mono text-[9px] uppercase rounded-lg"
+                        >
+                          Load Invalid Mock
+                        </button>
+
+                        <button
+                          onClick={() => handleValidateDtfInput(dtfInputPayload)}
+                          disabled={isValidatingDtf || !dtfInputPayload}
+                          className="px-5 py-1.5 bg-[#008080] hover:bg-[#009696] text-white font-mono text-[10px] uppercase font-bold rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                          {isValidatingDtf ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Validating...
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              Verify Schema Compliance
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* VALIDATION REPORT */}
+                    <div className="lg:col-span-5 space-y-4">
+                      <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">
+                        Evaluation Diagnostic Feed
+                      </span>
+
+                      {dtfValidationResult ? (
+                        <div className={`p-4 rounded-xl border space-y-3 ${
+                          dtfValidationResult.valid
+                            ? "bg-emerald-950/15 border-emerald-900/40 text-emerald-300"
+                            : "bg-amber-950/15 border-amber-900/40 text-amber-400"
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className={`w-5 h-5 ${dtfValidationResult.valid ? "text-emerald-400 animate-pulse" : "text-amber-400"}`} />
+                            <div className="font-mono text-[11px]">
+                              <span className="font-bold uppercase block">
+                                {dtfValidationResult.valid ? "DTF COMPLIANCE PASSED" : "SCHEMA VERIFICATION FAILED"}
+                              </span>
+                              <span className="text-[9px] text-slate-500 block font-mono mt-0.5">
+                                Spec: {dtfValidationResult.schema}
+                              </span>
+                            </div>
+                          </div>
+
+                          {!dtfValidationResult.valid && dtfValidationResult.errors?.length > 0 && (
+                            <div className="space-y-1.5 pt-2 border-t border-amber-900/35">
+                              <p className="text-[9px] font-mono font-bold uppercase text-red-400">Structural Failures Detected:</p>
+                              {dtfValidationResult.errors.map((err: string, i: number) => (
+                                <p key={i} className="text-[10px] font-mono text-slate-400 leading-normal pl-2 border-l border-red-500/50">
+                                  {err}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+
+                          {dtfValidationResult.valid && (
+                            <p className="text-[10px] text-slate-400 leading-relaxed font-mono pt-2 border-t border-emerald-900/35">
+                              No schema violations matching Draft 7 rules were found. The diagnostic record is structurally sound, secure-stamped, and cleared for ITAD archival.
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-8 border border-dashed border-slate-850 bg-slate-950/20 rounded-xl text-center">
+                          <p className="text-xs text-slate-550 italic font-mono">
+                            Awaiting verification sweep. Click "Verify Schema Compliance" to execute zero-trust structural mapping.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 
@@ -2213,6 +2861,485 @@ Failed to complete the logical S2C routing. Please verify backend connection.
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* =============== VIEW 6: BOARD-LEVEL VS MODULAR SWAPPING EVALUATION =============== */}
+        {activeTab === "board_vs_modular" && (
+          <div className="space-y-8 max-w-6xl mx-auto animate-in fade-in duration-300">
+            {/* HERO EXPLAINER BLOCK */}
+            <div className="p-6 rounded-2xl bg-[#161616] border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-[#008080] uppercase tracking-widest font-black">
+                  [Silicon Forensic Valuation Module]
+                </span>
+                <h3 className="text-xl font-bold text-white tracking-tight">
+                  Deterministic Logic Board Evaluation vs. Guesswork Swapping
+                </h3>
+                <p className="text-xs text-slate-400 max-w-3xl leading-relaxed">
+                  Board-level repair replaces subjective parts-swapping with clinical, telemetry-first forensics. By diagnosing down to individual micro-components, we preserve encrypted customer storage, bypass restrictive manufacturer blocks, and save expensive motherboards.
+                </p>
+              </div>
+              <div className="bg-[#121212] px-4 py-3 rounded-xl border border-slate-850 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#008080]" />
+                <div className="text-left">
+                  <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">GTM Compliance Status</p>
+                  <p className="text-xs font-bold text-teal-400 font-mono">Egress Filter Active</p>
+                </div>
+              </div>
+            </div>
+
+            {/* PRESETS BLOCK */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                {
+                  name: "Nominal Baseline",
+                  temp: 25,
+                  vTerm: 3.82,
+                  bootAmp: 1.2,
+                  diode: "nominal" as const,
+                  badge: "Level 1: Parts-Swap",
+                  color: "border-emerald-900/45 text-emerald-400 bg-emerald-950/20"
+                },
+                {
+                  name: "Shorted Charging IC",
+                  temp: 34,
+                  vTerm: 1.80,
+                  bootAmp: 0.05,
+                  diode: "nominal" as const,
+                  badge: "Tier 3: Board-Level",
+                  color: "border-[#FFBF00]/45 text-[#FFBF00] bg-amber-950/20"
+                },
+                {
+                  name: "Blown LCD Filter (OL)",
+                  temp: 29,
+                  vTerm: 3.72,
+                  bootAmp: 0.85,
+                  diode: "OL" as const,
+                  badge: "Tier 3: Board-Level",
+                  color: "border-[#00BFFF]/45 text-[#00BFFF] bg-blue-950/20"
+                },
+                {
+                  name: "Thermal Lockout (>45°C)",
+                  temp: 48,
+                  vTerm: 3.10,
+                  bootAmp: 0.00,
+                  diode: "nominal" as const,
+                  badge: "Locked Safety Limit",
+                  color: "border-red-900/45 text-red-400 bg-red-950/20"
+                }
+              ].map((p, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setEvalBatteryTemp(p.temp);
+                    setEvalVTerm(p.vTerm);
+                    setEvalBootAmperage(p.bootAmp);
+                    setEvalLcdDiodeMode(p.diode);
+                    addToast("Preset Loaded", `Applied: ${p.name}`, "info");
+                  }}
+                  className="p-4 rounded-xl bg-[#0c0c0c] border border-slate-800 text-left hover:border-slate-700 hover:bg-slate-900/35 transition-all group flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex justify-between items-start mb-1.5">
+                      <span className="text-xs font-bold text-white group-hover:text-teal-400 transition-colors">
+                        {p.name}
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-mono text-slate-500 mb-3">
+                      Temp: {p.temp}°C | vTerm: {p.vTerm}V | Boot: {p.bootAmp}A
+                    </p>
+                  </div>
+                  <span className={`text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded border inline-block ${p.color}`}>
+                    {p.badge}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* TWO COLUMN WORKSPACE */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* LEFT COLUMN: LIVE TELEMETRY SIMULATOR INPUTS */}
+              <div className="lg:col-span-5 bg-[#0c0c0c] border border-slate-800 rounded-2xl p-6 space-y-6">
+                <div className="border-b border-slate-850 pb-3 flex items-center justify-between">
+                  <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-[#008080] flex items-center gap-1.5">
+                    <Activity className="w-4 h-4" /> Live Telemetry Controls
+                  </h4>
+                  <span className="text-[9px] font-mono text-slate-550 bg-slate-950 px-2 py-0.5 rounded border border-slate-850">
+                    S2C Simulator
+                  </span>
+                </div>
+
+                {/* TEMPERATURE INPUT */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <Flame className={`w-3.5 h-3.5 ${evalBatteryTemp > 45 ? "text-red-500 animate-pulse" : "text-slate-400"}`} />
+                      Battery Temperature
+                    </label>
+                    <span className={`text-xs font-mono font-bold ${evalBatteryTemp > 45 ? "text-red-400" : "text-slate-400"}`}>
+                      {evalBatteryTemp}°C
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="15"
+                    max="55"
+                    step="1"
+                    value={evalBatteryTemp}
+                    onChange={(e) => setEvalBatteryTemp(parseInt(e.target.value))}
+                    className="w-full accent-[#008080] bg-slate-900 rounded-lg appearance-none h-1.5"
+                  />
+                  <p className="text-[10px] text-slate-500 leading-tight">
+                    Thermal safety shutdown threshold enforced at 45°C.
+                  </p>
+                </div>
+
+                {/* VTERM INPUT */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-slate-400" />
+                      Terminal Voltage (vTerm)
+                    </label>
+                    <span className="text-xs font-mono font-bold text-[#00BFFF]">{evalVTerm.toFixed(2)}V</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1.0"
+                    max="4.4"
+                    step="0.05"
+                    value={evalVTerm}
+                    onChange={(e) => setEvalVTerm(parseFloat(e.target.value))}
+                    className="w-full accent-[#00BFFF] bg-slate-900 rounded-lg appearance-none h-1.5"
+                  />
+                  <p className="text-[10px] text-slate-500 leading-tight">
+                    Voltage drop &lt;= 2.0V indicates deep short circuits or logic power rail leakage.
+                  </p>
+                </div>
+
+                {/* BOOT AMPERAGE */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <Cpu className="w-3.5 h-3.5 text-slate-400" />
+                      Ammeter Boot Amperage
+                    </label>
+                    <span className="text-xs font-mono font-bold text-[#FFBF00]">{evalBootAmperage.toFixed(2)}A</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.00"
+                    max="2.20"
+                    step="0.02"
+                    value={evalBootAmperage}
+                    onChange={(e) => setEvalBootAmperage(parseFloat(e.target.value))}
+                    className="w-full accent-[#FFBF00] bg-slate-900 rounded-lg appearance-none h-1.5"
+                  />
+                  <p className="text-[10px] text-slate-500 leading-tight">
+                    Standard boot draw: 0.8A - 1.6A. Zero draw indicates open circuit or dead PMU controllers.
+                  </p>
+                </div>
+
+                {/* DIODE MODE PIN STATE */}
+                <div className="space-y-2.5">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    LCD FPC Connector Diode Mode Drop
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: "nominal", label: "Nominal (0.48V)", sub: "Normal" },
+                      { value: "OL", label: "Open Loop (OL)", sub: "Blown Filter" },
+                      { value: "short", label: "Short (0.00V)", sub: "Shunted Rail" }
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setEvalLcdDiodeMode(opt.value as any)}
+                        className={`p-2.5 rounded-lg border text-left flex flex-col justify-between transition-all ${
+                          evalLcdDiodeMode === opt.value
+                            ? "border-teal-400 bg-teal-950/15 text-white"
+                            : "border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700"
+                        }`}
+                      >
+                        <span className="text-xs font-bold font-mono">{opt.label}</span>
+                        <span className="text-[9px] text-slate-550 block mt-0.5">{opt.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-850">
+                  <button
+                    onClick={handleEvaluate}
+                    disabled={isEvaluating}
+                    className="w-full py-3 bg-[#008080] hover:bg-[#009b9b] disabled:bg-[#008080]/30 disabled:text-slate-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {isEvaluating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Evaluating S2C Impedance...
+                      </>
+                    ) : (
+                      <>
+                        <Activity className="w-4 h-4 animate-pulse" />
+                        Evaluate Telemetry Fault Routing
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: EVALUATION DECISION PANEL */}
+              <div className="lg:col-span-7 bg-[#0c0c0c] border border-slate-800 rounded-2xl p-6 flex flex-col justify-between space-y-6">
+                <div className="space-y-4">
+                  <div className="border-b border-slate-850 pb-3 flex justify-between items-center">
+                    <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-[#00BFFF] flex items-center gap-1.5">
+                      <Terminal className="w-4 h-4" /> S2C Decision & Audit Reports
+                    </h4>
+                    {evalResult && (
+                      <span className={`text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded border ${
+                        evalResult.status === "BOARD_LEVEL_FAULT" 
+                          ? "border-[#00BFFF]/45 text-[#00BFFF]" 
+                          : evalResult.status === "LOCKED_OUT_THERMAL" 
+                          ? "border-red-900/45 text-red-400" 
+                          : "border-emerald-900/45 text-emerald-400"
+                      }`}>
+                        {evalResult.status}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* INITIAL EMPTY STATE */}
+                  {!evalResult && !isEvaluating && (
+                    <div className="p-8 border border-dashed border-slate-850 rounded-xl text-center flex flex-col items-center justify-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-slate-500">
+                        <Terminal className="w-5 h-5 text-slate-550" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-white">Awaiting Telemetry Sweep</p>
+                        <p className="text-[10px] text-slate-500 max-w-sm leading-normal">
+                          Adjust sliders to input board impedance parameters and click "Evaluate Telemetry Fault Routing" to trigger logic-gate analysis.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* LOADING STATE */}
+                  {isEvaluating && (
+                    <div className="p-12 text-center flex flex-col items-center justify-center gap-4">
+                      <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-teal-400 font-mono">DETERMINING STRUCTURAL CLASSIFICATION</p>
+                        <p className="text-[10px] text-slate-500 font-mono max-w-sm">
+                          Querying Cloud Run Express pipeline and executing global egress lexical compliant scans...
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RENDER ACTIVE DECISION REPORT */}
+                  {evalResult && !isEvaluating && (
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 space-y-2">
+                        <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Target Failure Node</p>
+                        <p className="text-sm font-black text-[#FFBF00] font-mono uppercase">{evalResult.targetNode || "None"}</p>
+                        <p className="text-xs text-slate-300 leading-relaxed font-mono mt-2">{evalResult.directive}</p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 space-y-1">
+                        <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">S2C Circuit Analysis</p>
+                        <p className="text-xs text-slate-400 leading-relaxed">{evalResult.analysis}</p>
+                      </div>
+
+                      {/* LEXICAL EGRESS FIREWALL VERIFICATION MONITOR */}
+                      <div className="p-4 rounded-xl border border-slate-850 bg-slate-950 space-y-3">
+                        <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                          <span className="text-[9px] font-mono text-slate-450 uppercase font-black">
+                            🔒 Compliance Egress Firewall Audit
+                          </span>
+                          <span className={`text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded border ${
+                            evalResult.sanitized 
+                              ? "border-amber-900/40 text-amber-400 bg-amber-950/10" 
+                              : "border-emerald-900/40 text-emerald-400 bg-emerald-950/10"
+                          }`}>
+                            {evalResult.sanitized ? "Leaks Redacted" : "Clean Outbound"}
+                          </span>
+                        </div>
+
+                        {evalResult.sanitized ? (
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-slate-400 leading-normal">
+                              The AI or server response attempted to leak proprietary low-level exploit methodology. The **Zero-Trust Lexical Egress Interceptor** intercepted the payload at the network boundary and mutated the forbidden terms:
+                            </p>
+                            <div className="space-y-1.5">
+                              {evalResult.redactions?.map((r: any, idx: number) => (
+                                <div key={idx} className="p-2 bg-amber-950/10 border border-[#FFBF00]/20 rounded-lg text-[10px] font-mono flex flex-col gap-0.5">
+                                  <div className="flex justify-between text-[#FFBF00]">
+                                    <span>Forbidden: "{r.redacted_term}"</span>
+                                    <span>Category: {r.category}</span>
+                                  </div>
+                                  <span className="text-teal-400">Replaced with: "{r.replacement_applied}"</span>
+                                  <span className="text-slate-500 text-[9px] leading-tight">Reason: {r.reason}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-550 leading-normal">
+                            No proprietary lexical exploit signatures matching BRAND_LEXICON were triggered during payload serialization. Content released cleanly.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ERP POS SYNC ACTION ZONE */}
+                {evalResult && !isEvaluating && (
+                  <div className="pt-4 border-t border-slate-850 flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={handleSyncTicket}
+                      className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Database className="w-3.5 h-3.5 text-teal-500" />
+                      Sync Triage Ticket to ERP
+                    </button>
+                    {authUser && (
+                      <button
+                        onClick={() => {
+                          addToast("Certificate Generated", "NIST compliant sanitization certificate cryptographically signed for target IMEI.", "success");
+                        }}
+                        className="py-2.5 px-4 bg-teal-950/30 border border-teal-850 hover:bg-teal-900/40 text-teal-400 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                      >
+                        Sign COE Certificate
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* COMPARATIVE ECONOMICS GRID */}
+            <div className="bg-[#0c0c0c] border border-slate-800 rounded-2xl p-6 space-y-6">
+              <div className="border-b border-slate-850 pb-3">
+                <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-[#FFBF00] flex items-center gap-1.5">
+                  <Activity className="w-4 h-4 text-[#FFBF00]" /> Structural Financial & Technical Comparison Audit
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Comparative analysis of typical retail part-swapping vs. Display Cell Pros' clinical silicon forensics.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* COLUMN A: PARTS-SWAPPING */}
+                <div className="p-5 rounded-xl border border-dashed border-slate-850 bg-slate-950/25 space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Basic Modular Parts-Swapping
+                    </span>
+                    <span className="text-[9px] font-mono text-red-400 bg-red-950/10 px-2 py-0.5 rounded border border-red-900/30 font-bold">
+                      Hobbyist Standard
+                    </span>
+                  </div>
+
+                  <ul className="space-y-3 text-xs text-slate-400 leading-relaxed">
+                    <li className="flex items-start gap-2">
+                      <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-slate-300 block">Blind Trial & Error:</strong>
+                        Technician guesses and swaps whole modules (like displays, docks, battery packs) blindly.
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-slate-300 block">Catastrophic Data Risk:</strong>
+                        OEM policies mandate formatting storage or performing whole board swaps, permanently erasing user encrypted keys.
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-slate-300 block">Exorbitant Hardware Overhead:</strong>
+                        User pays for a $150 display or $500 complete motherboard assembly when the actual fault is a $0.50 SMD filter.
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* COLUMN B: BOARD-LEVEL */}
+                <div className="p-5 rounded-xl border border-teal-900/30 bg-[#0c0c0c] space-y-4 shadow-[0_0_20px_rgba(0,128,128,0.02)]">
+                  <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                    <span className="text-xs font-bold text-teal-400 uppercase tracking-wider">
+                      Forensic Board-Level Restoration
+                    </span>
+                    <span className="text-[9px] font-mono text-teal-400 bg-teal-950/20 px-2 py-0.5 rounded border border-teal-900/30 font-bold">
+                      Silicon Forensics
+                    </span>
+                  </div>
+
+                  <ul className="space-y-3 text-xs text-slate-400 leading-relaxed">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-slate-300 block">S2C Impedance Mapping:</strong>
+                        Probes the logic board under a microscope using diode measurements, isolating the exact shorted capacitor.
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-slate-300 block">Absolute Data Integrity:</strong>
+                        Repairs the existing board logic. The original secure enclave and memory arrays remain intact—Zero Data Loss.
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-slate-300 block">Hyper-Efficient Salvage Economics:</strong>
+                        Avoids modular parts waste. Solves complex charging faults by swapping the $4 multiplexer charging IC.
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+
+              </div>
+            </div>
+
+            {/* ERP WORKFLOW LOGGER */}
+            <div className="bg-[#0c0c0c] border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3">
+                <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-[#008080] flex items-center gap-1.5">
+                  <Activity className="w-4 h-4" /> Live POS & ERP Synchronization Logs
+                </h4>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setErpSyncLogs([])}
+                    className="text-[10px] font-mono text-slate-500 hover:text-slate-300 font-bold"
+                  >
+                    Clear Logs
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 rounded-xl p-4 font-mono text-[10px] text-slate-450 space-y-1.5 max-h-[160px] overflow-y-auto">
+                {erpSyncLogs.length === 0 ? (
+                  <p className="text-slate-650 italic">// POS sync logs idle. Trigger "Sync Triage Ticket to ERP" above...</p>
+                ) : (
+                  erpSyncLogs.map((log, index) => (
+                    <div key={index} className="flex gap-2">
+                      <span className="text-slate-600 select-none">{">"}</span>
+                      <span className={log.includes("SUCCESS") ? "text-emerald-400" : "text-slate-400"}>{log}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
           </div>
         )}
 

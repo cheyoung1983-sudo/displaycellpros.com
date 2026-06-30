@@ -73,7 +73,7 @@ Excellent news! Your <strong>[[device]]</strong> has successfully passed all mic
 You may visit our Spokane diagnostics hub during standard operational hours to claim your device. Our work carries a 90-day parts warranty.<br/><br/>
 Warm regards,<br/>
 <strong>Display & Cell Pros Diagnostics Team</strong><br/>
-(509) 255-3852`
+(509) 903-6139`
   },
   {
     id: "escalation_notice",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Phone, 
   MapPin, 
@@ -39,6 +39,7 @@ import {
   Trash2,
   Globe,
   Settings,
+  Search,
   ChevronDown,
   ChevronUp,
   QrCode,
@@ -85,13 +86,19 @@ const QuoteBuilderDashboard = React.lazy(() => import("./components/QuoteBuilder
 const SmdComponentLibrary = React.lazy(() => import("./components/SmdComponentLibrary").then(module => ({ default: module.SmdComponentLibrary })));
 const BrandLogo = React.lazy(() => import("./components/BrandLogo").then(module => ({ default: module.BrandLogo })));
 const FirebaseUserAuditor = React.lazy(() => import("./components/FirebaseUserAuditor").then(module => ({ default: module.FirebaseUserAuditor })));
+const ProfileDashboard = React.lazy(() => import("./components/ProfileDashboard"));
+const AdminMasterPanel = React.lazy(() => import("./components/AdminMasterPanel").then(module => ({ default: module.default })));
+const AdminRouteGuard = React.lazy(() => import("./components/AdminMasterPanel").then(module => ({ default: module.AdminRouteGuard })));
+import { QrTicketScanner } from "./components/QrTicketScanner";
 
 const AboutView = React.lazy(() => import("./components/AboutView").then(module => ({ default: module.AboutView })));
+const TechnologyView = React.lazy(() => import("./components/TechnologyView").then(module => ({ default: module.TechnologyView })));
 const ContactView = React.lazy(() => import("./components/ContactView").then(module => ({ default: module.ContactView })));
 const FaqsView = React.lazy(() => import("./components/FaqsView").then(module => ({ default: module.FaqsView })));
 const PricingView = React.lazy(() => import("./components/PricingView").then(module => ({ default: module.PricingView })));
 const TestimonialsView = React.lazy(() => import("./components/TestimonialsView").then(module => ({ default: module.TestimonialsView })));
 const BlogView = React.lazy(() => import("./components/BlogView").then(module => ({ default: module.BlogView })));
+const B2BWholesalePortal = React.lazy(() => import("./components/B2BWholesalePortal").then(module => ({ default: module.B2BWholesalePortal })));
 
 // Dynamically imported Triage AI Modules to reduce initial bundle size
 const ForensicsView = React.lazy(() => import("./modules/triage-ai/ForensicsView").then(module => ({ default: module.ForensicsView })));
@@ -104,6 +111,7 @@ import { signInWithPopup, signInAnonymously, onAuthStateChanged, signOut, User a
 import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, deleteDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "./lib/firebase";
 import { handleFirestoreError, OperationType } from "./lib/firebase-errors";
+import { MarketingFirewall } from "./components/MarketingFirewall";
 
 // --- DATA MODELS ---
 
@@ -193,7 +201,7 @@ export default function App() {
   });
 
   // --- DIAGNOSTIC HUB STATES ---
-  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub" | "gateway" | "quote_builder" | "telemetry" | "smd_library">("telemetry");
+  const [labTab, setLabTab] = useState<"triage" | "pos" | "tax" | "directory" | "escalation" | "forensics" | "forms" | "gmail" | "firebase_ai" | "workspace_hub" | "gateway" | "quote_builder" | "telemetry" | "smd_library" | "marketing_firewall">("telemetry");
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [leads, setLeads] = useState<HighPriorityLead[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState<boolean>(false);
@@ -319,7 +327,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<"technician" | "customer">(() => {
     return (localStorage.getItem("dcp_user_role") as "technician" | "customer") ?? "customer";
   });
-  const [profilePhone, setProfilePhone] = useState<string>("(509) 255-3852");
+  const [profilePhone, setProfilePhone] = useState<string>("(509) 903-6139");
   const [profilePreferredDevice, setProfilePreferredDevice] = useState<string>("iPhone 14 Pro Max");
 
   // --- POS SYNC LEDGER AUTO-REFRESH STATES ---
@@ -532,6 +540,10 @@ export default function App() {
   const [reminderDismissedForToday, setReminderDismissedForToday] = useState<boolean>(false);
   const [ticketCreationSuccess, setTicketCreationSuccess] = useState<boolean>(false);
 
+  // --- POS SEARCH & QR SCANNER STATES ---
+  const [posSearchQuery, setPosSearchQuery] = useState<string>("");
+  const [showQrScanner, setShowQrScanner] = useState<boolean>(false);
+
   // Missing chat states
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
   const [chatInput, setChatInput] = useState<string>("");
@@ -545,6 +557,19 @@ export default function App() {
   const [draftSessionsList, setDraftSessionsList] = useState<any[]>([]);
   const [tickets, setTickets] = useState<RepairTicket[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
+
+  const filteredTickets = useMemo(() => {
+    if (!posSearchQuery) return tickets;
+    const query = posSearchQuery.toLowerCase().trim();
+    return tickets.filter(t => 
+      t.id.toLowerCase().includes(query) ||
+      t.customerName.toLowerCase().includes(query) ||
+      t.device.toLowerCase().includes(query) ||
+      (t.companyName && t.companyName.toLowerCase().includes(query)) ||
+      t.issueType.toLowerCase().includes(query) ||
+      t.status.toLowerCase().includes(query)
+    );
+  }, [tickets, posSearchQuery]);
 
   const fetchMyDraftsList = async () => {};
   const resumeDraftSession = async (id?: string) => {};
@@ -571,16 +596,54 @@ export default function App() {
       addToast("Export Empty", "No transaction logs loaded to export.", "info");
       return;
     }
-    const dataStr = JSON.stringify(posLogs, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `CP_POS_Sync_Logs_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    addToast("Export Successful", "POS logs successfully downloaded as JSON.", "success");
+
+    addToast("Processing Export", "Formatting JSON payload in background thread...", "info");
+
+    const workerCode = `
+      self.onmessage = function(e) {
+        try {
+          const result = JSON.stringify(e.data, null, 2);
+          self.postMessage({ success: true, result });
+        } catch (err) {
+          self.postMessage({ success: false, error: err.message });
+        }
+      };
+    `;
+
+    const blob = new Blob([workerCode], { type: "application/javascript" });
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
+
+    worker.onmessage = (e) => {
+      const { success, result, error } = e.data;
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+
+      if (success) {
+        const fileBlob = new Blob([result], { type: "application/json" });
+        const fileUrl = URL.createObjectURL(fileBlob);
+        const link = document.createElement("a");
+        link.href = fileUrl;
+        link.download = `CP_POS_Sync_Logs_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(fileUrl);
+        addToast("Export Successful", "POS logs successfully downloaded as JSON.", "success");
+      } else {
+        console.error("Worker JSON stringify failed:", error);
+        addToast("Export Failed", `Formatting failed: ${error}`, "error");
+      }
+    };
+
+    worker.onerror = (err) => {
+      console.error("Worker error:", err);
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+      addToast("Export Failed", "Background worker error occurred.", "error");
+    };
+
+    worker.postMessage(posLogs);
   };
 
   const getS2cDiagnosticPayload = () => {
@@ -701,13 +764,13 @@ export default function App() {
     const mockUser = {
       uid: "sandbox-customer-999",
       displayName: "Spokane Test Client",
-      email: "test-forensic-analyst@displaycellpros.com",
+      email: "ryan@displaycellpros.com",
       photoURL: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80",
       isAnonymous: false,
     };
     setAuthUser(mockUser as any);
     setCustomerName("Spokane Test Client");
-    setProfilePhone("(509) 255-3852");
+    setProfilePhone("(509) 903-6139");
     setProfilePreferredDevice("iPhone 15 Pro Max");
     addToast("Sandbox Credentials Generated", "Simulated forensic analyst session loaded. All operations linked to test profile.", "success");
   };
@@ -794,7 +857,7 @@ export default function App() {
     const newLead: HighPriorityLead = {
       id: leadId,
       customerName: customerName || "Spokane Lead Client",
-      phone: phone || "(509) 255-3852",
+      phone: phone || "(509) 903-6139",
       deviceModel: deviceModel || "Generic Device",
       status: "pending",
       createdAt: new Date().toISOString(),
@@ -904,28 +967,67 @@ export default function App() {
       addToast("Export Empty", "No transaction logs loaded to export.", "info");
       return;
     }
-    const headers = ["Timestamp", "Source", "Level", "Message"];
-    const rows = posLogs.map(log => {
-      const formattedTime = new Date(log.timestamp).toISOString();
-      const escapedMsg = log.message.replace(/"/g, '""');
-      return [
-        `"${formattedTime}"`,
-        `"${log.source}"`,
-        `"${log.level}"`,
-        `"${escapedMsg}"`
-      ].join(",");
-    });
-    
-    const csvContent = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `CP_POS_Sync_Logs_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    addToast("Export Successful", "POS logs successfully downloaded as CSV file.", "success");
+
+    addToast("Processing Export", "Formatting CSV payload in background thread...", "info");
+
+    const workerCode = `
+      self.onmessage = function(e) {
+        try {
+          const logs = e.data;
+          const headers = ["Timestamp", "Source", "Level", "Message"];
+          const rows = logs.map(log => {
+            const formattedTime = new Date(log.timestamp).toISOString();
+            const escapedMsg = (log.message || "").replace(/"/g, '""');
+            return [
+              \`"\${formattedTime}"\`,
+              \`"\${log.source}"\`,
+              \`"\${log.level}"\`,
+              \`"\${escapedMsg}"\`
+            ].join(",");
+          });
+          
+          const csvContent = [headers.join(","), ...rows].join("\\n");
+          self.postMessage({ success: true, result: csvContent });
+        } catch (err) {
+          self.postMessage({ success: false, error: err.message });
+        }
+      };
+    `;
+
+    const blob = new Blob([workerCode], { type: "application/javascript" });
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
+
+    worker.onmessage = (e) => {
+      const { success, result, error } = e.data;
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+
+      if (success) {
+        const fileBlob = new Blob([result], { type: "text/csv;charset=utf-8;" });
+        const fileUrl = URL.createObjectURL(fileBlob);
+        const link = document.createElement("a");
+        link.href = fileUrl;
+        link.download = `CP_POS_Sync_Logs_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(fileUrl);
+        addToast("Export Successful", "POS logs successfully downloaded as CSV file.", "success");
+      } else {
+        console.error("Worker CSV generation failed:", error);
+        addToast("Export Failed", `Formatting failed: ${error}`, "error");
+      }
+    };
+
+    worker.onerror = (err) => {
+      console.error("Worker error:", err);
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+      addToast("Export Failed", "Background worker error occurred.", "error");
+    };
+
+    worker.postMessage(posLogs);
   };
 
   // Check for workday end reminder
@@ -3249,7 +3351,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-[11px] font-medium">
             <span className="flex items-center gap-1.5 text-slate-300">
               <Phone className="w-3.5 h-3.5 text-blue-500" />
-              <span>Direct Hotline: <strong className="text-white font-extrabold">(509) 255-3852</strong></span>
+              <span>Direct Hotline: <strong className="text-white font-extrabold">(509) 903-6139</strong></span>
             </span>
             <span className="hidden md:inline text-slate-700">|</span>
             <span className="flex items-center gap-1.5 text-slate-300">
@@ -3369,79 +3471,100 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
             </div>
             
             {/* Desktop Menu */}
-            <div className="hidden md:flex items-center gap-6">
-              {userRole === "technician" ? (
-                <div className="flex items-center space-x-6">
-                  <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")}>Home</NavButton>
-                  <NavButton active={activeTab === "about"} onClick={() => setActiveTab("about")}>About</NavButton>
-                  <NavButton active={activeTab === "services"} onClick={() => setActiveTab("services")}>Services</NavButton>
-                  <NavButton active={activeTab === "pricing"} onClick={() => setActiveTab("pricing")}>Pricing</NavButton>
-                  <NavButton active={activeTab === "b2b"} onClick={() => setActiveTab("b2b")}>B2B Fleet</NavButton>
-                  <NavButton active={activeTab === "testimonials"} onClick={() => setActiveTab("testimonials")}>Testimonials</NavButton>
-                  <NavButton active={activeTab === "blog"} onClick={() => setActiveTab("blog")}>Blog</NavButton>
-                  <NavButton active={activeTab === "faqs"} onClick={() => setActiveTab("faqs")}>FAQs</NavButton>
-                  <NavButton active={activeTab === "csp"} onClick={() => setActiveTab("csp")}>CSP Manual</NavButton>
-                  <NavButton active={activeTab === "contact"} onClick={() => setActiveTab("contact")}>Contact</NavButton>
-                  
-                  {/* Shopping Cart button */}
-                  <button
-                    onClick={() => setActiveTab("store")}
-                    className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative cursor-pointer ${
-                      activeTab === "store" 
-                        ? "text-blue-400 bg-slate-800 border border-blue-500/30" 
-                        : "text-slate-300 hover:text-white hover:bg-slate-800/50"
-                    }`}
-                  >
-                    {hasLowStockHighTurnover && (
-                      <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5" title="High-Turnover Item Low Stock Warn!">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500 border border-slate-900 justify-center items-center">
-                          <span className="text-[8px] text-slate-950 font-black leading-none">!</span>
-                        </span>
+            <div className="hidden md:flex items-center gap-4 xl:gap-6">
+              <div className="flex items-center space-x-3 xl:space-x-4">
+                <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")}>Home</NavButton>
+                <NavButton active={activeTab === "about"} onClick={() => setActiveTab("about")}>About</NavButton>
+                <NavButton active={activeTab === "technology"} onClick={() => setActiveTab("technology")}>Technology</NavButton>
+                <NavButton active={activeTab === "services"} onClick={() => setActiveTab("services")}>Services</NavButton>
+                <NavButton active={activeTab === "pricing"} onClick={() => setActiveTab("pricing")}>Pricing</NavButton>
+                <NavButton active={activeTab === "b2b"} onClick={() => setActiveTab("b2b")}>B2B Fleet</NavButton>
+                <NavButton active={activeTab === "testimonials"} onClick={() => setActiveTab("testimonials")}>Testimonials</NavButton>
+                <NavButton active={activeTab === "faqs"} onClick={() => setActiveTab("faqs")}>FAQs</NavButton>
+                <NavButton active={activeTab === "contact"} onClick={() => setActiveTab("contact")}>Contact</NavButton>
+                
+                {userRole === "customer" && (
+                  <NavButton active={activeTab === "customer-hub"} onClick={() => setActiveTab("customer-hub")}>
+                    <span className="text-blue-400 font-extrabold font-mono">Client Hub</span>
+                  </NavButton>
+                )}
+                
+                {/* Shopping Cart button */}
+                <button
+                  onClick={() => setActiveTab("store")}
+                  className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative cursor-pointer ${
+                    activeTab === "store" 
+                      ? "text-blue-400 bg-slate-800 border border-blue-500/30" 
+                      : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                  }`}
+                >
+                  {hasLowStockHighTurnover && (
+                    <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5" title="High-Turnover Item Low Stock Warn!">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500 border border-slate-900 justify-center items-center">
+                        <span className="text-[8px] text-slate-950 font-black leading-none">!</span>
                       </span>
-                    )}
-                    <ShoppingCart className="w-4 h-4 text-blue-400" />
-                    <span>Store / Supply</span>
-                    {cartItemCount > 0 && (
-                      <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[10px] font-black rounded-full h-5 w-5 flex items-center justify-center border border-slate-900 animate-bounce">
-                        {cartItemCount}
-                      </span>
-                    )}
-                  </button>
-                  
-                  {/* Diagnostics Embedded Laboratory Link */}
+                    </span>
+                  )}
+                  <ShoppingCart className="w-4 h-4 text-blue-400" />
+                  <span>Store</span>
+                  {cartItemCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[10px] font-black rounded-full h-5 w-5 flex items-center justify-center border border-slate-900 animate-bounce">
+                      {cartItemCount}
+                    </span>
+                  )}
+                </button>
+                
+                {/* Diagnostics Embedded Laboratory Link */}
+                <button
+                  id="tab-diagnostics-lab"
+                  onClick={() => {
+                    const isTechnician = (authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim;
+                    if (!isTechnician) {
+                      setShowAccessDeniedModal(true);
+                      return;
+                    }
+                    setActiveTab("lab");
+                  }}
+                  className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative group cursor-pointer ${
+                    activeTab === "lab" 
+                      ? "text-blue-400 bg-slate-800 shadow-xs border border-blue-500/30" 
+                      : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                  }`}
+                >
+                  <Cpu className="w-4 h-4 text-blue-400 group-hover:rotate-12 transition-transform" />
+                  Lab Portal
+                  <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 text-[8px] uppercase tracking-tighter bg-blue-600 text-white rounded font-extrabold animate-pulse">
+                    Live
+                  </span>
+                </button>
+
+                {((authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim) && (
                   <button
-                    id="tab-diagnostics-lab"
-                    onClick={() => setActiveTab("lab")}
+                    id="tab-admin-portal"
+                    onClick={() => setActiveTab("admin")}
                     className={`px-3 py-2 rounded-md text-sm font-bold tracking-wide transition-all uppercase flex items-center gap-1.5 relative group cursor-pointer ${
-                      activeTab === "lab" 
-                        ? "text-blue-400 bg-slate-800 shadow-xs border border-blue-500/30" 
+                      activeTab === "admin" 
+                        ? "text-teal-400 bg-slate-800 shadow-xs border border-teal-500/30" 
                         : "text-slate-300 hover:text-white hover:bg-slate-800/50"
                     }`}
                   >
-                    <Cpu className="w-4 h-4 text-blue-400 group-hover:rotate-12 transition-transform" />
-                    Lab Portal
-                    <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 text-[8px] uppercase tracking-tighter bg-blue-600 text-white rounded font-extrabold animate-pulse">
-                      Live
+                    <ShieldCheck className="w-4 h-4 text-teal-400 group-hover:scale-110 transition-transform" />
+                    Admin Panel
+                    <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 text-[8px] uppercase tracking-tighter bg-teal-600 text-white rounded font-extrabold animate-pulse">
+                      Root
                     </span>
                   </button>
+                )}
 
-                  <button 
-                    onClick={() => setIsAiOpen(true)}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-medium transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2 cursor-pointer"
-                  >
-                    <MessageSquare size={18} />
-                    Book / Quote
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-3">
-                  <span className="text-xs font-bold text-blue-400 uppercase tracking-widest bg-blue-950/40 px-3/12 py-1.5 rounded-md border border-blue-900/30 flex items-center gap-2 font-mono">
-                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-                    LOCK: SECURE CUSTOMER WORKSPACE
-                  </span>
-                </div>
-              )}
+                <button 
+                  onClick={() => setIsAiOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-medium transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2 cursor-pointer"
+                >
+                  <MessageSquare size={18} />
+                  Book / Quote
+                </button>
+              </div>
 
               {/* Interactive Persona Toggler */}
               <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-full border border-slate-800 shrink-0">
@@ -3562,41 +3685,62 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
                 </span>
               </div>
 
-              {userRole === "technician" ? (
-                <>
-                  <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("about"); setMobileMenuOpen(false); }}>About</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}>Services</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("pricing"); setMobileMenuOpen(false); }}>Pricing</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("b2b"); setMobileMenuOpen(false); }}>B2B Fleet</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("testimonials"); setMobileMenuOpen(false); }}>Testimonials</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("blog"); setMobileMenuOpen(false); }}>Blog</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("faqs"); setMobileMenuOpen(false); }}>FAQs</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("csp"); setMobileMenuOpen(false); }}>CSP Manual</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("contact"); setMobileMenuOpen(false); }}>Contact</MobileNavButton>
-                  <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>
-                    Store {hasLowStockHighTurnover && "⚠️ (LOW STOCK Alert!)"}
+              <>
+                <MobileNavButton onClick={() => { setActiveTab("home"); setMobileMenuOpen(false); }}>Home</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("about"); setMobileMenuOpen(false); }}>About</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("technology"); setMobileMenuOpen(false); }}>Technology</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}>Services</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("pricing"); setMobileMenuOpen(false); }}>Pricing</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("b2b"); setMobileMenuOpen(false); }}>B2B Fleet</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("testimonials"); setMobileMenuOpen(false); }}>Testimonials</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("faqs"); setMobileMenuOpen(false); }}>FAQs</MobileNavButton>
+                <MobileNavButton onClick={() => { setActiveTab("contact"); setMobileMenuOpen(false); }}>Contact</MobileNavButton>
+                
+                {userRole === "customer" && (
+                  <MobileNavButton onClick={() => { setActiveTab("customer-hub"); setMobileMenuOpen(false); }}>
+                    <span className="text-blue-400">Client Hub</span>
                   </MobileNavButton>
-                  
-                  <button 
-                      onClick={() => { setActiveTab("lab"); setMobileMenuOpen(false); }}
-                      className="w-full text-left flex items-center gap-2 block px-3 py-3 rounded-md text-base font-bold text-blue-400 bg-slate-900 border border-slate-755 mb-2"
-                    >
-                      <Cpu size={18} /> Diagnostics Lab Portal (Beta)
-                  </button>
+                )}
 
+                <MobileNavButton onClick={() => { setActiveTab("store"); setMobileMenuOpen(false); }}>
+                  Store {hasLowStockHighTurnover && "⚠️ (LOW STOCK Alert!)"}
+                </MobileNavButton>
+                
+                <button 
+                    onClick={() => { 
+                      const isTechnician = (authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim;
+                      if (!isTechnician) {
+                        setShowAccessDeniedModal(true);
+                        setMobileMenuOpen(false);
+                        return;
+                      }
+                      setActiveTab("lab"); 
+                      setMobileMenuOpen(false); 
+                    }}
+                    className="w-full text-left flex items-center gap-2 block px-3 py-3 rounded-md text-base font-bold text-blue-400 bg-slate-900 border border-slate-755 mb-2 cursor-pointer"
+                  >
+                    <Cpu size={18} /> Diagnostics Lab Portal (Beta)
+                </button>
+
+                {((authUser?.email?.trim().toLowerCase() === "cheyoung1983@gmail.com") || isAdminClaim) && (
                   <button 
-                      onClick={() => { setIsAiOpen(true); setMobileMenuOpen(false); }}
-                      className="w-full text-left block px-3 py-3 rounded-md text-base font-medium text-white bg-blue-600 mb-2"
-                    >
-                      Book Repair / Get Quote
+                    onClick={() => { 
+                      setActiveTab("admin"); 
+                      setMobileMenuOpen(false); 
+                    }}
+                    className="w-full text-left flex items-center gap-2 block px-3 py-3 rounded-md text-base font-bold text-teal-400 bg-slate-900 border border-teal-950 mb-2 cursor-pointer"
+                  >
+                    <ShieldCheck size={18} /> Admin Master Override
                   </button>
-                </>
-              ) : (
-                <div className="px-3 py-2 text-xs font-mono text-blue-300 bg-blue-950/20 border border-blue-900/30 rounded-lg">
-                  🚨 Customer Sandbox Lock-out Mode is currently active. Switch personas below to explore full capabilities.
-                </div>
-              )}
+                )}
+
+                <button 
+                    onClick={() => { setIsAiOpen(true); setMobileMenuOpen(false); }}
+                    className="w-full text-left block px-3 py-3 rounded-md text-base font-medium text-white bg-blue-600 mb-2 cursor-pointer"
+                  >
+                    Book Repair / Get Quote
+                </button>
+              </>
 
               {/* Mobile Switcher block */}
               <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2">
@@ -3713,6 +3857,7 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
         {activeTab === "b2b" && <B2BView onBookClick={() => setIsAiOpen(true)} />}
         <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500 font-mono">Loading module...</div>}>
           {activeTab === "about" && <AboutView />}
+          {activeTab === "technology" && <TechnologyView />}
           {activeTab === "contact" && <ContactView />}
           {activeTab === "faqs" && <FaqsView />}
           {activeTab === "pricing" && <PricingView />}
@@ -4539,6 +4684,21 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                       </div>
                       <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-teal-950 text-teal-300 border border-teal-850/40 font-bold">LIB</span>
                     </button>
+
+                    <button
+                      onClick={() => setLabTab("marketing_firewall")}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        labTab === "marketing_firewall" 
+                          ? "bg-teal-600 text-white shadow-md font-bold" 
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-cyan-400 animate-pulse" />
+                        <span>B2B Go-To-Market Guard</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 text-[9px] rounded font-mono bg-[#008080]/30 text-teal-300 border border-[#008080]/30 font-bold">B2B</span>
+                    </button>
                   </nav>
                 </div>
 
@@ -5316,18 +5476,67 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                           <FileText className="w-4 h-4 text-emerald-400" /> 
                           Square & CellSmart Registry 
                           <span className="bg-emerald-900/50 text-emerald-300 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold border border-emerald-800/40">
-                            {tickets.length} ACTIVE
+                            {filteredTickets.length} of {tickets.length} MATCHED
                           </span>
                         </h3>
                         <button
                           onClick={() => setShowSignatureModal(true)}
                           disabled={ticketCreationSuccess}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-1 text-[11px] font-bold uppercase transition-all flex items-center gap-1 shadow-sm active:scale-98"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-1 text-[11px] font-bold uppercase transition-all flex items-center gap-1 shadow-sm active:scale-98 cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />
                           New Quick Ticket
                         </button>
                       </div>
+
+                      {/* POS Search & QR Code Camera Lookup Bar */}
+                      <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 mb-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                        <div className="relative flex-1 w-full">
+                          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                          <input
+                            type="text"
+                            value={posSearchQuery}
+                            onChange={(e) => setPosSearchQuery(e.target.value)}
+                            placeholder="Filter registry by Ticket ID, Client, or Device brand..."
+                            className="w-full bg-slate-900/80 border border-slate-800 focus:border-teal-500 rounded-lg pl-9 pr-8 py-2 text-xs font-mono text-slate-200 outline-none placeholder:text-slate-500"
+                          />
+                          {posSearchQuery && (
+                            <button
+                              onClick={() => setPosSearchQuery("")}
+                              className="absolute right-2.5 top-2.5 text-slate-500 hover:text-white cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => setShowQrScanner(!showQrScanner)}
+                          className={`w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-extrabold uppercase font-mono tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                            showQrScanner 
+                              ? "bg-amber-950 border border-amber-800 text-amber-400"
+                              : "bg-[#008080] hover:bg-[#009696] text-white shadow-md"
+                          }`}
+                        >
+                          <QrCode className="w-4 h-4" />
+                          {showQrScanner ? "Close QR Scanner" : "Scan QR Ticket"}
+                        </button>
+                      </div>
+
+                      {/* Expanded Camera scanner panel */}
+                      {showQrScanner && (
+                        <div className="mb-4 animate-in fade-in slide-in-from-top-3 duration-200">
+                          <QrTicketScanner
+                            tickets={tickets}
+                            onSelectTicket={(scannedId) => {
+                              setPosSearchQuery(scannedId);
+                              setShowQrScanner(false);
+                              addToast("Ticket Pulled Up", `Auto-filtered registry to show Ticket ID: ${scannedId}`, "success");
+                            }}
+                            onClose={() => setShowQrScanner(false)}
+                          />
+                        </div>
+                      )}
 
                       {ticketCreationSuccess && (
                         <div className="p-3 bg-emerald-950/70 border border-emerald-900 text-emerald-300 text-xs rounded-lg mb-3 flex items-center gap-2 font-mono">
@@ -5348,37 +5557,45 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/80 bg-slate-900/30 font-mono text-[10.5px]">
-                            {tickets.map((t) => (
-                              <tr key={t.id} className="hover:bg-slate-800/30 transition-colors">
-                                <td className="p-3 font-semibold text-blue-400 font-bold">{t.id}</td>
-                                <td className="p-3 font-sans">
-                                  <div className="font-bold text-slate-205">{t.customerName}</div>
-                                  <div className="text-[9px] text-slate-500 capitalize">{t.companyName || "Retail Client"}</div>
-                                </td>
-                                <td className="p-3 font-sans">
-                                  <p className="font-semibold text-slate-300 text-[11px]">{t.device}</p>
-                                  <span className={`inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
-                                    t.issueType === "screen" ? "bg-amber-950 text-amber-300 border border-amber-900/30" :
-                                    t.issueType === "battery" ? "bg-purple-950 text-purple-300 border border-purple-900/30" : "bg-blue-950 text-blue-300 border border-blue-900/30"
-                                  }`}>
-                                    {t.issueType}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-slate-200">
-                                  <div className="font-bold">${t.total.toFixed(2)}</div>
-                                  <div className="text-[9px] text-emerald-400 font-normal">Disc: -${t.discount.toFixed(2)}</div>
-                                </td>
-                                <td className="p-3 uppercase font-bold text-[8.5px]">
-                                  <span className={`px-2 py-0.5 rounded-full ${
-                                    t.status === "completed" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
-                                    t.status === "quality_check" ? "bg-amber-950 text-amber-400 border border-amber-900" :
-                                    t.status === "technician_working" ? "bg-blue-950 text-blue-400 border border-blue-900" : "bg-slate-950 text-slate-400 border border-slate-900"
-                                  }`}>
-                                    {t.status.replace("_", " ")}
-                                  </span>
+                            {filteredTickets.length > 0 ? (
+                              filteredTickets.map((t) => (
+                                <tr key={t.id} className="hover:bg-slate-800/30 transition-colors">
+                                  <td className="p-3 font-semibold text-blue-400 font-bold">{t.id}</td>
+                                  <td className="p-3 font-sans">
+                                    <div className="font-bold text-slate-200">{t.customerName}</div>
+                                    <div className="text-[9px] text-slate-500 capitalize">{t.companyName || "Retail Client"}</div>
+                                  </td>
+                                  <td className="p-3 font-sans">
+                                    <p className="font-semibold text-slate-300 text-[11px]">{t.device}</p>
+                                    <span className={`inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                                      t.issueType === "screen" ? "bg-amber-950 text-amber-300 border border-amber-900/30" :
+                                      t.issueType === "battery" ? "bg-purple-950 text-purple-300 border border-purple-900/30" : "bg-blue-950 text-blue-300 border border-blue-900/30"
+                                    }`}>
+                                      {t.issueType}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-slate-200">
+                                    <div className="font-bold">${t.total.toFixed(2)}</div>
+                                    <div className="text-[9px] text-emerald-400 font-normal">Disc: -${t.discount.toFixed(2)}</div>
+                                  </td>
+                                  <td className="p-3 uppercase font-bold text-[8.5px]">
+                                    <span className={`px-2 py-0.5 rounded-full ${
+                                      t.status === "completed" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
+                                      t.status === "quality_check" ? "bg-amber-950 text-amber-400 border border-amber-900" :
+                                      t.status === "technician_working" ? "bg-blue-950 text-blue-400 border border-blue-900" : "bg-slate-950 text-slate-400 border border-slate-900"
+                                    }`}>
+                                      {t.status.replace("_", " ")}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={5} className="p-8 text-center text-slate-500 italic">
+                                  No matching records found. Verify the filter keywords, or activate the camera scanner to pull up a valid repair ticket automatically.
                                 </td>
                               </tr>
-                            ))}
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -6561,6 +6778,10 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
 
                 {labTab === "smd_library" && (
                   <SmdComponentLibrary />
+                )}
+
+                {labTab === "marketing_firewall" && (
+                  <MarketingFirewall />
                 )}
 
                 {labTab === "forensics_deprecated" && (
@@ -8168,6 +8389,14 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
             </div>
           </div>
         )}
+
+        {activeTab === "admin" && (
+          <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500 font-mono">Loading module...</div>}>
+            <AdminRouteGuard>
+              <AdminMasterPanel addToast={addToast} />
+            </AdminRouteGuard>
+          </React.Suspense>
+        )}
       </main>
 
       {/* FOOTER BAR */}
@@ -8188,7 +8417,7 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
             <div>
               <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4 font-mono">Contact</h3>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li className="flex items-center gap-2"><Phone size={14}/> (509) 255-3852</li>
+                <li className="flex items-center gap-2"><Phone size={14}/> (509) 903-6139</li>
                 <li className="flex items-center gap-2"><MapPin size={14}/> Mobile Service: Spokane & Valley</li>
                 <li className="flex items-center gap-2"><Clock size={14}/> Mon-Sat: 8am - 6pm</li>
               </ul>
@@ -10260,8 +10489,14 @@ function HomeView({ onBookClick, onLabClick, onLegalClick }) {
             </button>
           </div>
         </div>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-[10px] text-slate-600 pt-8 mt-8 border-t border-slate-900 font-mono">
-          &copy; {new Date().getFullYear()} Display & Cell Pros LLC. All Rights Reserved. General on-site diagnostic services Spokane and Seattle boundaries.
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-[10px] text-slate-600 pt-8 mt-8 border-t border-slate-900 font-mono space-y-4">
+          <div className="max-w-3xl mx-auto border border-slate-850 bg-slate-950/40 p-4 rounded-xl text-slate-400 font-sans tracking-wide leading-relaxed text-center shadow-inner">
+            <span className="font-black text-[9px] text-[#008080] block mb-1 uppercase font-mono tracking-widest">[ D&CP ENGINEERING PHILOSOPHY AUDIT ]</span>
+            D&CP LLC enforces a strict engineering philosophy: AI must never be implemented simply because it is &ldquo;novel or impressive&rdquo; or due to company mandates. Instead, every AI integration must solve a genuine user need and be measured by the concrete value it delivers.
+          </div>
+          <div className="pt-2">
+            &copy; {new Date().getFullYear()} Display & Cell Pros LLC. All Rights Reserved. General on-site diagnostic services Spokane and Seattle boundaries.
+          </div>
         </div>
       </footer>
     </div>
@@ -10503,61 +10738,94 @@ function ServicesView({ onBookClick }) {
 }
 
 function B2BView({ onBookClick }) {
+  const [subTab, setSubTab] = React.useState<"fleet" | "portal">("portal");
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 animate-in fade-in duration-300">
-      <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl border border-slate-705 overflow-hidden shadow-2xl">
-        <div className="grid grid-cols-1 lg:grid-cols-2">
-          <div className="p-10 lg:p-16 flex flex-col justify-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-6 w-max font-mono">
-              <Briefcase size={14} /> Corporate Fleet Partners
-            </div>
-            <h2 className="text-3xl lg:text-4xl font-extrabold text-white mb-6">Corporate IT Fleet Maintenance</h2>
-            <p className="text-slate-300 mb-8 leading-relaxed text-base">
-              When a device breaks, standard retail repair shops require your employees to leave their deployment area, resulting in significant administrative downtime. D&CP brings the lab to your job site.
-            </p>
-            
-            <ul className="space-y-5 mb-10 text-slate-300 text-sm">
-              <li className="flex items-start gap-3">
-                <CheckCircle2 className="text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-white block font-sans">15% Preferred Corporate Discount</strong>
-                  <span className="text-xs text-slate-400">Applied automatically to all Tier 1 and Tier 2 repairs for registered partners (HVAC, Real Estate, Delivery fleets).</span>
-                </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <CheckCircle2 className="text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-white block font-sans">Prioritized Dispatch</strong>
-                  <span className="text-xs text-slate-400">Skip the standard queue. Business critical devices get priority routing.</span>
-                </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <CheckCircle2 className="text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-white block font-sans">Net-30 Invoicing</strong>
-                  <span className="text-xs text-slate-400">Eliminate employee out-of-pocket expenses with consolidated monthly billing.</span>
-                </div>
-              </li>
-            </ul>
-
-            <button 
-              onClick={onBookClick}
-              className="w-full sm:w-auto px-8 py-4 bg-white text-slate-900 hover:bg-slate-200 rounded-lg font-bold transition-colors"
-            >
-              Apply for Fleet Account
-            </button>
-          </div>
-          
-          <div className="relative min-h-[300px] lg:min-h-full hidden lg:block">
-            <img 
-              src="https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=800&q=80" 
-              alt="Corporate IT" 
-              className="absolute inset-0 w-full h-full object-cover opacity-60"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-transparent to-transparent"></div>
-          </div>
+      {/* Sub-tab Navigation */}
+      <div className="flex justify-center mb-8">
+        <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex gap-1">
+          <button
+            onClick={() => setSubTab("fleet")}
+            className={`px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              subTab === "fleet"
+                ? "bg-slate-800 text-white border border-slate-700 shadow-sm"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            IT Fleet Maintenance
+          </button>
+          <button
+            onClick={() => setSubTab("portal")}
+            className={`px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              subTab === "portal"
+                ? "bg-teal-900/30 text-teal-400 border border-teal-500/30 shadow-sm"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse"></span>
+            Wholesale Mail-In Portal
+          </button>
         </div>
       </div>
+
+      {subTab === "fleet" ? (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl border border-slate-705 overflow-hidden shadow-2xl">
+          <div className="grid grid-cols-1 lg:grid-cols-2">
+            <div className="p-10 lg:p-16 flex flex-col justify-center text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-6 w-max font-mono">
+                <Briefcase size={14} /> Corporate Fleet Partners
+              </div>
+              <h2 className="text-3xl lg:text-4xl font-extrabold text-white mb-6">Corporate IT Fleet Maintenance</h2>
+              <p className="text-slate-300 mb-8 leading-relaxed text-base">
+                When a device breaks, standard retail repair shops require your employees to leave their deployment area, resulting in significant administrative downtime. D&CP brings the lab to your job site.
+              </p>
+              
+              <ul className="space-y-5 mb-10 text-slate-300 text-sm">
+                <li className="flex items-start gap-3">
+                  <CheckCircle2 className="text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-sans">15% Preferred Corporate Discount</strong>
+                    <span className="text-xs text-slate-400">Applied automatically to all Tier 1 and Tier 2 repairs for registered partners (HVAC, Real Estate, Delivery fleets).</span>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <CheckCircle2 className="text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-sans">Prioritized Dispatch</strong>
+                    <span className="text-xs text-slate-400">Skip the standard queue. Business critical devices get priority routing.</span>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <CheckCircle2 className="text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-sans">Net-30 Invoicing</strong>
+                    <span className="text-xs text-slate-400">Eliminate employee out-of-pocket expenses with consolidated monthly billing.</span>
+                  </div>
+                </li>
+              </ul>
+
+              <button 
+                onClick={onBookClick}
+                className="w-full sm:w-auto px-8 py-4 bg-white text-slate-900 hover:bg-slate-200 rounded-lg font-bold transition-colors"
+              >
+                Apply for Fleet Account
+              </button>
+            </div>
+            
+            <div className="relative min-h-[300px] lg:min-h-full hidden lg:block">
+              <img 
+                src="https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=800&q=80" 
+                alt="Corporate IT" 
+                className="absolute inset-0 w-full h-full object-cover opacity-60"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-transparent to-transparent"></div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <B2BWholesalePortal />
+      )}
     </div>
   );
 }
@@ -10793,7 +11061,7 @@ function CustomerHubView({
         await setDoc(userRef, {
           uid: authUser.uid,
           displayName: customerName,
-          email: authUser.email || "guest@displaycellpros.com",
+          email: authUser.email || "ryan@displaycellpros.com",
           phone: profilePhone,
           preferredDevice: profilePreferredDevice,
           photoURL: authUser.photoURL || "",
@@ -11200,7 +11468,7 @@ function CustomerHubView({
             }`}
           >
             <User className="w-4 h-4" />
-            1. Create Profile
+            1. Profile Dashboard
           </button>
           
           <button
@@ -11258,93 +11526,25 @@ function CustomerHubView({
         {/* Tab Display Area */}
         <div className="lg:col-span-9 bg-slate-800/40 border border-slate-800 rounded-2xl p-6 min-h-[500px] flex flex-col justify-between">
           
-          {/* TAB 1: CREATE PROFILE */}
+          {/* TAB 1: PROFILE DASHBOARD */}
           {activeHubTab === "profile" && (
-            <div className="animate-in fade-in duration-300 text-slate-300">
-              <div className="mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <User className="text-blue-400" />
-                  Configure Your Repair Profile
-                </h2>
-                <p className="text-slate-400 text-xs mt-1">
-                  Ensure accurate details so our driveway surgical van dispatchers can link up directly. Saved directly to authenticated cloud datastores.
-                </p>
+            <React.Suspense fallback={
+              <div className="flex items-center justify-center p-12">
+                <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
               </div>
-
-              <div className="space-y-4 max-w-lg">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Display Name</label>
-                  <input
-                    type="text"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-                    placeholder="Jane Miller"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Cell Phone</label>
-                    <input
-                      type="text"
-                      value={profilePhone}
-                      onChange={(e) => setProfilePhone(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-                      placeholder="(509) 255-3852"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Primary Email Address</label>
-                    <input
-                      type="text"
-                      value={authUser ? authUser.email : "guest@displaycellpros.com"}
-                      disabled
-                      className="w-full bg-slate-950/70 border border-slate-800 rounded-lg p-3 text-sm text-slate-400 cursor-not-allowed"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Target Device To Repair</label>
-                  <input
-                    type="text"
-                    value={profilePreferredDevice}
-                    onChange={(e) => setProfilePreferredDevice(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-                    placeholder="iPhone 14 Pro Max"
-                  />
-                </div>
-
-                <div className="pt-4 border-t border-slate-800">
-                  <button
-                    onClick={handleSaveProfile}
-                    disabled={isSavingProfile}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs uppercase tracking-wider transition-all shadow-md shadow-blue-500/10 flex items-center gap-2"
-                  >
-                    {isSavingProfile ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Saving Profile...
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="w-4 h-4" />
-                        Save Profile
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {authUser && onSignOut && (
-                <FirebaseUserAuditor 
-                  user={authUser} 
-                  addToast={addToast} 
-                  onLogout={onSignOut} 
-                />
-              )}
-            </div>
+            }>
+              <ProfileDashboard
+                authUser={authUser}
+                customerName={customerName}
+                setCustomerName={setCustomerName}
+                profilePhone={profilePhone}
+                setProfilePhone={setProfilePhone}
+                profilePreferredDevice={profilePreferredDevice}
+                setProfilePreferredDevice={setProfilePreferredDevice}
+                tickets={tickets}
+                addToast={addToast}
+              />
+            </React.Suspense>
           )}
 
           {/* TAB 2: CABLE CONNECT PHONE */}
@@ -12720,7 +12920,7 @@ function StoreView({
                         required
                         value={checkoutPhone}
                         onChange={(e) => setCheckoutPhone(e.target.value)}
-                        placeholder="(509) 255-3852"
+                        placeholder="(509) 903-6139"
                         className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500 select-text"
                       />
                     </div>

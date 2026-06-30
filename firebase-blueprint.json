@@ -11,6 +11,18 @@
         "photoURL": { "type": "string" },
         "phone": { "type": "string" },
         "preferredDevice": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "notificationPreferences": {
+          "type": "object",
+          "properties": {
+            "smsAlerts": { "type": "boolean" },
+            "emailSummaries": { "type": "boolean" },
+            "dispatchUpdates": { "type": "boolean" },
+            "ammeterWarnings": { "type": "boolean" },
+            "covLogs": { "type": "boolean" }
+          },
+          "required": ["smsAlerts", "emailSummaries", "dispatchUpdates", "ammeterWarnings", "covLogs"]
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email"]

@@ -30,6 +30,7 @@ export default defineConfig(() => {
               if (id.includes('lucide-react')) return 'lucide-vendor';
               if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) return 'react-vendor';
               if (id.includes('motion')) return 'motion-vendor';
+              return 'vendor';
             }
           },
         },
