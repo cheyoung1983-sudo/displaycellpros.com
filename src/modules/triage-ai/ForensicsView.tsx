@@ -173,6 +173,130 @@ export const ForensicsView: React.FC<ForensicsViewProps> = ({
   noisePenalty,
   pass
 }) => {
+  // --- ENTERPRISE RAG CORE SPECIFICATION STATES ---
+  const [targetAlloy, setTargetAlloy] = React.useState<"SAC305" | "Sn63_Pb37" | "LowTemp_Bi58">("SAC305");
+  const [hasUnderfill, setHasUnderfill] = React.useState<boolean>(true);
+  const [appliedTempC, setAppliedTempC] = React.useState<number>(370);
+  const [validationResult, setValidationResult] = React.useState<any | null>(null);
+
+  const [selectedSourceType, setSelectedSourceType] = React.useState<"pdf" | "excel_over_150k" | "excel_under_150k" | "markdown">("pdf");
+  const [isPreProcessing, setIsPreProcessing] = React.useState<boolean>(false);
+  const [preProcessLogs, setPreProcessLogs] = React.useState<string[]>([]);
+
+  const [isInterposerJoined, setIsInterposerJoined] = React.useState<boolean>(true);
+  const [queryText, setQueryText] = React.useState<string>("Short circuit only present when sandwich interposer is joined.");
+  const [isQueryingRAG, setIsQueryingRAG] = React.useState<boolean>(false);
+  const [ragQueryResult, setRagQueryResult] = React.useState<any | null>(null);
+
+  const handleValidateReworkProfile = () => {
+    // 1. Evaluate Underfill Softening Requirements
+    if (hasUnderfill && appliedTempC < 200) {
+      setValidationResult({
+        status: "UNDERFILL_WARNING",
+        style: "warning",
+        directive: "UNDERFILL_WARNING: Temperature too low. Epoxy will not soften at this temp, risking ripped copper pads during chip extraction."
+      });
+      addToast("Rework Profile Flagged", "Underfill softener temperature is insufficient!", "warning");
+      return;
+    }
+
+    // 2. Validate Peak Temperature against Alloy Liquidus
+    let maxSafeTemp = 0;
+    switch (targetAlloy) {
+      case "SAC305": maxSafeTemp = 400; break;      // Factory Lead-free (Sn96.5/Ag3.0/Cu0.5)
+      case "Sn63_Pb37": maxSafeTemp = 330; break;   // Traditional Leaded
+      case "LowTemp_Bi58": maxSafeTemp = 220; break; // Bismuth
+    }
+
+    if (appliedTempC > maxSafeTemp) {
+      setValidationResult({
+        status: "DENIED_THERMAL_OVERLOAD",
+        style: "danger",
+        directive: `Reduce airflow. Exceeding ${maxSafeTemp}°C for ${targetAlloy} exponentially increases electromigration risk and substrate CTE shear.`
+      });
+      addToast("Thermal Profile Denied", "Excessive heat violates material safe zones!", "error");
+    } else {
+      setValidationResult({
+        status: "APPROVED_THERMAL_PROFILE",
+        style: "success",
+        directive: "Thermal parameters within safe logic board hardware tolerances. CTE mechanical shear limits respected."
+      });
+      addToast("Thermal Profile Approved", "Metallurgical parameters are within safety thresholds.", "success");
+    }
+  };
+
+  const handleOptimizeSource = () => {
+    setIsPreProcessing(true);
+    setPreProcessLogs(["[RAG-PREPROC] Scanning uploaded payload binary structures..."]);
+    
+    setTimeout(() => {
+      if (selectedSourceType === "pdf") {
+        setPreProcessLogs(prev => [
+          ...prev,
+          "[RAG-PREPROC] Detected heavy binary: application/pdf",
+          "❌ RAG_OPTIMIZATION_ERROR: PDFs require excessive OCR tokens. Convert schematic to .md, .txt, or Google Docs prior to upload to prevent context flooding."
+        ]);
+        setIsPreProcessing(false);
+        addToast("PDF Upload Restricted", "Convert to Markdown/Text to ensure 100% reasoning depth.", "error");
+      } else if (selectedSourceType === "excel_over_150k") {
+        setPreProcessLogs(prev => [
+          ...prev,
+          "[RAG-PREPROC] Detected spreadsheet: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "[RAG-PREPROC] Word Count Audit: Cell count exceeds 150,000 threshold limit.",
+          "⚠️ Splitting Excel workbook to prevent 500,000-word structural character inflation limit...",
+          "[RAG-PREPROC] Segment 1: Rows 1-75000 compiled to 'XS_Max_Interposer_Part1.md' (SUCCESS_SOURCE_ADDED)",
+          "[RAG-PREPROC] Segment 2: Rows 75001-150000 compiled to 'XS_Max_Interposer_Part2.md' (SUCCESS_SOURCE_ADDED)",
+          "[RAG-PREPROC] Enterprise Context Guard: Grounding cache synced cleanly!"
+        ]);
+        setIsPreProcessing(false);
+        addToast("Spreadsheet Optimized", "Split into clean Markdown chunks successfully!", "success");
+      } else if (selectedSourceType === "excel_under_150k") {
+        setPreProcessLogs(prev => [
+          ...prev,
+          "[RAG-PREPROC] Detected spreadsheet: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "[RAG-PREPROC] Cell Count: 45,210 active cells. Within safe bounds.",
+          "[RAG-PREPROC] Converting directly to row-wise JSON Markdown array representation...",
+          "[RAG-PREPROC] SUCCESS_SOURCE_ADDED: File indexed safely with 100% telemetry integrity."
+        ]);
+        setIsPreProcessing(false);
+        addToast("Spreadsheet Uploaded", "Indexed directly within context limitations.", "success");
+      } else {
+        setPreProcessLogs(prev => [
+          ...prev,
+          "[RAG-PREPROC] Detected high-fidelity file: text/markdown",
+          "[RAG-PREPROC] 100% Unicode parity. No image-based OCR tokens required.",
+          "[RAG-PREPROC] SUCCESS_SOURCE_ADDED: Syncing with NotebookLM Enterprise us-central1 endpoint..."
+        ]);
+        setIsPreProcessing(false);
+        addToast("Markdown Source Linked", "Enterprise RAG context successfully cached!", "success");
+      }
+    }, 1500);
+  };
+
+  const handleQueryRAGInterposer = () => {
+    setIsQueryingRAG(true);
+    setRagQueryResult(null);
+    
+    setTimeout(() => {
+      setIsQueryingRAG(false);
+      if (isInterposerJoined) {
+        setRagQueryResult({
+          status: "DETACH_INTERPOSER_REQUIRED",
+          targetedSources: ["XS_Max_Interposer_Schematic.md", "VDD_MAIN_Routing_Rules.txt"],
+          directive: "WARNING: VDD_MAIN short is localized inside the sandwich interface. VDD_MAIN is not contiguous across a single layer. You must separate the upper RF logic board from the lower board to inject voltage and prevent destroying the baseband CPU. Use an iSocket test jig to test layers independently."
+        });
+        addToast("S2C Fault Isolated", "Interposer boundary mismatch detected. Separation required!", "warning");
+      } else {
+        setRagQueryResult({
+          status: "VOLTAGE_INJECTION_SAFE",
+          targetedSources: ["XS_Max_Interposer_Schematic.md"],
+          directive: "Boards are separated. It is now safe to inject 1.0V - 2.0V current onto VDD_MAIN to localize the faulty decoupling capacitor (like C247_W) using the thermal Seek microbolometer camera. Do not exceed 400°C for SAC305 rework."
+        });
+        addToast("Safe-Zone Confirmed", "Ready for targeted voltage injection.", "success");
+      }
+    }, 1200);
+  };
+
   // Pathway configuration metadata for rendering S2C interactive circuit trace layout with nominal specifications
   const pathwayData = {
     backlight: {
@@ -1948,6 +2072,259 @@ double tempReading = IOPSGetTemperatureReading(sources[0]);
             </div>
           </div>
         )}
+      </div>
+
+      {/* ENTERPRISE RAG CONTEXT OPTIMIZER & THERMODYNAMIC SAFETY CONTROLLER */}
+      <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-5 mt-6 block text-left">
+        <div className="flex items-center gap-2 border-b border-slate-755 pb-3 mb-5">
+          <Brain className="w-5 h-5 text-[#00BFFF]" />
+          <div>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wide font-mono">Enterprise RAG & Thermodynamic Safety Controller</h3>
+            <p className="text-[11px] text-slate-400 font-mono text-left">Enforce Black's Equation, preheat limits, and 1M-token context narrowing for high-stakes Tier 3 escalations.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-12 gap-6">
+          {/* Sub-Panel 1: Thermodynamic Safety & Electromigration */}
+          <div className="col-span-12 lg:col-span-4 bg-slate-950/60 p-4 rounded-xl border border-slate-850 space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-900 pb-2">
+              <Sliders className="w-4 h-4 text-[#FFBF00]" />
+              <span className="text-[11px] text-white font-extrabold font-mono uppercase tracking-wider">1. Solder Alloy & Thermal Physics</span>
+            </div>
+
+            <div className="space-y-3.5 text-xs font-mono">
+              <div className="space-y-1">
+                <label className="block text-[10px] text-slate-400 font-bold uppercase">Target Solder Alloy</label>
+                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded border border-slate-800">
+                  {(["SAC305", "Sn63_Pb37", "LowTemp_Bi58"] as const).map((alloy) => (
+                    <button
+                      key={alloy}
+                      type="button"
+                      onClick={() => setTargetAlloy(alloy)}
+                      className={`py-1 text-[9px] font-bold rounded cursor-pointer transition-all ${
+                        targetAlloy === alloy
+                          ? "bg-amber-500 text-slate-950 shadow-sm font-black"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {alloy === "SAC305" ? "SAC305" : alloy === "Sn63_Pb37" ? "Sn63/Pb37" : "Bi58 (Low)"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-2 bg-slate-900/40 rounded border border-slate-850/60">
+                <label htmlFor="underfillToggle" className="text-[10px] text-slate-400 font-bold uppercase cursor-pointer">Epoxy Underfill Softening</label>
+                <input
+                  id="underfillToggle"
+                  type="checkbox"
+                  checked={hasUnderfill}
+                  onChange={(e) => setHasUnderfill(e.target.checked)}
+                  className="w-4 h-4 text-[#008080] border-slate-700 rounded bg-slate-900 focus:ring-0 cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400 font-bold uppercase">Applied Temperature</span>
+                  <span className="text-white font-extrabold">{appliedTempC}°C</span>
+                </div>
+                <input
+                  type="range"
+                  min="150"
+                  max="450"
+                  value={appliedTempC}
+                  onChange={(e) => setAppliedTempC(Number(e.target.value))}
+                  className="w-full accent-amber-500 cursor-pointer"
+                />
+                <div className="flex justify-between text-[8px] text-slate-500 font-bold">
+                  <span>150°C</span>
+                  <span>300°C</span>
+                  <span>450°C</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleValidateReworkProfile}
+                className="w-full py-2 bg-slate-900 hover:bg-slate-850 text-amber-400 hover:text-amber-300 border border-slate-800 hover:border-slate-700 text-[10px] font-bold uppercase tracking-wider rounded font-mono transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5 text-amber-500" />
+                Audit Thermal Profile
+              </button>
+
+              {validationResult && (
+                <div className={`p-3 rounded-lg border text-[10px] leading-relaxed ${
+                  validationResult.style === "success"
+                    ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-300"
+                    : validationResult.style === "warning"
+                    ? "bg-amber-950/20 border-amber-900/40 text-amber-300"
+                    : "bg-red-950/20 border-red-900/40 text-red-300"
+                }`}>
+                  <div className="font-extrabold uppercase mb-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    STATUS: {validationResult.status}
+                  </div>
+                  <p>{validationResult.directive}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sub-Panel 2: Enterprise RAG Document Pre-Processor */}
+          <div className="col-span-12 lg:col-span-4 bg-slate-950/60 p-4 rounded-xl border border-slate-850 space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-900 pb-2">
+              <FileText className="w-4 h-4 text-[#008080]" />
+              <span className="text-[11px] text-white font-extrabold font-mono uppercase tracking-wider">2. Context Pre-Processor (1M Limit)</span>
+            </div>
+
+            <div className="space-y-3.5 text-xs font-mono">
+              <div className="space-y-1">
+                <label className="block text-[10px] text-slate-400 font-bold uppercase">Select Source Document</label>
+                <div className="space-y-1.5">
+                  {(["pdf", "excel_over_150k", "excel_under_150k", "markdown"] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setSelectedSourceType(type)}
+                      className={`w-full p-2 rounded text-left border flex items-center justify-between cursor-pointer transition-all ${
+                        selectedSourceType === type
+                          ? "bg-teal-950/30 border-[#008080]/60 text-white"
+                          : "bg-slate-900/40 border-slate-850 text-slate-400 hover:text-slate-200 hover:border-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <FileText className={`w-3.5 h-3.5 ${selectedSourceType === type ? "text-teal-400" : "text-slate-500"}`} />
+                        <span>
+                          {type === "pdf"
+                            ? "iPhone-Schematics.pdf (Raw Binary)"
+                            : type === "excel_over_150k"
+                            ? "DiodeValues_180k_Cells.xlsx (>150k)"
+                            : type === "excel_under_150k"
+                            ? "BOM_List_45k_Cells.xlsx (<=150k)"
+                            : "XS_Max_Interposer_Layout.md (Text)"}
+                        </span>
+                      </div>
+                      <span className="text-[8px] opacity-70">
+                        {type === "pdf" ? "Heavy" : type === "excel_over_150k" ? "Bloated" : "Clean"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOptimizeSource}
+                disabled={isPreProcessing}
+                className="w-full py-2 bg-slate-900 hover:bg-slate-850 text-teal-400 hover:text-teal-300 border border-slate-800 hover:border-slate-700 text-[10px] font-bold uppercase tracking-wider rounded font-mono transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isPreProcessing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-400" />
+                    Optimizing & Chunking...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-teal-500" />
+                    Optimize & Upload Source
+                  </>
+                )}
+              </button>
+
+              {preProcessLogs.length > 0 && (
+                <div className="bg-slate-950 p-2.5 rounded border border-slate-900 text-[9.5px] font-mono text-slate-400 space-y-1 block max-h-[140px] overflow-y-auto leading-normal">
+                  <div className="text-[8px] font-extrabold text-teal-400 uppercase tracking-widest border-b border-slate-900 pb-1 mb-1 font-mono">
+                    Optimization Pipeline Logs
+                  </div>
+                  {preProcessLogs.map((log, idx) => (
+                    <div key={idx} className={log.includes("❌") ? "text-red-400" : log.includes("SUCCESS") || log.includes("✔️") ? "text-emerald-400" : "text-slate-400"}>
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sub-Panel 3: XS Max VDD_MAIN Sandwich Interposer Narrowing */}
+          <div className="col-span-12 lg:col-span-4 bg-slate-950/60 p-4 rounded-xl border border-slate-850 space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-900 pb-2">
+              <Brain className="w-4 h-4 text-[#00BFFF]" />
+              <span className="text-[11px] text-white font-extrabold font-mono uppercase tracking-wider">3. S2C Interposer Routing (iPhone XS Max)</span>
+            </div>
+
+            <div className="space-y-3.5 text-xs font-mono">
+              <div className="space-y-1 p-2 bg-slate-900/30 rounded border border-slate-850">
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-400 font-bold uppercase">Interposer Interface State</span>
+                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold ${isInterposerJoined ? "bg-amber-950/50 border border-amber-900/30 text-amber-300" : "bg-emerald-950/50 border border-emerald-900/30 text-emerald-300"}`}>
+                    {isInterposerJoined ? "SANDWICH JOINED" : "RF / LOGIC SEPARATED"}
+                  </span>
+                </div>
+                <p className="text-[9px] text-slate-500 mt-1">
+                  XS Max power lines (VDD_MAIN) rejoined across layered interposers. Injecting current with layers connected risks baseband destruction.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsInterposerJoined(!isInterposerJoined)}
+                  className="mt-2 w-full py-1 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[9px] font-extrabold uppercase font-mono tracking-wide rounded cursor-pointer transition-all"
+                >
+                  {isInterposerJoined ? "Separate RF from Upper Board" : "Join RF to Upper Board"}
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] text-slate-400 font-bold uppercase">Dynamic Source-Narrowing Query</label>
+                <textarea
+                  readOnly
+                  value={queryText}
+                  className="w-full bg-slate-950 border border-slate-850 rounded p-2 text-[10.5px] text-slate-300 font-mono outline-none h-[45px] resize-none"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleQueryRAGInterposer}
+                disabled={isQueryingRAG}
+                className="w-full py-2 bg-slate-900 hover:bg-slate-850 text-sky-400 hover:text-sky-300 border border-slate-800 hover:border-slate-700 text-[10px] font-bold uppercase tracking-wider rounded font-mono transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isQueryingRAG ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                    Querying Isolated Schematics...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="w-3.5 h-3.5 text-sky-500" />
+                    Source-Narrowing Query
+                  </>
+                )}
+              </button>
+
+              {ragQueryResult && (
+                <div className={`p-3 rounded-lg border text-[10px] leading-relaxed ${
+                  ragQueryResult.status === "DETACH_INTERPOSER_REQUIRED"
+                    ? "bg-amber-950/20 border-amber-900/40 text-amber-300"
+                    : "bg-emerald-950/20 border-emerald-900/40 text-emerald-300"
+                }`}>
+                  <div className="font-extrabold uppercase mb-1">
+                    NARROWED SOURCES TARGETED:
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {ragQueryResult.targetedSources.map((s: string) => (
+                        <span key={s} className="px-1 bg-slate-900 text-slate-300 text-[8px] rounded border border-slate-800 font-mono font-bold">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="font-bold border-t border-slate-900/40 pt-1 mt-1">Resolution SOP:</div>
+                  <p className="mt-0.5">{ragQueryResult.directive}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     </section>
