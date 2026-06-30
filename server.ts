@@ -1,14 +1,11 @@
 import express from "express";
 import path from "path";
 import crypto from "crypto";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { RecaptchaEnterpriseServiceClient } from "@google-cloud/recaptcha-enterprise";
 import { adminDb } from "./src/lib/firebase-admin";
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+export const app = express();
 
   app.use(express.json());
 
@@ -1913,25 +1910,33 @@ You act as a secure hardware diagnostics engine. Your sole purpose is to analyze
     res.json({ message: "Mock endpoint", status: "OK", data: [] });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+  // Vite middleware for development & static serving in production
+  async function configureVite() {
+    if (process.env.NODE_ENV !== "production" && !process.env.FIREBASE_CONFIG) {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else if (process.env.NODE_ENV === "production" && !process.env.FIREBASE_CONFIG) {
+      const distPath = path.join(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+  // Start local server if not running in a Cloud Function environment
+  if (!process.env.FIREBASE_CONFIG) {
+    configureVite().then(() => {
+      const PORT = process.env.PORT || 3000;
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    });
+  }
 
 // --- RESOLVE QUOTE DETERMINISTICALLY ---
 // --- SPOKANE TAX & LOCATION FORENSICS RESOLVER ---
@@ -2115,4 +2120,4 @@ function calculateLocalQuote(issueType: string, deviceTier: string, zipCode: str
   };
 }
 
-startServer();
+// Exports and starts are managed conditionally inside module body
