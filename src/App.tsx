@@ -10,7 +10,7 @@ import {
   MessageSquare,
   ShoppingCart,
   Briefcase,
-  Wrench,
+  /* Forensic Icon */
   Send,
   X,
   CheckCircle2,

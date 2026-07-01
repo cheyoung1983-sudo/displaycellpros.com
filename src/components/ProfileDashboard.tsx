@@ -25,7 +25,7 @@ import {
   Loader2,
   Bell,
   Check,
-  Wrench
+  Cpu
 } from "lucide-react";
 
 interface ProfileDashboardProps {
@@ -690,7 +690,7 @@ export default function ProfileDashboard({
                           {/* Technical Logs / Notes */}
                           <div className="space-y-2">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono flex items-center gap-1.5">
-                              <Wrench className="w-3.5 h-3.5 text-teal-400" />
+                              <Cpu className="w-3.5 h-3.5 text-teal-400" />
                               Technical Bench Advisories
                             </span>
                             <div className="bg-slate-900 p-4 rounded-lg border border-slate-850 font-mono text-xs text-slate-300 leading-relaxed">

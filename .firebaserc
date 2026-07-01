@@ -2,7 +2,15 @@
   "projects": {
     "default": "displaycellpros-com"
   },
-  "targets": {},
+  "targets": {
+    "displaycellpros-com": {
+      "hosting": {
+        "displaycellpros-com": [
+          "displaycellpros-com"
+        ]
+      }
+    }
+  },
   "etags": {
     "displaycellpros-com": {
       "extensionInstances": {

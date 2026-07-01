@@ -129,7 +129,7 @@ export function AboutView() {
             <Cpu className="text-blue-400 w-6 h-6" /> What Makes Us Different
           </h2>
           <p className="text-slate-300 leading-relaxed text-sm mb-4">
-            At Display & Cell Pros, we do not engage in simple modular part-swapping. We examine hardware at the micro-component level—troubleshooting individual capacitors, filters, and integrated circuits.
+            At Display & Cell Pros, we do not engage in surface-level component substitution. We examine hardware at the micro-component level—troubleshooting individual capacitors, filters, and integrated circuits.
           </p>
           <ul className="space-y-2.5 text-xs text-slate-400">
             <li className="flex items-center gap-2">

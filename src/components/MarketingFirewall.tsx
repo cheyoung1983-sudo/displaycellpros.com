@@ -104,11 +104,11 @@ export function MarketingFirewall() {
   const PRESETS = [
     {
       label: "Exploit Leak (Sandbox Bypass)",
-      text: "We built a quick fix jailbreak app on the public Apple App Store to read internal battery voltages using a low-level CFAllocator memory-trapping technique. Download our app!"
+      text: "We built a precision diagnostic audit app on the public Apple App Store to read internal battery voltages using a low-level CFAllocator memory-trapping technique. Download our app!"
     },
     {
       label: "Hobbyist Speak (Part-swapper)",
-      text: "Our phone repair shop uses a simple screwdriver and modular part-swapping to do quick battery and screen repairs."
+      text: "Our laboratory uses precision micro-probing and telemetry sensor arrays to do circuit-level calibration of battery and display nodes."
     },
     {
       label: "Privilege Escalation Warning",
