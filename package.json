@@ -27,7 +27,7 @@
     "express": "^4.21.2",
     "firebase": "^12.14.0",
     "firebase-admin": "^14.1.0",
-    "firebase-tools": "^15.22.3",
+    "firebase-tools": "^15.22.4",
     "jspdf": "^4.2.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.546.0",
