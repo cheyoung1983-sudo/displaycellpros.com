@@ -269,7 +269,7 @@ export default function AdminMasterPanel({
       const { uid, ...pushable } = updatedData;
       await setDoc(userRef, pushable, { merge: true });
       
-      setUsers((prev: FirestoreUser[]) => prev.map(u => u.uid === user.uid ? { ...u, role: newRole } : u));
+      setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, role: newRole } : u));
       addToast("Role Authorization Modified", `Successfully updated ${user.displayName}'s role to ${newRole.toUpperCase()}.`, "success");
       setEditingUser(null);
     } catch (err: any) {
@@ -294,7 +294,7 @@ export default function AdminMasterPanel({
       const { uid, ...pushable } = updatedData;
       await setDoc(userRef, pushable, { merge: true });
       
-      setUsers((prev: FirestoreUser[]) => prev.map(u => u.uid === editingUser.uid ? editingUser : u));
+      setUsers(prev => prev.map(u => u.uid === editingUser.uid ? editingUser : u));
       addToast("User Schema Synced", `Administrative records for ${editingUser.displayName} updated immutably.`, "success");
       setEditingUser(null);
     } catch (err: any) {
@@ -310,7 +310,7 @@ export default function AdminMasterPanel({
     try {
       const userRef = doc(db, "users", uid);
       await deleteDoc(userRef);
-      setUsers((prev: FirestoreUser[]) => prev.filter(u => u.uid !== uid));
+      setUsers(prev => prev.filter(u => u.uid !== uid));
       addToast("User Record Severed", "Secure ledger removed and database pointer decoupled.", "warning");
       setUserToDelete(null);
     } catch (err: any) {
@@ -328,7 +328,7 @@ export default function AdminMasterPanel({
       const ticketRef = doc(db, "tickets", editingTicket.id);
       await setDoc(ticketRef, editingTicket, { merge: true });
       
-      setTickets((prev: RepairTicket[]) => prev.map(t => t.id === editingTicket.id ? editingTicket : t));
+      setTickets(prev => prev.map(t => t.id === editingTicket.id ? editingTicket : t));
       addToast("Repair Record Mapped", `Ticket ${editingTicket.id.substring(0, 8)} details updated.`, "success");
       setEditingTicket(null);
     } catch (err: any) {
@@ -344,7 +344,7 @@ export default function AdminMasterPanel({
     try {
       const ticketRef = doc(db, "tickets", id);
       await deleteDoc(ticketRef);
-      setTickets((prev: RepairTicket[]) => prev.filter(t => t.id !== id));
+      setTickets(prev => prev.filter(t => t.id !== id));
       addToast("Ticket Ledger Erased", `Purged repair registry for Ticket ID: ${id.substring(0, 8)}.`, "warning");
       setTicketToDelete(null);
     } catch (err: any) {
@@ -817,7 +817,7 @@ export default function AdminMasterPanel({
                     type="text"
                     required
                     value={editingUser.displayName || ""}
-                    onChange={(e) => setEditingUser((prev: FirestoreUser | null) => prev ? { ...prev, displayName: e.target.value } : null)}
+                    onChange={(e) => setEditingUser(prev => prev ? { ...prev, displayName: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -827,7 +827,7 @@ export default function AdminMasterPanel({
                     type="email"
                     required
                     value={editingUser.email || ""}
-                    onChange={(e) => setEditingUser((prev: FirestoreUser | null) => prev ? { ...prev, email: e.target.value } : null)}
+                    onChange={(e) => setEditingUser(prev => prev ? { ...prev, email: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -838,7 +838,7 @@ export default function AdminMasterPanel({
                   <label className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">Administrative Role</label>
                   <select
                     value={editingUser.role || "customer"}
-                    onChange={(e) => setEditingUser((prev: FirestoreUser | null) => prev ? { ...prev, role: e.target.value } : null)}
+                    onChange={(e) => setEditingUser(prev => prev ? { ...prev, role: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none cursor-pointer font-bold"
                   >
                     <option value="customer">customer</option>
@@ -851,7 +851,7 @@ export default function AdminMasterPanel({
                   <input
                     type="text"
                     value={editingUser.phone || ""}
-                    onChange={(e) => setEditingUser((prev: FirestoreUser | null) => prev ? { ...prev, phone: e.target.value } : null)}
+                    onChange={(e) => setEditingUser(prev => prev ? { ...prev, phone: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none animate-none"
                   />
                 </div>
@@ -863,7 +863,7 @@ export default function AdminMasterPanel({
                   <input
                     type="text"
                     value={editingUser.preferredDevice || ""}
-                    onChange={(e) => setEditingUser((prev: FirestoreUser | null) => prev ? { ...prev, preferredDevice: e.target.value } : null)}
+                    onChange={(e) => setEditingUser(prev => prev ? { ...prev, preferredDevice: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -872,7 +872,7 @@ export default function AdminMasterPanel({
                   <input
                     type="text"
                     value={editingUser.photoURL || ""}
-                    onChange={(e) => setEditingUser((prev: FirestoreUser | null) => prev ? { ...prev, photoURL: e.target.value } : null)}
+                    onChange={(e) => setEditingUser(prev => prev ? { ...prev, photoURL: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -900,7 +900,7 @@ export default function AdminMasterPanel({
                           type="checkbox"
                           checked={isChecked}
                           onChange={(e) => {
-                            setEditingUser((prev: FirestoreUser | null) => {
+                            setEditingUser(prev => {
                               if (!prev) return null;
                               const updatedPrefs = {
                                 ...currentPrefs,
@@ -965,7 +965,7 @@ export default function AdminMasterPanel({
                     type="text"
                     required
                     value={editingTicket.customerName || ""}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, customerName: e.target.value } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, customerName: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -974,7 +974,7 @@ export default function AdminMasterPanel({
                   <input
                     type="text"
                     value={editingTicket.companyName || ""}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, companyName: e.target.value } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, companyName: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -987,7 +987,7 @@ export default function AdminMasterPanel({
                     type="text"
                     required
                     value={editingTicket.device || ""}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, device: e.target.value } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, device: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -997,7 +997,7 @@ export default function AdminMasterPanel({
                     type="text"
                     required
                     value={editingTicket.issueType || ""}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, issueType: e.target.value } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, issueType: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -1008,7 +1008,7 @@ export default function AdminMasterPanel({
                   <label className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">Operation Status Pathway</label>
                   <select
                     value={editingTicket.status || "open"}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, status: e.target.value as any } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, status: e.target.value as any } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none cursor-pointer font-bold"
                   >
                     <option value="open">open</option>
@@ -1023,7 +1023,7 @@ export default function AdminMasterPanel({
                   <input
                     type="text"
                     value={editingTicket.userId || ""}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, userId: e.target.value } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, userId: e.target.value } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -1037,7 +1037,7 @@ export default function AdminMasterPanel({
                     step="0.01"
                     required
                     value={editingTicket.quotedPrice ?? 0}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, quotedPrice: parseFloat(e.target.value) || 0 } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, quotedPrice: parseFloat(e.target.value) || 0 } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -1047,7 +1047,7 @@ export default function AdminMasterPanel({
                     type="number"
                     step="0.01"
                     value={editingTicket.tax ?? 0}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, tax: parseFloat(e.target.value) || 0 } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, tax: parseFloat(e.target.value) || 0 } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -1058,7 +1058,7 @@ export default function AdminMasterPanel({
                     step="0.01"
                     required
                     value={editingTicket.total ?? 0}
-                    onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, total: parseFloat(e.target.value) || 0 } : null)}
+                    onChange={(e) => setEditingTicket(prev => prev ? { ...prev, total: parseFloat(e.target.value) || 0 } : null)}
                     className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none"
                   />
                 </div>
@@ -1069,7 +1069,7 @@ export default function AdminMasterPanel({
                 <textarea
                   rows={3}
                   value={editingTicket.internalNotes || ""}
-                  onChange={(e) => setEditingTicket((prev: RepairTicket | null) => prev ? { ...prev, internalNotes: e.target.value } : null)}
+                  onChange={(e) => setEditingTicket(prev => prev ? { ...prev, internalNotes: e.target.value } : null)}
                   className="w-full bg-[#111111] border border-slate-800 focus:border-[#008080] rounded px-3 py-2 text-xs text-white outline-none resize-none"
                   placeholder="Insert custom board readings or S2C feedback..."
                 />

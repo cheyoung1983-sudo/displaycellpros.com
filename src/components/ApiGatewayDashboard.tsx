@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { RepairTicket } from "../types";
 import { BrandLogo } from "./BrandLogo";
-import { auth } from "../lib/firebase";
 
 export interface GatewayKey {
   name: string;
@@ -103,12 +102,7 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
   const fetchGatewayData = async () => {
     setIsLoading(true);
     try {
-      const token = await auth.currentUser?.getIdToken();
-      const resSettings = await fetch("/api/gateway/settings", {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const resSettings = await fetch("/api/gateway/settings");
       if (resSettings.ok) {
         const settings = await resSettings.json();
         setEnforceGateway(settings.enforceGateway);
@@ -127,12 +121,7 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
 
   const fetchRotationMetrics = async () => {
     try {
-      const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/gateway/rotation", {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const res = await fetch("/api/gateway/rotation");
       if (res.ok) {
         const data = await res.json();
         setRotationSchedule(data.rotationSchedule);
@@ -149,12 +138,7 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
   const refreshLogs = async () => {
     setIsRefreshingLogs(true);
     try {
-      const token = await auth.currentUser?.getIdToken();
-      const resLogs = await fetch("/api/gateway/logs", {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const resLogs = await fetch("/api/gateway/logs");
       if (resLogs.ok) {
         const data = await resLogs.json();
         setLogs(data.logs || []);
@@ -192,13 +176,9 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
   const handleForceKeyRotation = async () => {
     setIsRotating(true);
     try {
-      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/gateway/rotation", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "force-rotate" })
       });
       if (res.ok) {
@@ -210,11 +190,7 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
         setRotationRulesLogs(data.rotationLogs || []);
         
         // Refresh API keys instantly since their keys changed
-        const resSettings = await fetch("/api/gateway/settings", {
-          headers: {
-            'Authorization': `Bearer ${idToken}`
-          }
-        });
+        const resSettings = await fetch("/api/gateway/settings");
         if (resSettings.ok) {
           const settings = await resSettings.json();
           setActiveKeys(settings.activeKeys || []);
@@ -255,13 +231,9 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
   // Synchronize Settings to express backend
   const updateGatewaySettings = async (updates: { enforce?: boolean; newLimit?: number }) => {
     try {
-      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/gateway/settings", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates)
       });
       if (res.ok) {
@@ -279,13 +251,9 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
     if (!newKeyName || !newKeyValue) return;
 
     try {
-      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/gateway/settings", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create-key",
           name: newKeyName,
@@ -309,13 +277,9 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
 
   const handleUpdateKeyStatus = async (key: string, nextStatus: "ACTIVE" | "REVOKED") => {
     try {
-      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/gateway/settings", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update-key-status",
           key,
@@ -334,13 +298,9 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
 
   const handleDeleteKey = async (key: string) => {
     try {
-      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/gateway/settings", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "delete-key",
           key
@@ -358,13 +318,7 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
 
   const handleClearLogs = async () => {
     try {
-      const idToken = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/gateway/logs/clear", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${idToken}`
-        }
-      });
+      const res = await fetch("/api/gateway/logs/clear", { method: "POST" });
       if (res.ok) {
         setLogs([]);
       }
@@ -392,9 +346,6 @@ export function ApiGatewayDashboard({ tickets }: ApiGatewayDashboardProps) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json"
     };
-
-    const idToken = await auth.currentUser?.getIdToken();
-    headers["Authorization"] = `Bearer ${idToken}`;
 
     let targetUrl = selectedEndpoint;
 

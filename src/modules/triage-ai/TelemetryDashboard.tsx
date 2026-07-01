@@ -23,13 +23,12 @@ import {
   ArrowRight,
   Loader2
 } from "lucide-react";
-import { User as FirebaseUser } from "firebase/auth";
-import { db, auth } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
 import { collection, doc, setDoc, getDocs, query, where } from "firebase/firestore";
 import { BrandLogo } from "../../components/BrandLogo";
 
 interface TelemetryDashboardProps {
-  authUser: FirebaseUser | null;
+  authUser: any;
   handleGoogleSignIn: () => Promise<void>;
   addToast: (message: string, description: string, type: "success" | "error" | "info" | "warning") => void;
 }
@@ -49,7 +48,7 @@ export function TelemetryDashboard({
   const [evalLcdDiodeMode, setEvalLcdDiodeMode] = useState<"nominal" | "OL" | "short">("nominal");
   const [evalResult, setEvalResult] = useState<any>(null);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
-  const [erpSyncLogs, setErpSyncLogs] = useState<string[]>([]);
+  const [erpSyncLogs, setErpSyncLogs] = useState<any[]>([]);
 
   // DTF Schema & Validation Engine states
   const [activeDtfView, setActiveDtfView] = useState<"schema" | "generator" | "validator">("generator");
@@ -131,12 +130,10 @@ export function TelemetryDashboard({
     setIsEvaluating(true);
     setEvalResult(null);
     try {
-      const token = await auth.currentUser?.getIdToken();
       const response = await fetch("/api/triage/classify-repair-tier", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           batteryTempC: evalBatteryTemp,
@@ -233,7 +230,7 @@ export function TelemetryDashboard({
       data_preservation_guarantee: evalResult.dataPreservationGuarantee || false
     };
 
-    setErpSyncLogs((prev: string[]) => [
+    setErpSyncLogs(prev => [
       `[${new Date().toLocaleTimeString()}] ERP_SYNC: Syncing ticket with structural classification ${syncPayload.triage_classification.repair_strategy}...`,
       `[${new Date().toLocaleTimeString()}] ERP_SUCCESS: Ticket registered. Skill Tier: ${syncPayload.labor_and_billing.required_skill_tier}, COGS: $${syncPayload.labor_and_billing.cost_of_goods_sold_cogs.toFixed(2)}.`,
       ...prev
@@ -269,13 +266,9 @@ export function TelemetryDashboard({
         final_disposition_status: customParams?.peak_temperature_c > 45 ? "LOCKED_OUT_THERMAL" : "NIST_PURGED"
       };
 
-      const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/compliance/generate-dtf", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payloadBody)
       });
 
@@ -297,13 +290,9 @@ export function TelemetryDashboard({
     setDtfValidationResult(null);
     try {
       const parsed = JSON.parse(jsonString);
-      const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/compliance/validate-dtf", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed)
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

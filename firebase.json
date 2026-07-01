@@ -11,9 +11,9 @@
     "rewrites": [
       {
         "source": "/api/**",
-        "function": {
-          "id": "api",
-          "codebase": "dcpkode9"
+        "run": {
+          "serviceId": "triage-ai-backend",
+          "region": "us-west2"
         }
       },
       {
@@ -64,129 +64,34 @@
             "value": "public, max-age=31536000, immutable"
           }
         ]
+      },
+      {
+        "source": "/logo.jpg",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800, stale-while-revalidate=86400"
+          }
+        ]
+      },
+      {
+        "source": "/sitemap.xml",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=86400"
+          }
+        ]
+      },
+      {
+        "source": "/robots.txt",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=86400"
+          }
+        ]
       }
     ]
-  },
-  "emulators": {
-    "dataconnect": {
-      "dataDir": "dataconnect/.dataconnect/pgliteData",
-      "port": 9399
-    },
-    "apphosting": {
-      "port": 5002,
-      "rootDirectory": "./",
-      "startCommand": "npm run dev"
-    },
-    "auth": {
-      "port": 9099
-    },
-    "functions": {
-      "port": 5001
-    },
-    "firestore": {
-      "port": 8080
-    },
-    "database": {
-      "port": 9000
-    },
-    "hosting": {
-      "port": 5000
-    },
-    "pubsub": {
-      "port": 8085
-    },
-    "storage": {
-      "port": 9199
-    },
-    "eventarc": {
-      "port": 9299
-    },
-    "tasks": {
-      "port": 9499
-    },
-    "ui": {
-      "enabled": true
-    },
-    "singleProjectMode": true
-  },
-  "dataconnect": {
-    "source": "dataconnect"
-  },
-  "firestore": {
-    "database": "ai-studio-displaycellprosd-c2e2eafb-3cb1-4649-b652-71711906b516",
-    "location": "us-west2",
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
-  "functions": [
-    {
-      "source": "dcpkode9",
-      "codebase": "dcpkode9",
-      "disallowLegacyRuntimeConfig": true,
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": [
-        "npm run lint --prefix dcpkode9",
-        "npm run build --prefix dcpkode9"
-      ]
-    },
-    {
-      "source": "dcp67",
-      "codebase": "dcp67",
-      "disallowLegacyRuntimeConfig": true,
-      "predeploy": [
-        "npm run lint --prefix dcp67",
-        "npm run build --prefix dcp67"
-      ]
-    }
-  ],
-  "apphosting": [
-    {
-      "backendId": "dcp-backend",
-      "rootDir": "/",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "functions"
-      ]
-    },
-    {
-      "backendId": "displaycellpros-com",
-      "rootDir": "/",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "functions"
-      ]
-    }
-  ],
-  "storage": {
-    "rules": "storage.rules"
-  },
-  "remoteconfig": {
-    "template": "remoteconfig.template.json"
-  },
-  "extensions": {},
-  "database": {
-    "rules": "database.rules.json"
-  },
-  "auth": {
-    "providers": {
-      "anonymous": true,
-      "emailPassword": true,
-      "googleSignIn": {
-        "oAuthBrandDisplayName": "Display & Cell Pros Diagnostics Hub",
-        "supportEmail": "cheyoung1983@gmail.com"
-      }
-    }
   }
 }

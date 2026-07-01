@@ -21,7 +21,6 @@ import {
   FileText,
   Workflow
 } from "lucide-react";
-import { auth } from "../lib/firebase";
 
 // Lexicon configuration
 interface LexiconMapping {
@@ -135,12 +134,10 @@ export function MarketingFirewall() {
     const endpoint = useInternalRoute ? "/api/internal/bench" : "/api/marketing/publish-blog";
 
     try {
-      const idToken = await auth.currentUser?.getIdToken();
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ publicContent: textToProcess })
       });

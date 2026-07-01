@@ -6,18 +6,12 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
-    optimizeDeps: {
-      include: ['react-is', 'recharts'],
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
     },
     build: {
-      commonjsOptions: {
-        transformMixedEsModules: true,
-      },
       outDir: 'dist',
       minify: 'esbuild',
       cssMinify: true,
@@ -33,6 +27,8 @@ export default defineConfig(() => {
               if (id.includes('@google/genai')) return 'genai-vendor';
               if (id.includes('recharts')) return 'recharts-vendor';
               if (id.includes('jspdf')) return 'jspdf-vendor';
+              if (id.includes('lucide-react')) return 'lucide-vendor';
+              if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) return 'react-vendor';
               if (id.includes('motion')) return 'motion-vendor';
               return 'vendor';
             }
