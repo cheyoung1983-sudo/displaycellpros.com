@@ -1,0 +1,15 @@
+{
+  "version": "2",
+  "projectNumber": "1046067704682",
+  "projectId": "displaycellpros-com",
+  "appId": "1:1046067704682:web:ce3ca691c618904a5bab13",
+  "realtimeDatabaseInstanceUri": "https://displaycellpros-com-default-rtdb.firebaseio.com",
+  "realtimeDatabaseUrl": "",
+  "storageBucket": "displaycellpros-com.firebasestorage.app",
+  "locationId": "",
+  "apiKey": "AIzaSyAk9aTCTHoE6RAfKpt9WNDYxvUHtSUZ3aI",
+  "authDomain": "displaycellpros-com.firebaseapp.com",
+  "messagingSenderId": "1046067704682",
+  "measurementId": "G-E192YYWZKK",
+  "recaptchaSiteKey": ""
+}

@@ -26,7 +26,8 @@
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "firebase": "^12.14.0",
-    "firebase-admin": "^14.0.0",
+    "firebase-admin": "^14.1.0",
+    "firebase-tools": "^15.22.4",
     "jspdf": "^4.2.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.546.0",
@@ -34,6 +35,7 @@
     "pg": "^8.21.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-is": "^19.2.7",
     "recharts": "^3.8.1",
     "vite": "^6.2.3"
   },

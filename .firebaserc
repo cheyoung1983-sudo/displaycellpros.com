@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "displaycellpros-com"
+  },
+  "targets": {},
+  "etags": {
+    "displaycellpros-com": {
+      "extensionInstances": {
+        "firestore-user-document": "8ff2e4cb9923b270f3d840a6d76fbd93abfb51e0e844e1f2ee82246910871071"
+      }
+    }
+  }
+}
