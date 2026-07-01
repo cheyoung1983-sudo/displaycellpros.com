@@ -2008,13 +2008,21 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdError(null);
     setSdSuccess(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/mode", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ mode: newMode })
       });
       if (res.ok) {
-        const statusRes = await fetch("/api/service-directory/status");
+        const statusRes = await fetch("/api/service-directory/status", {
+          headers: {
+            'Authorization': `Bearer ${idToken}`
+          }
+        });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
           setSdStatus(statusData);
@@ -2040,9 +2048,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdError(null);
     setSdSuccess(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/namespaces/list", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ projectId: proj, locationId: loc })
       });
       if (res.ok) {
@@ -2082,9 +2094,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdError(null);
     setSdSuccess(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/namespaces/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           projectId: sdProjectId,
           locationId: sdLocationId,
@@ -2115,9 +2131,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdError(null);
     setSdSuccess(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/namespaces/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ name })
       });
       if (res.ok) {
@@ -2146,9 +2166,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdLoading(true);
     setSdError(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/services/list", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ namespaceName: nsName })
       });
       if (res.ok) {
@@ -2192,9 +2216,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     const parsedAnnots = parseAnnotations(newServiceAnnotations);
     
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/services/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           namespaceName: selectedNamespace,
           serviceId: cleanId,
@@ -2224,9 +2252,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdError(null);
     setSdSuccess(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/services/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ name })
       });
       if (res.ok) {
@@ -2253,9 +2285,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdLoading(true);
     setSdError(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/endpoints/list", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ serviceName: srvName })
       });
       if (res.ok) {
@@ -2296,9 +2332,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     const parsedAnnots = parseAnnotations(newEndpointAnnotations);
 
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/endpoints/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           serviceName: selectedService,
           endpointId: cleanId,
@@ -2330,9 +2370,13 @@ If short is confirmed, replace C247_W immediately. Check sandwich layers interfa
     setSdError(null);
     setSdSuccess(null);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/service-directory/endpoints/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({ name })
       });
       if (res.ok) {

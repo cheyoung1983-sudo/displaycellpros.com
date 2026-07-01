@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
+import { auth } from "../lib/firebase";
 
 interface InventoryItem {
   id: string;
@@ -148,7 +149,12 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
   const fetchInventory = async () => {
     try {
       setIsInventoryLoading(true);
-      const res = await fetch("/api/quote/inventory");
+      const idToken = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/quote/inventory", {
+        headers: {
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setInventory(data.inventory || []);
@@ -196,9 +202,13 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
 
     setIsComputing(true);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/generate-quote", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify(payload)
       });
       if (res.ok) {
@@ -291,9 +301,13 @@ export default function QuoteBuilderDashboard({ addToast }: QuoteBuilderDashboar
     setIsSyncingPOS(true);
     try {
       // Persist the quote to Firestore
+      const idToken = await auth.currentUser?.getIdToken();
       const saveRes = await fetch("/api/save-quote", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           ...computationResult,
           customerName,

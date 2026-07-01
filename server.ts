@@ -145,7 +145,7 @@ export const app = express();
   }
 
   // Define GTM Guard Demo routes for testing the firewall
-  app.post("/api/marketing/publish-blog", egressLexicalFirewall, (req, res) => {
+  app.post("/api/marketing/publish-blog", requireAuth, egressLexicalFirewall, (req, res) => {
     // We send the raw payload; the egress interceptor intercepts res.json on the wire!
     res.json({
       status: "success",
@@ -153,7 +153,7 @@ export const app = express();
     });
   });
 
-  app.post("/api/internal/bench", egressLexicalFirewall, (req, res) => {
+  app.post("/api/internal/bench", requireAuth, egressLexicalFirewall, (req, res) => {
     // Should bypass the firewall because route starts with /api/internal/
     res.json({
       status: "bypass",
