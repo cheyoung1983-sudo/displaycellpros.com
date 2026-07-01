@@ -6,19 +6,43 @@
       "**/.*",
       "**/node_modules/**"
     ]
-  },
+  }{
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": {
+          "id": "api",
+          "codebase": "dcpkode10"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+},
   "emulators": {
     "dataconnect": {
       "dataDir": "dataconnect/.dataconnect/pgliteData",
-      "port": 9399
+      "port": 9400
     },
     "apphosting": {
-      "port": 5002,
+      "port": 5003,
       "rootDirectory": "./",
       "startCommand": "npm run dev"
     },
     "auth": {
-      "port": 9099
+      "port": 9100
     },
     "functions": {
       "port": 5001
