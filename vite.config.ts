@@ -20,7 +20,6 @@ export default defineConfig(() => {
       sourcemap: false, // Disable sourcemaps in production to conserve storage and reduce overhead
       chunkSizeWarningLimit: 2000,
       rollupOptions: {
-        external: ['react-is'],
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
