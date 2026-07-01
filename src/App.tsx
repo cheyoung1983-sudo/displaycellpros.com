@@ -8502,8 +8502,8 @@ Status: ${issueType === "battery" ? "DEGRADED" : "OPTIMAL"}`;
                   <span className="text-slate-600 font-mono">•</span>
                   <span className="hover:text-blue-400 transition-colors cursor-pointer font-semibold" onClick={() => setActiveTab("license")}>D-U-N-S®: {localStorage.getItem("dunsNumber") || "03-942-8174"}</span>
                 </li>
-                <li><a href="https://www.displaycellpros.com/privacy" onClick={(e) => { e.preventDefault(); setActiveTab("privacy"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Privacy Policy</a></li>
-                <li><a href="https://www.displaycellpros.com/liability" onClick={(e) => { e.preventDefault(); setActiveTab("tos"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Liability Waiver</a></li>
+                <li><a href="https://www.displaycellpros.com/privacy.html" onClick={(e) => { e.preventDefault(); setActiveTab("privacy"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Privacy Policy</a></li>
+                <li><a href="https://www.displaycellpros.com/tos.html" onClick={(e) => { e.preventDefault(); setActiveTab("tos"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Liability Waiver</a></li>
                 <li><a href="https://www.displaycellpros.com/compliance" onClick={(e) => { e.preventDefault(); setActiveTab("compliance"); }} className="hover:text-blue-400 transition-colors cursor-pointer">Compliance & Security guidelines</a></li>
                 <li><a href="https://www.displaycellpros.com/eula" onClick={(e) => { e.preventDefault(); setActiveTab("eula"); }} className="hover:text-amber-400 transition-colors cursor-pointer">AI Triage EULA</a></li>
               </ul>

@@ -7,6 +7,9 @@ generate:
     - outputDir: ..\..\dcpkode9\src\dataconnect-admin-generated
       package: "@dataconnect/admin-generated"
       packageJsonDir: ..\..\dcpkode9
+    - outputDir: ..\..\dcp67\src\dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ..\..\dcp67
   javascriptSdk:
     - outputDir: ..\..\src\dataconnect-generated
       package: "@dataconnect/generated"

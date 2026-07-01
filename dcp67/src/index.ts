@@ -8,7 +8,9 @@
  */
 
 import {setGlobalOptions} from "firebase-functions";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {onRequest} from "firebase-functions/https";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import * as logger from "firebase-functions/logger";
 
 // Start writing functions
@@ -24,7 +26,7 @@ import * as logger from "firebase-functions/logger";
 // functions should each use functions.runWith({ maxInstances: 10 }) instead.
 // In the v1 API, each function can only serve one request per container, so
 // this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+setGlobalOptions({maxInstances: 10});
 
 // export const helloWorld = onRequest((request, response) => {
 //   logger.info("Hello logs!", {structuredData: true});
