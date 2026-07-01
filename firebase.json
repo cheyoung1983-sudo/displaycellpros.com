@@ -10,13 +10,6 @@
     "trailingSlash": false,
     "rewrites": [
       {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "triage-ai-backend",
-          "region": "us-west2"
-        }
-      },
-      {
         "source": "**",
         "destination": "/index.html"
       }
