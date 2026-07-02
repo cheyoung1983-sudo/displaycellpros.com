@@ -22,16 +22,42 @@ export default defineConfig(() => {
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.includes('firebase')) return 'firebase-vendor';
-              if (id.includes('@google/genai')) return 'genai-vendor';
-              if (id.includes('recharts')) return 'recharts-vendor';
-              if (id.includes('jspdf')) return 'jspdf-vendor';
-              if (id.includes('lucide-react')) return 'lucide-vendor';
-              if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) return 'react-vendor';
-              if (id.includes('motion')) return 'motion-vendor';
-              return 'vendor';
+            if (!id.includes('node_modules')) return undefined;
+
+            // Extract exact package name (handles scoped packages, e.g. @firebase/app)
+            const segments = id.split('node_modules/').pop()!.split('/');
+            const pkg = segments[0].startsWith('@')
+              ? `${segments[0]}/${segments[1]}`
+              : segments[0];
+
+            // React ecosystem — keep together to prevent circular refs
+            if (['react', 'react-dom', 'react-is', 'scheduler'].includes(pkg)) {
+              return 'react-vendor';
             }
+            // Firebase (SDK + sub-packages)
+            if (pkg === 'firebase' || pkg.startsWith('@firebase')) {
+              return 'firebase-vendor';
+            }
+            // Google Generative AI
+            if (pkg === '@google/genai') return 'genai-vendor';
+            // Recharts + its d3 dependencies
+            if (
+              pkg === 'recharts' ||
+              pkg.startsWith('d3') ||
+              pkg === 'internmap' ||
+              pkg === 'robust-predicates' ||
+              pkg === 'victory-vendor'
+            ) {
+              return 'recharts-vendor';
+            }
+            // jsPDF
+            if (pkg === 'jspdf') return 'jspdf-vendor';
+            // Lucide icons
+            if (pkg === 'lucide-react') return 'lucide-vendor';
+            // Motion / Framer Motion
+            if (pkg === 'motion' || pkg === 'framer-motion') return 'motion-vendor';
+
+            return 'vendor';
           },
         },
       },
